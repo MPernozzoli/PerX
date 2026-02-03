@@ -142,7 +142,8 @@ Thumbs.db
 *\ 2.*
 *\ 2/
 
-# Claim Connect (if it's a submodule or external)
+# Claim Connect (separate GitHub project)
+claim-connect-main
 claim-connect-main/
 
 # WhatsApp Bridge Windows (different platform)

@@ -664,9 +664,18 @@ struct ProcessedEmailDTO: Identifiable, Codable, Hashable {
     let messageId: String
     let subject: String
     let from: String
-    let date: Date
+    let to: [String]
+    let cc: [String]
+    let date: Date?
     let category: String?
     let sinistroRiferimento: String?
+    let sinistroAssicurato: String?
+    let bodyText: String?
+    let bodyHtml: String?
+    let folder: String?
+    let isRead: Bool
+    let hasAttachments: Bool
+    let attachments: [String]
     
     init?(from record: CKRecord) {
         guard let msgId = record["messageId"] as? String else { return nil }
@@ -675,9 +684,41 @@ struct ProcessedEmailDTO: Identifiable, Codable, Hashable {
         self.messageId = msgId
         self.subject = record["subject"] as? String ?? ""
         self.from = record["from"] as? String ?? ""
-        self.date = record["date"] as? Date ?? Date()
+        self.to = (record["to"] as? [String]) ?? []
+        self.cc = (record["cc"] as? [String]) ?? []
+        self.date = record["date"] as? Date
         self.category = record["category"] as? String
         self.sinistroRiferimento = record["sinistroRiferimento"] as? String
+        self.sinistroAssicurato = record["sinistroAssicurato"] as? String
+        self.bodyText = record["bodyText"] as? String
+        self.bodyHtml = record["bodyHtml"] as? String
+        self.folder = record["folder"] as? String
+        self.isRead = record["isRead"] as? Bool ?? true
+        self.hasAttachments = record["hasAttachments"] as? Bool ?? false
+        self.attachments = (record["attachments"] as? [String]) ?? []
+    }
+    
+    // Convenience initializer for local creation
+    init(id: String, messageId: String, subject: String, from: String, to: [String] = [], cc: [String] = [],
+         date: Date? = nil, category: String? = nil, sinistroRiferimento: String? = nil,
+         sinistroAssicurato: String? = nil, bodyText: String? = nil, bodyHtml: String? = nil,
+         folder: String? = nil, isRead: Bool = true, hasAttachments: Bool = false, attachments: [String] = []) {
+        self.id = id
+        self.messageId = messageId
+        self.subject = subject
+        self.from = from
+        self.to = to
+        self.cc = cc
+        self.date = date
+        self.category = category
+        self.sinistroRiferimento = sinistroRiferimento
+        self.sinistroAssicurato = sinistroAssicurato
+        self.bodyText = bodyText
+        self.bodyHtml = bodyHtml
+        self.folder = folder
+        self.isRead = isRead
+        self.hasAttachments = hasAttachments
+        self.attachments = attachments
     }
     
     func hash(into hasher: inout Hasher) {
