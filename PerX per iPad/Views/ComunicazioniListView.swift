@@ -2,7 +2,7 @@
 //  ComunicazioniListView.swift
 //  PerX per iPad
 //
-//  Vista comunicazioni: email e WhatsApp in sola lettura + composer per outbox.
+//  Vista comunicazioni: email e WhatsApp tramite Hub.
 //
 
 import SwiftUI
@@ -11,7 +11,7 @@ struct ComunicazioniListView: View {
     @EnvironmentObject var session: SessionCoordinator
     @State private var selectedTab: ComunicazioniTab = .outbox
     
-    enum ComunicazioniTab: String, CaseIterable {
+    enum ComunicazioniTab: String, CaseIterable, Hashable {
         case outbox = "In Uscita"
         case email = "Email"
         case whatsapp = "WhatsApp"
@@ -28,11 +28,14 @@ struct ComunicazioniListView: View {
     var body: some View {
         NavigationSplitView {
             // Sidebar con tabs
-            List(selection: $selectedTab) {
+            List {
                 ForEach(ComunicazioniTab.allCases, id: \.self) { tab in
-                    NavigationLink(value: tab) {
+                    Button {
+                        selectedTab = tab
+                    } label: {
                         Label(tab.rawValue, systemImage: tab.icon)
                     }
+                    .listRowBackground(selectedTab == tab ? Color.accentColor.opacity(0.2) : Color.clear)
                 }
             }
             .listStyle(.sidebar)
@@ -55,33 +58,24 @@ struct ComunicazioniListView: View {
 
 struct OutboxListView: View {
     @EnvironmentObject var session: SessionCoordinator
+    @StateObject private var outboxService = HubOutboxService.shared
     @State private var showingComposeEmail = false
     @State private var showingComposeWA = false
     
-    private var outboxService: CloudKitOutboxService? {
-        session.outboxService
-    }
-    
     var body: some View {
         List {
-            Section("Email in uscita") {
-                if outboxService?.pendingEmailRequests.isEmpty == true {
-                    Text("Nessuna email in coda")
-                        .foregroundColor(.secondary)
-                } else {
-                    ForEach(outboxService?.pendingEmailRequests ?? []) { request in
-                        OutgoingEmailRow(request: request)
-                    }
+            if outboxService.pendingRequests.isEmpty {
+                Section {
+                    ContentUnavailableView(
+                        "Nessuna richiesta in coda",
+                        systemImage: "tray",
+                        description: Text("Le richieste in uscita appariranno qui")
+                    )
                 }
-            }
-            
-            Section("WhatsApp in uscita") {
-                if outboxService?.pendingWhatsAppRequests.isEmpty == true {
-                    Text("Nessun messaggio in coda")
-                        .foregroundColor(.secondary)
-                } else {
-                    ForEach(outboxService?.pendingWhatsAppRequests ?? []) { request in
-                        OutgoingWhatsAppRow(request: request)
+            } else {
+                Section("Richieste in corso") {
+                    ForEach(outboxService.pendingRequests) { request in
+                        OutboxRequestRow(request: request)
                     }
                 }
             }
@@ -105,19 +99,6 @@ struct OutboxListView: View {
                     Image(systemName: "plus")
                 }
             }
-            
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    Task {
-                        await outboxService?.fetchPendingRequests()
-                    }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                }
-            }
-        }
-        .refreshable {
-            await outboxService?.fetchPendingRequests()
         }
         .sheet(isPresented: $showingComposeEmail) {
             ComposeEmailView()
@@ -128,30 +109,29 @@ struct OutboxListView: View {
     }
 }
 
-// MARK: - Outgoing Email Row
+// MARK: - Outbox Request Row
 
-struct OutgoingEmailRow: View {
-    let request: OutgoingEmailRequest
+struct OutboxRequestRow: View {
+    let request: OutboxRequest
     
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Image(systemName: request.status.iconName)
+                Image(systemName: request.type.icon)
                     .foregroundColor(statusColor)
                 
-                Text(request.subject)
+                Text(request.type.label)
                     .font(.headline)
-                    .lineLimit(1)
                 
                 Spacer()
                 
-                Text(request.status.displayName)
+                Text(request.status.label)
                     .font(.caption)
                     .foregroundColor(statusColor)
             }
             
-            Text("A: \(request.toRecipients.joined(separator: ", "))")
-                .font(.caption)
+            Text(request.details)
+                .font(.subheadline)
                 .foregroundColor(.secondary)
                 .lineLimit(1)
             
@@ -159,7 +139,7 @@ struct OutgoingEmailRow: View {
                 .font(.caption2)
                 .foregroundColor(.secondary)
             
-            if let error = request.statusMessage, request.status == .failed {
+            if let error = request.errorMessage {
                 Text(error)
                     .font(.caption2)
                     .foregroundColor(.red)
@@ -170,61 +150,14 @@ struct OutgoingEmailRow: View {
     
     private var statusColor: Color {
         switch request.status {
-        case .queued: return .blue
-        case .processing: return .orange
+        case .sending: return .orange
         case .sent: return .green
         case .failed: return .red
-        case .cancelled: return .gray
         }
     }
 }
 
-// MARK: - Outgoing WhatsApp Row
-
-struct OutgoingWhatsAppRow: View {
-    let request: OutgoingWhatsAppRequest
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Image(systemName: request.status.iconName)
-                    .foregroundColor(statusColor)
-                
-                Text(request.targetPhoneNumber ?? request.targetChatId ?? "Destinatario")
-                    .font(.headline)
-                    .lineLimit(1)
-                
-                Spacer()
-                
-                Text(request.status.displayName)
-                    .font(.caption)
-                    .foregroundColor(statusColor)
-            }
-            
-            Text(request.message)
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-                .lineLimit(2)
-            
-            Text(request.createdAt, style: .relative)
-                .font(.caption2)
-                .foregroundColor(.secondary)
-        }
-        .padding(.vertical, 4)
-    }
-    
-    private var statusColor: Color {
-        switch request.status {
-        case .queued: return .blue
-        case .processing: return .orange
-        case .sent: return .green
-        case .failed: return .red
-        case .cancelled: return .gray
-        }
-    }
-}
-
-// MARK: - Email List (Read-only from CK)
+// MARK: - Email List (Read-only from CK/Hub)
 
 struct EmailListView: View {
     @EnvironmentObject var session: SessionCoordinator
@@ -275,13 +208,12 @@ struct EmailListView: View {
             }
         }
         .task {
-            // TODO: Fetch emails from CloudKit
-            // Per ora mostra solo placeholder
+            // TODO: Fetch emails from Hub/CloudKit
         }
     }
 }
 
-// MARK: - WhatsApp List (Read-only from CK)
+// MARK: - WhatsApp List (Read-only from CK/Hub)
 
 struct WhatsAppListView: View {
     @EnvironmentObject var session: SessionCoordinator
@@ -326,7 +258,7 @@ struct WhatsAppListView: View {
             }
         }
         .task {
-            // TODO: Fetch WA messages from CloudKit
+            // TODO: Fetch WA messages from Hub/CloudKit
         }
     }
 }
@@ -339,7 +271,7 @@ struct ComposeEmailView: View {
     
     @State private var toRecipients = ""
     @State private var subject = ""
-    @State private var body = ""
+    @State private var bodyText = ""
     @State private var isSending = false
     @State private var errorMessage: String?
     
@@ -356,7 +288,7 @@ struct ComposeEmailView: View {
                 Section("Messaggio") {
                     TextField("Oggetto", text: $subject)
                     
-                    TextEditor(text: $body)
+                    TextEditor(text: $bodyText)
                         .frame(minHeight: 200)
                 }
                 
@@ -393,10 +325,10 @@ struct ComposeEmailView: View {
         let recipients = toRecipients.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
         
         do {
-            _ = try await session.outboxService?.createEmailRequest(
+            _ = try await HubOutboxService.shared.sendEmail(
                 to: recipients,
                 subject: subject,
-                body: body
+                body: bodyText
             )
             dismiss()
         } catch {
@@ -463,7 +395,7 @@ struct ComposeWhatsAppView: View {
         errorMessage = nil
         
         do {
-            _ = try await session.outboxService?.createWhatsAppRequest(
+            _ = try await HubOutboxService.shared.sendWhatsApp(
                 phoneNumber: phoneNumber,
                 message: message
             )

@@ -32,119 +32,10 @@ struct RootView: View {
                     .environment(\.managedObjectContext, session.viewContext)
                     .id(session.currentUserEmail) // Force refresh on user change
             } else {
-                LoginView()
+                AccountSelectorView()
             }
         }
         .animation(.easeInOut, value: session.isAuthenticated)
-    }
-}
-
-// MARK: - Login View
-
-struct LoginView: View {
-    @EnvironmentObject var session: SessionCoordinator
-    @State private var isLoggingIn = false
-    @State private var errorMessage: String?
-    
-    var body: some View {
-        GeometryReader { geometry in
-            HStack(spacing: 0) {
-                // Left side - branding
-                VStack(spacing: 24) {
-                    Spacer()
-                    
-                    Image(systemName: "briefcase.fill")
-                        .font(.system(size: 100))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [.blue, .purple],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                    
-                    Text("PerX")
-                        .font(.system(size: 56, weight: .bold, design: .rounded))
-                    
-                    Text("Gestione Sinistri Professionale")
-                        .font(.title2)
-                        .foregroundColor(.secondary)
-                    
-                    Spacer()
-                }
-                .frame(width: geometry.size.width * 0.5)
-                .background(Color(.systemBackground))
-                
-                // Right side - login
-                VStack(spacing: 32) {
-                    Spacer()
-                    
-                    VStack(spacing: 16) {
-                        Text("Accedi")
-                            .font(.title.bold())
-                        
-                        Text("Usa il tuo account Google aziendale")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                    }
-                    
-                    if isLoggingIn {
-                        ProgressView()
-                            .scaleEffect(1.5)
-                            .padding(40)
-                    } else {
-                        Button {
-                            Task { await signIn() }
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "person.badge.key.fill")
-                                    .font(.title3)
-                                Text("Accedi con Google")
-                                    .font(.headline)
-                            }
-                            .frame(maxWidth: 280)
-                            .padding(.vertical, 16)
-                            .background(Color.accentColor)
-                            .foregroundColor(.white)
-                            .cornerRadius(12)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    
-                    if let error = errorMessage {
-                        Text(error)
-                            .foregroundColor(.red)
-                            .font(.caption)
-                            .padding()
-                            .background(Color.red.opacity(0.1))
-                            .cornerRadius(8)
-                    }
-                    
-                    Spacer()
-                    
-                    Text("Versione iPad • CloudKit-first")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                        .padding(.bottom)
-                }
-                .frame(width: geometry.size.width * 0.5)
-                .background(Color(.secondarySystemBackground))
-            }
-        }
-        .ignoresSafeArea()
-    }
-    
-    private func signIn() async {
-        isLoggingIn = true
-        errorMessage = nil
-        
-        do {
-            try await session.signIn()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-        
-        isLoggingIn = false
     }
 }
 
@@ -155,11 +46,12 @@ struct iPadContentView: View {
     @State private var selectedSection: NavigationSection = .dashboard
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     
-    enum NavigationSection: String, CaseIterable, Identifiable {
+    enum NavigationSection: String, CaseIterable, Identifiable, Hashable {
         case dashboard = "Dashboard"
         case sinistri = "Sinistri"
-        case comunicazioni = "Comunicazioni"
-        case chat = "Chat"
+        case mail = "Email"
+        case whatsapp = "WhatsApp"
+        case chat = "Chat AI"
         case consuntivo = "Consuntivo"
         case programmazione = "Programmazione"
         case impostazioni = "Impostazioni"
@@ -170,7 +62,8 @@ struct iPadContentView: View {
             switch self {
             case .dashboard: return "gauge.with.dots.needle.bottom.50percent"
             case .sinistri: return "folder.fill"
-            case .comunicazioni: return "envelope.fill"
+            case .mail: return "envelope.fill"
+            case .whatsapp: return "message.fill"
             case .chat: return "bubble.left.and.bubble.right.fill"
             case .consuntivo: return "chart.bar.fill"
             case .programmazione: return "calendar.badge.clock"
@@ -184,19 +77,23 @@ struct iPadContentView: View {
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             // Sidebar
-            List(selection: $selectedSection) {
-                Section {
-                    ForEach(NavigationSection.allCases.filter { !$0.isSettings }) { section in
-                        NavigationLink(value: section) {
-                            Label(section.rawValue, systemImage: section.icon)
-                        }
+            List {
+                ForEach(NavigationSection.allCases.filter { !$0.isSettings }, id: \.self) { section in
+                    Button {
+                        selectedSection = section
+                    } label: {
+                        Label(section.rawValue, systemImage: section.icon)
                     }
+                    .listRowBackground(selectedSection == section ? Color.accentColor.opacity(0.2) : Color.clear)
                 }
                 
                 Section {
-                    NavigationLink(value: NavigationSection.impostazioni) {
-                        Label("Impostazioni", systemImage: "gear")
+                    Button {
+                        selectedSection = .impostazioni
+                    } label: {
+                        Label(NavigationSection.impostazioni.rawValue, systemImage: NavigationSection.impostazioni.icon)
                     }
+                    .listRowBackground(selectedSection == .impostazioni ? Color.accentColor.opacity(0.2) : Color.clear)
                 }
             }
             .listStyle(.sidebar)
@@ -231,8 +128,10 @@ struct iPadContentView: View {
             iPadDashboardView()
         case .sinistri:
             SinistriListView()
-        case .comunicazioni:
-            ComunicazioniListView()
+        case .mail:
+            iPadMailView()
+        case .whatsapp:
+            iPadWhatsAppView()
         case .chat:
             ChatListView()
         case .consuntivo:

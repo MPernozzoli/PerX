@@ -24,9 +24,9 @@ final class GoogleAuthServiceiOS: NSObject, ObservableObject {
     
     // MARK: - OAuth Config
     
-    // TODO: Sostituisci con il tuo iOS client ID da Google Cloud Console
-    private let clientId = "YOUR_IOS_CLIENT_ID.apps.googleusercontent.com"
-    private let redirectScheme = "it.pernozzoli.perx.ipad"
+    // iOS Client ID da Google Cloud Console
+    private let clientId = "150443834793-vn4s39ofgbgr695vq3h5k2agf2asomcu.apps.googleusercontent.com"
+    private let redirectScheme = "com.googleusercontent.apps.150443834793-vn4s39ofgbgr695vq3h5k2agf2asomcu"
     private let redirectUri: String
     
     // Scope: solo identity (NO gmail.readonly/modify su iPad - usa CK)
@@ -199,8 +199,35 @@ final class GoogleAuthServiceiOS: NSObject, ObservableObject {
             throw AuthError.userInfoFailed
         }
         
+        // Salva account per login futuro
+        await AccountManager.shared.saveAccount(
+            email: userEmail ?? "",
+            displayName: userName ?? userEmail ?? "",
+            refreshToken: tokenResponse.refreshToken
+        )
+        
         isAuthenticated = true
         print("[GoogleAuthiOS] ✅ Login completato per: \(userEmail ?? "?")")
+    }
+    
+    /// Login con refresh token salvato (per account già registrati)
+    func signInWithRefreshToken(_ refreshToken: String) async throws {
+        let newToken = try await refreshAccessToken(refreshToken)
+        saveToKeychain(token: newToken, forKey: "access_token")
+        
+        guard await fetchUserInfo(accessToken: newToken) else {
+            throw AuthError.userInfoFailed
+        }
+        
+        // Aggiorna account
+        await AccountManager.shared.saveAccount(
+            email: userEmail ?? "",
+            displayName: userName ?? userEmail ?? "",
+            refreshToken: refreshToken
+        )
+        
+        isAuthenticated = true
+        print("[GoogleAuthiOS] ✅ Login con refresh token per: \(userEmail ?? "?")")
     }
     
     private func exchangeCodeForToken(code: String) async throws -> TokenResponse {

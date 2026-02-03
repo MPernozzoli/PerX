@@ -41,10 +41,15 @@ struct ChatListView: View {
     
     @ViewBuilder
     private var sidebarContent: some View {
-        List(selection: $selectedRoom) {
-            ForEach(chatService?.rooms ?? []) { room in
-                ChatRoomRow(room: room)
-                    .tag(room)
+        List {
+            ForEach(chatService?.rooms ?? [], id: \.id) { room in
+                Button {
+                    selectedRoom = room
+                } label: {
+                    ChatRoomRow(room: room)
+                }
+                .buttonStyle(.plain)
+                .listRowBackground(selectedRoom?.id == room.id ? Color.accentColor.opacity(0.2) : Color.clear)
             }
         }
         .listStyle(.sidebar)

@@ -124,20 +124,22 @@ struct iPadCartellaView: View {
                     description: Text("Nessun file in questa cartella")
                 )
             } else {
-                List(selection: $selectedFile) {
+                List {
                     ForEach(files) { file in
-                        FileRow(file: file)
-                            .tag(file)
-                            .onTapGesture(count: 2) {
-                                if file.isDirectory {
-                                    navigateInto(file)
-                                } else {
-                                    openFile(file)
-                                }
+                        Button {
+                            selectedFile = file
+                        } label: {
+                            FileRow(file: file)
+                        }
+                        .buttonStyle(.plain)
+                        .listRowBackground(selectedFile?.id == file.id ? Color.accentColor.opacity(0.2) : Color.clear)
+                        .onTapGesture(count: 2) {
+                            if file.isDirectory {
+                                navigateInto(file)
+                            } else {
+                                openFile(file)
                             }
-                            .onTapGesture(count: 1) {
-                                selectedFile = file
-                            }
+                        }
                     }
                 }
                 .listStyle(.plain)

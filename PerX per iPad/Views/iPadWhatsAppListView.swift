@@ -51,10 +51,15 @@ struct iPadWhatsAppListView: View {
     
     @ViewBuilder
     private var chatListSidebar: some View {
-        List(selection: $selectedChat) {
-            ForEach(filteredChats) { chat in
-                WhatsAppChatRow(chat: chat)
-                    .tag(chat)
+        List {
+            ForEach(filteredChats, id: \.id) { chat in
+                Button {
+                    selectedChat = chat
+                } label: {
+                    WhatsAppChatRow(chat: chat)
+                }
+                .buttonStyle(.plain)
+                .listRowBackground(selectedChat?.id == chat.id ? Color.accentColor.opacity(0.2) : Color.clear)
             }
         }
         .listStyle(.plain)
@@ -295,7 +300,7 @@ struct WhatsAppChatDetailView: View {
         newMessage = ""
         
         do {
-            _ = try await session.outboxService?.createWhatsAppRequest(
+            _ = try await HubOutboxService.shared.sendWhatsApp(
                 phoneNumber: chat.phoneNumber,
                 chatId: chat.id,
                 message: text,

@@ -10,10 +10,18 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var session: SessionCoordinator
     @StateObject private var hubClient = HubAPIClient.shared
+    @StateObject private var accountManager = AccountManager.shared
     @State private var showingLogoutConfirm = false
     @State private var hubURL = HubAPIClient.shared.hubBaseURL
     @State private var isCheckingHub = false
     @State private var hubCheckResult: String?
+    @State private var showingSetPasscode = false
+    @State private var showingRemovePasscode = false
+    
+    private var currentAccount: AccountManager.SavedAccount? {
+        guard let email = session.currentUserEmail else { return nil }
+        return accountManager.savedAccounts.first { $0.email == email }
+    }
     
     var body: some View {
         NavigationStack {
@@ -139,6 +147,11 @@ struct SettingsView: View {
                     }
                 }
                 
+                // Sicurezza
+                Section("Sicurezza") {
+                    passcodeRow
+                }
+                
                 // Cache
                 Section("Cache") {
                     cacheStatusRow
@@ -250,6 +263,162 @@ struct SettingsView: View {
                         .foregroundColor(.orange)
                 }
                 .font(.caption)
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var passcodeRow: some View {
+        let hasPasscode = currentAccount?.hasPasscode ?? false
+        
+        HStack {
+            Label(
+                hasPasscode ? "Codice di accesso attivo" : "Nessun codice",
+                systemImage: hasPasscode ? "lock.fill" : "lock.open"
+            )
+            
+            Spacer()
+            
+            if hasPasscode {
+                Button("Rimuovi") {
+                    showingRemovePasscode = true
+                }
+                .foregroundColor(.red)
+            } else {
+                Button("Imposta") {
+                    showingSetPasscode = true
+                }
+            }
+        }
+        .sheet(isPresented: $showingSetPasscode) {
+            SetPasscodeView(email: session.currentUserEmail ?? "")
+        }
+        .alert("Rimuovere codice?", isPresented: $showingRemovePasscode) {
+            Button("Rimuovi", role: .destructive) {
+                if let email = session.currentUserEmail {
+                    accountManager.removePasscode(for: email)
+                }
+            }
+            Button("Annulla", role: .cancel) {}
+        } message: {
+            Text("L'account non sarà più protetto da codice")
+        }
+    }
+}
+
+// MARK: - Set Passcode View
+
+struct SetPasscodeView: View {
+    let email: String
+    
+    @Environment(\.dismiss) private var dismiss
+    @State private var passcode = ""
+    @State private var confirmPasscode = ""
+    @State private var step: PasscodeStep = .enter
+    @State private var errorMessage: String?
+    @FocusState private var isFocused: Bool
+    
+    enum PasscodeStep {
+        case enter
+        case confirm
+    }
+    
+    private let passcodeLength = 4
+    
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color(.systemGroupedBackground).ignoresSafeArea()
+                
+                VStack(spacing: 32) {
+                    Spacer()
+                    
+                    Image(systemName: step == .enter ? "lock" : "lock.badge.clock")
+                        .font(.system(size: 50))
+                        .foregroundColor(.accentColor)
+                    
+                    Text(step == .enter ? "Inserisci un codice" : "Conferma il codice")
+                        .font(.title2)
+                    
+                    // Passcode dots
+                    HStack(spacing: 20) {
+                        ForEach(0..<passcodeLength, id: \.self) { index in
+                            let currentCode = step == .enter ? passcode : confirmPasscode
+                            Circle()
+                                .fill(index < currentCode.count ? Color.accentColor : Color.gray.opacity(0.3))
+                                .frame(width: 20, height: 20)
+                        }
+                    }
+                    
+                    // Hidden text field
+                    TextField("", text: step == .enter ? $passcode : $confirmPasscode)
+                        .keyboardType(.numberPad)
+                        .focused($isFocused)
+                        .opacity(0)
+                        .frame(width: 1, height: 1)
+                        .onChange(of: passcode) { newValue in
+                            handleInput(newValue, isConfirm: false)
+                        }
+                        .onChange(of: confirmPasscode) { newValue in
+                            handleInput(newValue, isConfirm: true)
+                        }
+                    
+                    if let error = errorMessage {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                    }
+                    
+                    Spacer()
+                }
+                .padding()
+            }
+            .onAppear {
+                isFocused = true
+            }
+            .navigationTitle("Codice di accesso")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Annulla") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+    
+    private func handleInput(_ value: String, isConfirm: Bool) {
+        // Limita a 4 cifre
+        if isConfirm {
+            if value.count > passcodeLength {
+                confirmPasscode = String(value.prefix(passcodeLength))
+            }
+        } else {
+            if value.count > passcodeLength {
+                passcode = String(value.prefix(passcodeLength))
+            }
+        }
+        
+        // Passa alla conferma
+        if !isConfirm && passcode.count == passcodeLength {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                step = .confirm
+                isFocused = true
+            }
+        }
+        
+        // Verifica conferma
+        if isConfirm && confirmPasscode.count == passcodeLength {
+            if confirmPasscode == passcode {
+                AccountManager.shared.setPasscode(passcode, for: email)
+                dismiss()
+            } else {
+                errorMessage = "I codici non corrispondono"
+                confirmPasscode = ""
+                
+                let generator = UINotificationFeedbackGenerator()
+                generator.notificationOccurred(.error)
             }
         }
     }

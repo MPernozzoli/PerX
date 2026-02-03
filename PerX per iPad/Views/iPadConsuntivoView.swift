@@ -6,12 +6,16 @@
 //
 
 import SwiftUI
+import Charts
 
 struct iPadConsuntivoView: View {
     @EnvironmentObject var session: SessionCoordinator
     @State private var selectedMonth = Date()
     @State private var stats: ConsuntivoStats = .empty
+    @State private var dailyStats: [StatisticheGiorno] = []
+    @State private var companyStats: [StatisticheCompagnia] = []
     @State private var isLoading = false
+    @State private var dataSource: String = "locale"
     
     private var monthFormatter: DateFormatter {
         let f = DateFormatter()
@@ -19,6 +23,9 @@ struct iPadConsuntivoView: View {
         f.locale = Locale(identifier: "it_IT")
         return f
     }
+    
+    private var anno: Int { Calendar.current.component(.year, from: selectedMonth) }
+    private var mese: Int { Calendar.current.component(.month, from: selectedMonth) }
     
     var body: some View {
         ScrollView {
@@ -29,8 +36,15 @@ struct iPadConsuntivoView: View {
                 // Stats cards
                 statsSection
                 
-                // Charts placeholder
-                chartsSection
+                // Charts
+                if !dailyStats.isEmpty {
+                    chartsSection
+                }
+                
+                // Per compagnia
+                if !companyStats.isEmpty {
+                    companySection
+                }
                 
                 // Lista sinistri del mese
                 sinistriSection
@@ -39,6 +53,19 @@ struct iPadConsuntivoView: View {
         }
         .background(Color(.systemGroupedBackground))
         .navigationTitle("Consuntivo")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                HStack(spacing: 8) {
+                    if isLoading {
+                        ProgressView()
+                    }
+                    
+                    Text(dataSource)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
         .task {
             await loadStats()
         }
@@ -86,10 +113,11 @@ struct iPadConsuntivoView: View {
         LazyVGrid(columns: [
             GridItem(.flexible()),
             GridItem(.flexible()),
+            GridItem(.flexible()),
             GridItem(.flexible())
         ], spacing: 16) {
             ConsuntivoStatCard(
-                title: "Sinistri Assegnati",
+                title: "Assegnati",
                 value: "\(stats.sinistriAssegnati)",
                 subtitle: "nel mese",
                 icon: "folder.badge.plus",
@@ -97,7 +125,7 @@ struct iPadConsuntivoView: View {
             )
             
             ConsuntivoStatCard(
-                title: "Sinistri Chiusi",
+                title: "Chiusi",
                 value: "\(stats.sinistriChiusi)",
                 subtitle: "nel mese",
                 icon: "checkmark.circle.fill",
@@ -105,24 +133,33 @@ struct iPadConsuntivoView: View {
             )
             
             ConsuntivoStatCard(
-                title: "Liquidato",
-                value: formatCurrency(stats.totLiquidato),
-                subtitle: "totale",
-                icon: "eurosign.circle.fill",
-                color: .orange
+                title: "Atti Inviati",
+                value: "\(stats.attiInviati)",
+                subtitle: "nel mese",
+                icon: "paperplane.fill",
+                color: .purple
+            )
+            
+            ConsuntivoStatCard(
+                title: "Media/gg",
+                value: String(format: "%.1f", stats.mediaGiornaliera),
+                subtitle: "chiusure",
+                icon: "chart.bar.fill",
+                color: .teal
             )
         }
         
         LazyVGrid(columns: [
             GridItem(.flexible()),
+            GridItem(.flexible()),
             GridItem(.flexible())
         ], spacing: 16) {
             ConsuntivoStatCard(
-                title: "Compensi",
-                value: formatCurrency(stats.totCompensi),
-                subtitle: "maturati",
-                icon: "banknote.fill",
-                color: .purple
+                title: "Liquidato",
+                value: formatCurrency(stats.totLiquidato),
+                subtitle: "totale",
+                icon: "eurosign.circle.fill",
+                color: .orange
             )
             
             ConsuntivoStatCard(
@@ -130,7 +167,15 @@ struct iPadConsuntivoView: View {
                 value: formatCurrency(stats.totDanno),
                 subtitle: "totale",
                 icon: "chart.line.uptrend.xyaxis",
-                color: .teal
+                color: .indigo
+            )
+            
+            ConsuntivoStatCard(
+                title: "Compensi",
+                value: formatCurrency(stats.totCompensi),
+                subtitle: "maturati",
+                icon: "banknote.fill",
+                color: .mint
             )
         }
     }
@@ -141,23 +186,80 @@ struct iPadConsuntivoView: View {
     private var chartsSection: some View {
         GroupBox {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Andamento Sinistri")
+                Text("Andamento Giornaliero")
                     .font(.headline)
                 
-                // Placeholder per grafico
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.gray.opacity(0.1))
-                    .frame(height: 200)
-                    .overlay {
-                        VStack {
-                            Image(systemName: "chart.bar.fill")
-                                .font(.largeTitle)
-                                .foregroundColor(.secondary)
-                            Text("Grafico in arrivo")
+                Chart {
+                    ForEach(dailyStats) { stat in
+                        BarMark(
+                            x: .value("Giorno", stat.giorno),
+                            y: .value("Chiusure", stat.chiusure)
+                        )
+                        .foregroundStyle(.green.gradient)
+                    }
+                    
+                    ForEach(dailyStats) { stat in
+                        LineMark(
+                            x: .value("Giorno", stat.giorno),
+                            y: .value("Assegnazioni", stat.assegnazioni)
+                        )
+                        .foregroundStyle(.blue)
+                        .symbol(.circle)
+                    }
+                }
+                .frame(height: 200)
+                .chartXAxisLabel("Giorno del mese")
+                .chartYAxisLabel("Pratiche")
+                .chartLegend(position: .bottom)
+                
+                HStack(spacing: 20) {
+                    LegendItem(color: .green, label: "Chiusure")
+                    LegendItem(color: .blue, label: "Assegnazioni")
+                }
+            }
+            .padding()
+        }
+    }
+    
+    // MARK: - Company Stats
+    
+    @ViewBuilder
+    private var companySection: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Per Compagnia")
+                    .font(.headline)
+                
+                ForEach(companyStats.sorted { $0.chiusure > $1.chiusure }.prefix(10)) { company in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(company.nomeCompagnia)
+                                .font(.subheadline.bold())
+                            
+                            if let gruppo = company.gruppoCompagnia {
+                                Text(gruppo)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        
+                        Spacer()
+                        
+                        HStack(spacing: 16) {
+                            StatBadge(value: company.assegnazioni, label: "Ass.", color: .blue)
+                            StatBadge(value: company.chiusure, label: "Chi.", color: .green)
+                            
+                            Text(formatCurrency(company.liquidatoTotale))
                                 .font(.caption)
-                                .foregroundColor(.secondary)
+                                .foregroundColor(.orange)
                         }
                     }
+                    .padding(.vertical, 4)
+                    
+                    if company.id != companyStats.sorted(by: { $0.chiusure > $1.chiusure }).prefix(10).last?.id {
+                        Divider()
+                    }
+                }
             }
             .padding()
         }
@@ -226,6 +328,11 @@ struct iPadConsuntivoView: View {
         isLoading = true
         defer { isLoading = false }
         
+        // Dati da CloudKit (tramite sync service)
+        await loadStatsFromCloudKit()
+    }
+    
+    private func loadStatsFromCloudKit() async {
         let sinistri = session.cloudKitSyncService?.sinistri ?? []
         let calendar = Calendar.current
         let monthStart = calendar.date(from: calendar.dateComponents([.year, .month], from: selectedMonth))!
@@ -241,14 +348,76 @@ struct iPadConsuntivoView: View {
             return dataChiusura >= monthStart && dataChiusura < monthEnd
         }
         
+        // Calcola statistiche giornaliere
+        var dailyMap: [Int: (ass: Int, chi: Int, atti: Int)] = [:]
+        for sinistro in sinistriDelMese {
+            if let data = sinistro.dataAssegnazione {
+                let giorno = calendar.component(.day, from: data)
+                var entry = dailyMap[giorno] ?? (0, 0, 0)
+                entry.ass += 1
+                dailyMap[giorno] = entry
+            }
+        }
+        for sinistro in chiusiNelMese {
+            if let data = sinistro.dataChiusura {
+                let giorno = calendar.component(.day, from: data)
+                var entry = dailyMap[giorno] ?? (0, 0, 0)
+                entry.chi += 1
+                dailyMap[giorno] = entry
+            }
+        }
+        
+        dailyStats = dailyMap.map { giorno, counts in
+            StatisticheGiorno(
+                anno: anno,
+                mese: mese,
+                giorno: giorno,
+                assegnazioni: counts.ass,
+                chiusure: counts.chi,
+                attiInviati: counts.atti
+            )
+        }.sorted { $0.giorno < $1.giorno }
+        
+        // Statistiche per compagnia
+        var companyMap: [String: (nome: String, ass: Int, chi: Int, liq: Double)] = [:]
+        for sinistro in sinistriDelMese {
+            var entry = companyMap[sinistro.nomeCompagnia] ?? (sinistro.nomeCompagnia, 0, 0, 0)
+            entry.ass += 1
+            companyMap[sinistro.nomeCompagnia] = entry
+        }
+        for sinistro in chiusiNelMese {
+            var entry = companyMap[sinistro.nomeCompagnia] ?? (sinistro.nomeCompagnia, 0, 0, 0)
+            entry.chi += 1
+            entry.liq += sinistro.stimaDanno ?? 0
+            companyMap[sinistro.nomeCompagnia] = entry
+        }
+        
+        companyStats = companyMap.map { code, data in
+            StatisticheCompagnia(
+                codiceCompagnia: code,
+                nomeCompagnia: data.nome,
+                gruppoCompagnia: nil,
+                assegnazioni: data.ass,
+                chiusure: data.chi,
+                attiInviati: 0,
+                liquidatoTotale: data.liq
+            )
+        }
+        
+        let totLiq = chiusiNelMese.compactMap { $0.stimaDanno }.reduce(0, +)
+        
         stats = ConsuntivoStats(
             sinistriAssegnati: sinistriDelMese.count,
             sinistriChiusi: chiusiNelMese.count,
-            totLiquidato: chiusiNelMese.compactMap { $0.stimaDanno }.reduce(0, +),
-            totCompensi: 0, // TODO: implementare
+            totLiquidato: totLiq,
+            totCompensi: 0,
             totDanno: sinistriDelMese.compactMap { $0.stimaDanno }.reduce(0, +),
+            attiInviati: 0,
+            mediaGiornaliera: chiusiNelMese.isEmpty ? 0 : Double(chiusiNelMese.count) / 22.0,
             sinistriDelMese: sinistriDelMese
         )
+        
+        dataSource = "CloudKit"
     }
     
     private func formatCurrency(_ value: Double) -> String {
@@ -262,12 +431,35 @@ struct iPadConsuntivoView: View {
 
 // MARK: - Models
 
+struct StatisticheGiorno: Codable, Identifiable {
+    var id: String { "\(anno)-\(mese)-\(giorno)" }
+    let anno: Int
+    let mese: Int
+    let giorno: Int
+    let assegnazioni: Int
+    let chiusure: Int
+    let attiInviati: Int
+}
+
+struct StatisticheCompagnia: Codable, Identifiable {
+    var id: String { codiceCompagnia }
+    let codiceCompagnia: String
+    let nomeCompagnia: String
+    let gruppoCompagnia: String?
+    let assegnazioni: Int
+    let chiusure: Int
+    let attiInviati: Int
+    let liquidatoTotale: Double
+}
+
 struct ConsuntivoStats {
     let sinistriAssegnati: Int
     let sinistriChiusi: Int
     let totLiquidato: Double
     let totCompensi: Double
     let totDanno: Double
+    let attiInviati: Int
+    let mediaGiornaliera: Double
     let sinistriDelMese: [SinistroMinimal]
     
     static let empty = ConsuntivoStats(
@@ -276,8 +468,44 @@ struct ConsuntivoStats {
         totLiquidato: 0,
         totCompensi: 0,
         totDanno: 0,
+        attiInviati: 0,
+        mediaGiornaliera: 0,
         sinistriDelMese: []
     )
+}
+
+struct StatBadge: View {
+    let value: Int
+    let label: String
+    let color: Color
+    
+    var body: some View {
+        VStack(spacing: 2) {
+            Text("\(value)")
+                .font(.caption.bold())
+                .foregroundColor(color)
+            Text(label)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+        }
+    }
+}
+
+struct ConsuntivoLegendItem: View {
+    let color: Color
+    let label: String
+    
+    var body: some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(color)
+                .frame(width: 8, height: 8)
+            
+            Text(label)
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+    }
 }
 
 // MARK: - Subviews

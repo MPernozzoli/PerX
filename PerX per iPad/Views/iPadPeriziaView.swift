@@ -207,10 +207,15 @@ struct iPadPeriziaView: View {
     @ViewBuilder
     private func partiteView(_ perizia: PeriziaDTO) -> some View {
         NavigationSplitView {
-            List(selection: $selectedPartita) {
+            List {
                 ForEach(perizia.partite) { partita in
-                    PartitaRow(partita: partita)
-                        .tag(partita)
+                    Button {
+                        selectedPartita = partita
+                    } label: {
+                        PartitaRow(partita: partita)
+                    }
+                    .buttonStyle(.plain)
+                    .listRowBackground(selectedPartita?.id == partita.id ? Color.accentColor.opacity(0.2) : Color.clear)
                 }
             }
             .listStyle(.plain)

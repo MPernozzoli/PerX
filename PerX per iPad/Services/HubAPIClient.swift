@@ -485,3 +485,30 @@ struct HealthResponse: Codable {
     let uptime: TimeInterval?
     let timestamp: Date?
 }
+
+// MARK: - Programmazione DTOs (usati localmente, sincronizzati via CloudKit KV Store)
+
+struct WorkDayDTO: Codable, Identifiable {
+    var id: String { "\(anno)-\(mese)-\(giorno)" }
+    let anno: Int
+    let mese: Int
+    let giorno: Int
+    let isLavorativo: Bool
+    let orari: [OrarioDTO]?
+    let nota: String?
+    let isFestivo: Bool
+    let nomeFestivita: String?
+}
+
+struct OrarioDTO: Codable, Identifiable {
+    let id: String
+    let inizio: String // "HH:mm"
+    let fine: String // "HH:mm"
+    let luogo: String // "office" | "remote"
+}
+
+struct WorkDayUpdateDTO: Codable {
+    let isLavorativo: Bool
+    let orari: [OrarioDTO]?
+    let nota: String?
+}

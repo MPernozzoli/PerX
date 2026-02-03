@@ -32,7 +32,7 @@ struct iPadEmailListView: View {
             emailListSidebar
         } detail: {
             if let email = selectedEmail {
-                EmailDetailView(email: email)
+                EmailDetailContentView(email: email)
             } else {
                 ContentUnavailableView(
                     "Seleziona un'email",
@@ -52,10 +52,15 @@ struct iPadEmailListView: View {
     
     @ViewBuilder
     private var emailListSidebar: some View {
-        List(selection: $selectedEmail) {
-            ForEach(filteredEmails) { email in
-                EmailListRow(email: email)
-                    .tag(email)
+        List {
+            ForEach(filteredEmails, id: \.id) { email in
+                Button {
+                    selectedEmail = email
+                } label: {
+                    EmailListRow(email: email)
+                }
+                .buttonStyle(.plain)
+                .listRowBackground(selectedEmail?.id == email.id ? Color.accentColor.opacity(0.2) : Color.clear)
             }
         }
         .listStyle(.plain)
@@ -162,9 +167,9 @@ struct EmailListRow: View {
     }
 }
 
-// MARK: - Email Detail View
+// MARK: - Email Detail Content View
 
-struct EmailDetailView: View {
+struct EmailDetailContentView: View {
     let email: ProcessedEmailDTO
     
     @EnvironmentObject var session: SessionCoordinator
@@ -264,7 +269,7 @@ struct ReplyEmailView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var toRecipients = ""
     @State private var subject = ""
-    @State private var body = ""
+    @State private var bodyText = ""
     @State private var isSending = false
     
     var body: some View {
@@ -278,7 +283,7 @@ struct ReplyEmailView: View {
                 Section("Messaggio") {
                     TextField("Oggetto", text: $subject)
                     
-                    TextEditor(text: $body)
+                    TextEditor(text: $bodyText)
                         .frame(minHeight: 200)
                 }
             }
@@ -309,10 +314,10 @@ struct ReplyEmailView: View {
         let recipients = toRecipients.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
         
         do {
-            _ = try await session.outboxService?.createEmailRequest(
+            _ = try await HubOutboxService.shared.sendEmail(
                 to: recipients,
                 subject: subject,
-                body: body,
+                body: bodyText,
                 sinistroRiferimento: originalEmail.sinistroRiferimento
             )
             dismiss()
