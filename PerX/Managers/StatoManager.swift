@@ -1,0 +1,1659 @@
+import Foundation
+import SwiftUI
+import CoreData
+
+enum StatoCategory: String, CaseIterable {
+    case ingresso
+    case avanzamento
+    case chiusura
+    case sistema
+}
+
+// MARK: - Gruppi di Stati (per unificazione UI)
+/// Raggruppa stati correlati per visualizzazione unificata nei filtri
+enum StateGroup: String, CaseIterable, Identifiable {
+    case daScaricare = "Da scaricare"
+    case inAttesa = "In attesa"
+    case periziaDaEseguire = "Perizia da eseguire"
+    case videoperizia = "Videoperizia"
+    case inGestione = "In gestione"
+    case esito = "Esito"
+    case atto = "Atto"
+    case controllo = "Controllo"
+    case sopralluogo = "Sopralluogo"
+    case chiusura = "Chiusura"
+    case sistema = "Sistema"
+    
+    var id: String { rawValue }
+    
+    /// Descrizione breve per UI compatta
+    var shortLabel: String { rawValue }
+    
+    /// Icona rappresentativa del gruppo
+    var icon: String {
+        switch self {
+        case .daScaricare: return "tray.and.arrow.down"
+        case .inAttesa: return "hourglass.circle"
+        case .periziaDaEseguire: return "doc.text.magnifyingglass"
+        case .videoperizia: return "video.circle"
+        case .inGestione: return "gearshape"
+        case .esito: return "megaphone"
+        case .atto: return "envelope.badge"
+        case .controllo: return "checklist"
+        case .sopralluogo: return "mappin.and.ellipse"
+        case .chiusura: return "lock.circle"
+        case .sistema: return "exclamationmark.triangle"
+        }
+    }
+    
+    /// Colore rappresentativo del gruppo
+    var color: Color {
+        switch self {
+        case .daScaricare: return .orange
+        case .inAttesa: return .yellow
+        case .periziaDaEseguire: return .cyan
+        case .videoperizia: return .orange.opacity(0.8)
+        case .inGestione: return .blue
+        case .esito: return .mint
+        case .atto: return .purple
+        case .controllo: return .mint.opacity(0.7)
+        case .sopralluogo: return .pink
+        case .chiusura: return .green
+        case .sistema: return .red
+        }
+    }
+    
+    /// Stati appartenenti a questo gruppo
+    var members: [StatoManager.StatoSinistro] {
+        StatoManager.StatoSinistro.allCases.filter { $0.stateGroup == self }
+    }
+    
+    /// true se il gruppo ha più di una variante (sotto-stati)
+    var hasVariants: Bool { members.count > 1 }
+}
+
+/// Variante di uno stato (suffisso dinamico)
+enum StateVariant: String, CaseIterable {
+    case tradizionale = "tradizionale"  // Perizia con sopralluogo
+    case documentale = "documentale"
+    case videoperizia = "videoperizia"
+    case noResidui = "no residui"
+    case daAssicurato = "da assicurato"
+    case daAgenzia = "da agenzia"
+    
+    /// Suffisso da appendere alla descrizione base (es. " (documentale)")
+    var suffix: String {
+        self == .tradizionale ? "" : " (\(rawValue))"
+    }
+    
+    /// true se questa è la variante "base" (tradizionale)
+    var isBase: Bool { self == .tradizionale }
+}
+
+enum StatoDetailCategory: String, CaseIterable {
+    case polizza = "Polizza"
+    case foto = "Foto"
+    case fotoubicazione = "ubicazione"
+    case giustificativi = "giustificativi"
+    case documentazioneGenerica = "documentazione"
+    case ibanErrato = "IBAN Errato"
+    case complesso = "complesso"
+    case moltiBeni = "molti beni"
+    case sollecitato = "sollecitato"
+    case urgente = "urgente"
+    case daScaricare = "da scaricare"
+    case none = ""
+}
+
+class StatoManager: ObservableObject {
+    static let shared = StatoManager()
+    
+    enum StatoSinistro: String, CaseIterable, Identifiable {
+        // Stati di ingresso
+        case daScaricare = "SV001"
+        case inAttesaDocumentale = "SV002"
+        case periziaDaEseguire = "SV003"
+        case videoperiziaDaFissare = "SV004"
+        case periziaDaEseguireNoResidui = "SV005"
+        
+        // Stati di avanzamento
+        case periziaDaEseguireDocumentale = "SV010"
+        case inGestioneDocumentale = "SV011"
+        case inGestione = "SV012"
+        case inGestioneVideoperizia = "SV013"
+        case videoperiziaFissata = "SV014"
+        case attoDaInviare = "SV020"
+        case esitoDaComunicare = "SV021"
+        case inAttesaDaAssicurato = "SV022"
+        case inAttesaDaAgenzia = "SV023"
+        case esitoComunicato = "SV030"
+        case attoInviato = "SV031"
+        case attoRicevutoSottoscritto = "SV032"
+        case accettataVerbalmente = "SV033"
+        case inControllo = "SV040"
+        case controllata = "SV041"
+        case richiestaAutorizzazione = "SV042"
+        case supervisioneNonConcordata = "SV043"
+        case sopralluogoFissato = "SV050"
+        case sopralluogoRestituito = "SV051"
+        
+        // Stati di chiusura
+        case chiusa = "SV090"
+        case richiestaRevisione = "SV091"
+        
+        // Stati sistema
+        case revocata = "SI001"
+        case annullata = "SI002"
+        
+        var id: String { rawValue }
+        
+        var isSystemState: Bool {
+            rawValue.starts(with: "SI")
+        }
+        
+        var isVisible: Bool {
+            rawValue.starts(with: "SV")
+        }
+        
+        var isCustomizable: Bool {
+            isVisible
+        }
+        
+        var descrizione: String {
+            switch self {
+            case .daScaricare: return "Da scaricare"
+            case .inAttesaDocumentale: return "In attesa (documentale)"
+            case .periziaDaEseguire: return "Perizia da eseguire"
+            case .videoperiziaDaFissare: return "Videoperizia da fissare"
+            case .periziaDaEseguireNoResidui: return "Perizia da eseguire (no residui)"
+            case .periziaDaEseguireDocumentale: return "Perizia da eseguire (documentale)"
+            case .inGestioneDocumentale: return "In gestione (documentale)"
+            case .inGestione: return "In gestione"
+            case .inGestioneVideoperizia: return "In gestione (videoperizia)"
+            case .videoperiziaFissata: return "Videoperizia fissata"
+            case .attoDaInviare: return "Atto da inviare"
+            case .esitoDaComunicare: return "Esito da comunicare"
+            case .inAttesaDaAssicurato: return "In attesa (da assicurato)"
+            case .inAttesaDaAgenzia: return "In attesa (da agenzia)"
+            case .esitoComunicato: return "Esito comunicato"
+            case .attoInviato: return "Atto inviato"
+            case .attoRicevutoSottoscritto: return "Atto ricevuto sottoscritto"
+            case .accettataVerbalmente: return "Accettata verbalmente"
+            case .inControllo: return "In controllo"
+            case .controllata: return "Controllata"
+            case .richiestaAutorizzazione: return "Richiesta autorizzazione"
+            case .supervisioneNonConcordata: return "Supervisione non concordata"
+            case .sopralluogoFissato: return "Sopralluogo fissato"
+            case .sopralluogoRestituito: return "Sopralluogo restituito"
+            case .chiusa: return "Chiusa"
+            case .richiestaRevisione: return "Richiesta revisione"
+            case .revocata: return "Revocata"
+            case .annullata: return "Annullata"
+            }
+        }
+        
+        var category: StatoCategory {
+            switch self {
+            case .daScaricare, .inAttesaDocumentale, .periziaDaEseguire, .videoperiziaDaFissare, .periziaDaEseguireNoResidui:
+                return .ingresso
+            case .chiusa, .richiestaRevisione:
+                return .chiusura
+            case .revocata, .annullata:
+                return .sistema
+            default:
+                return .avanzamento
+            }
+        }
+        
+        var distanceFromClosure: Int {
+            switch self {
+            case .chiusa: return 0
+            case .controllata, .inControllo, .richiestaAutorizzazione, .supervisioneNonConcordata: return 1
+            case .attoRicevutoSottoscritto, .accettataVerbalmente: return 2
+            case .attoInviato, .esitoComunicato: return 3
+            case .esitoDaComunicare, .attoDaInviare: return 4
+            case .videoperiziaFissata, .sopralluogoRestituito, .inGestione, .inGestioneVideoperizia, .inGestioneDocumentale: return 5
+            case .periziaDaEseguireDocumentale, .periziaDaEseguire, .periziaDaEseguireNoResidui, .sopralluogoFissato: return 6
+            case .inAttesaDocumentale, .inAttesaDaAssicurato, .inAttesaDaAgenzia, .videoperiziaDaFissare: return 7
+            case .daScaricare: return 8
+            case .richiestaRevisione: return 4
+            case .revocata, .annullata: return 10
+            }
+        }
+        
+        var isSystem: Bool {
+            switch self {
+            case .revocata, .annullata: return true
+            default: return false
+            }
+        }
+        
+        // MARK: - Raggruppamento Stati
+        
+        /// Gruppo di appartenenza (per filtri unificati)
+        var stateGroup: StateGroup {
+            switch self {
+            case .daScaricare:
+                return .daScaricare
+            case .inAttesaDocumentale, .inAttesaDaAssicurato, .inAttesaDaAgenzia:
+                return .inAttesa
+            case .periziaDaEseguire, .periziaDaEseguireDocumentale, .periziaDaEseguireNoResidui:
+                return .periziaDaEseguire
+            case .videoperiziaDaFissare, .videoperiziaFissata:
+                return .videoperizia
+            case .inGestione, .inGestioneDocumentale, .inGestioneVideoperizia:
+                return .inGestione
+            case .attoDaInviare, .attoInviato, .attoRicevutoSottoscritto, .accettataVerbalmente:
+                return .atto
+            case .esitoDaComunicare, .esitoComunicato:
+                return .esito
+            case .inControllo, .controllata, .richiestaAutorizzazione, .supervisioneNonConcordata:
+                return .controllo
+            case .sopralluogoFissato, .sopralluogoRestituito:
+                return .sopralluogo
+            case .chiusa, .richiestaRevisione:
+                return .chiusura
+            case .revocata, .annullata:
+                return .sistema
+            }
+        }
+        
+        /// Variante specifica (suffisso)
+        var variant: StateVariant {
+            switch self {
+            case .inAttesaDocumentale, .periziaDaEseguireDocumentale, .inGestioneDocumentale:
+                return .documentale
+            case .inGestioneVideoperizia:
+                return .videoperizia
+            case .periziaDaEseguireNoResidui:
+                return .noResidui
+            case .inAttesaDaAssicurato:
+                return .daAssicurato
+            case .inAttesaDaAgenzia:
+                return .daAgenzia
+            default:
+                return .tradizionale
+            }
+        }
+        
+        /// Stato "base" del gruppo (senza variante)
+        var baseState: StatoSinistro {
+            switch stateGroup {
+            case .inAttesa: return .inAttesaDocumentale // default del gruppo
+            case .periziaDaEseguire: return .periziaDaEseguire
+            case .inGestione: return .inGestione
+            default: return self
+            }
+        }
+        
+        /// true se questo stato è il "base" del proprio gruppo
+        var isBaseOfGroup: Bool { self == baseState }
+        
+        /// Descrizione breve (senza variante) per UI compatta
+        var shortDescrizione: String {
+            stateGroup.shortLabel
+        }
+        
+        // MARK: - Filtri per Tipo Perizia
+        
+        /// true se questo stato è esclusivamente per sinistri DOCUMENTALI (senza sopralluogo)
+        /// Questi stati NON devono essere disponibili per sinistri tradizionali
+        var isDocumentaleOnly: Bool {
+            switch self {
+            case .inAttesaDocumentale, .periziaDaEseguireDocumentale, .inGestioneDocumentale:
+                return true
+            default:
+                return false
+            }
+        }
+        
+        /// true se questo stato è esclusivamente per sinistri TRADIZIONALI (con sopralluogo)
+        /// Questi stati NON devono essere disponibili per sinistri documentali
+        var isTradizionaleOnly: Bool {
+            switch self {
+            case .sopralluogoFissato, .sopralluogoRestituito:
+                return true
+            default:
+                return false
+            }
+        }
+        
+        /// true se questo stato è compatibile con il tipo di perizia specificato
+        /// - Parameter isTradizionale: true se il sinistro prevede sopralluogo
+        func isCompatible(withTipoPerizia isTradizionale: Bool) -> Bool {
+            if isTradizionale {
+                // Sinistro tradizionale: escludi stati documentali
+                return !isDocumentaleOnly
+            } else {
+                // Sinistro documentale: escludi stati tradizionali (sopralluogo)
+                return !isTradizionaleOnly
+            }
+        }
+        
+        /// Restituisce l'equivalente dello stato per l'altro tipo di perizia, se esiste
+        /// Es: inGestioneDocumentale → inGestione, periziaDaEseguire → periziaDaEseguireDocumentale
+        func equivalentState(forTipoPerizia isTradizionale: Bool) -> StatoSinistro? {
+            // Se già compatibile, restituisci self
+            if isCompatible(withTipoPerizia: isTradizionale) {
+                return self
+            }
+            
+            // Mappature dirette
+            if isTradizionale {
+                // Da documentale a tradizionale
+                switch self {
+                case .inAttesaDocumentale:
+                    return .periziaDaEseguire // In attesa documentale non ha equivalente tradizionale diretto
+                case .periziaDaEseguireDocumentale:
+                    return .periziaDaEseguire
+                case .inGestioneDocumentale:
+                    return .inGestione
+                default:
+                    return nil
+                }
+            } else {
+                // Da tradizionale a documentale
+                switch self {
+                case .sopralluogoFissato, .sopralluogoRestituito:
+                    return .periziaDaEseguireDocumentale // Nessun equivalente, torna a perizia documentale
+                case .periziaDaEseguire:
+                    return .periziaDaEseguireDocumentale
+                case .inGestione:
+                    return .inGestioneDocumentale
+                default:
+                    return nil
+                }
+            }
+        }
+        
+        var color: Color {
+            if let customization = StatoManager.shared.customizations[id] {
+                return Color(hex: customization.color)
+            }
+            
+            switch self {
+            case .daScaricare: return .orange
+            case .inAttesaDocumentale, .inAttesaDaAssicurato, .inAttesaDaAgenzia: return .yellow
+            case .periziaDaEseguire, .periziaDaEseguireDocumentale, .periziaDaEseguireNoResidui: return .cyan
+            case .inGestione, .inGestioneDocumentale, .inGestioneVideoperizia: return .blue
+            case .videoperiziaDaFissare, .videoperiziaFissata: return .orange.opacity(0.8)
+            case .sopralluogoFissato, .sopralluogoRestituito: return .pink
+            case .attoDaInviare: return .indigo
+            case .esitoDaComunicare, .esitoComunicato: return .mint
+            case .attoInviato: return .purple
+            case .attoRicevutoSottoscritto, .accettataVerbalmente: return .green.opacity(0.8)
+            case .inControllo, .controllata, .richiestaAutorizzazione, .supervisioneNonConcordata: return .mint.opacity(0.7)
+            case .chiusa: return .green
+            case .richiestaRevisione: return .red.opacity(0.8)
+            case .revocata: return .red
+            case .annullata: return .gray
+            }
+        }
+        
+        var icon: String {
+            if let customization = StatoManager.shared.customizations[id] {
+                return customization.icon
+            }
+            
+            switch self {
+            case .daScaricare: return "tray.and.arrow.down"
+            case .inAttesaDocumentale: return "hourglass.circle"
+            case .periziaDaEseguire: return "doc.text.magnifyingglass"
+            case .videoperiziaDaFissare: return "video.badge.plus"
+            case .periziaDaEseguireNoResidui: return "doc.text"
+            case .periziaDaEseguireDocumentale: return "doc.text.fill"
+            case .inGestioneDocumentale: return "gearshape.2"
+            case .inGestione: return "gearshape"
+            case .inGestioneVideoperizia: return "gearshape.2.fill"
+            case .videoperiziaFissata: return "video.circle.fill"
+            case .attoDaInviare: return "envelope.badge"
+            case .esitoDaComunicare: return "megaphone"
+            case .inAttesaDaAssicurato: return "person.crop.circle.badge.clock"
+            case .inAttesaDaAgenzia: return "building.2.crop.circle"
+            case .esitoComunicato: return "paperplane.circle"
+            case .attoInviato: return "paperplane.circle.fill"
+            case .attoRicevutoSottoscritto: return "checkmark.seal"
+            case .accettataVerbalmente: return "bubble.left.and.exclamationmark.bubble.right"
+            case .inControllo: return "checklist"
+            case .controllata: return "checkmark.circle"
+            case .richiestaAutorizzazione: return "person.badge.clock"
+            case .supervisioneNonConcordata: return "exclamationmark.triangle"
+            case .sopralluogoFissato: return "mappin.and.ellipse"
+            case .sopralluogoRestituito: return "mappin.circle.fill"
+            case .chiusa: return "lock.circle"
+            case .richiestaRevisione: return "arrow.counterclockwise.circle"
+            case .revocata: return "xmark.circle"
+            case .annullata: return "trash.circle"
+            }
+        }
+        
+        var validTransitions: [StatoSinistro] {
+            switch self {
+            case .daScaricare:
+                // Solo come stato iniziale, può andare a:
+                return [.inAttesaDocumentale, .periziaDaEseguire, .videoperiziaDaFissare, .periziaDaEseguireNoResidui]
+            
+            case .inAttesaDocumentale:
+                // Solo se è stata inviata mail "richiesta documentazione"
+                // Può andare a periziaDaEseguireDocumentale solo se arriva documentazione
+                return [.periziaDaEseguireDocumentale, .periziaDaEseguire]
+            
+            case .periziaDaEseguire:
+                // Avanza in in gestione, atto inviato, esito comunicato
+                // (atto inviato/esito comunicato passano per attoDaInviare/esitoDaComunicare)
+                return [.inGestione, .attoDaInviare, .esitoDaComunicare]
+            
+            case .videoperiziaDaFissare:
+                // Manuale per ora
+                return [.videoperiziaFissata, .inGestioneVideoperizia]
+            
+            case .periziaDaEseguireNoResidui:
+                // Manuale per ora
+                return [.inGestione, .esitoDaComunicare, .attoDaInviare]
+            
+            case .periziaDaEseguireDocumentale:
+                // Solo se arriva documentazione E stato precedente era "in attesa documentale"
+                return [.inGestioneDocumentale, .inGestione, .esitoDaComunicare]
+            
+            case .inGestioneDocumentale:
+                // Manuale, indica che qualcosa è già stato fatto
+                return [.esitoDaComunicare, .attoDaInviare, .richiestaRevisione]
+            
+            case .inGestione:
+                // Manuale, indica che qualcosa è già stato fatto
+                // Può tornare a in gestione se arriva nuova doc (gestito automaticamente)
+                return [.attoDaInviare, .esitoDaComunicare, .richiestaRevisione]
+            
+            case .inGestioneVideoperizia:
+                // Variante video di in gestione
+                return [.videoperiziaFissata, .attoDaInviare, .esitoDaComunicare, .richiestaRevisione]
+            
+            case .videoperiziaFissata:
+                // Solo da "videoperizia da fissare", quando confermata via WA/Mail/nota
+                return [.inGestioneVideoperizia, .attoDaInviare, .esitoDaComunicare]
+            
+            case .attoDaInviare:
+                // Quando viene generato file "atto da firmare" in cartella, seguito da "atto inviato"
+                return [.attoInviato]
+            
+            case .esitoDaComunicare:
+                // Analogamente ad "atto da inviare" ma per perizie senza atto
+                return [.esitoComunicato]
+            
+            case .inAttesaDaAssicurato, .inAttesaDaAgenzia:
+                // Stati di attesa, possono tornare a gestione
+                return [.inGestione, .inGestioneDocumentale, .periziaDaEseguireDocumentale, .esitoDaComunicare]
+            
+            case .esitoComunicato:
+                // Quando rileviamo comunicazione "atto da firmare" (per perizie senza atto)
+                // Può avanzare in: atto ricevuto, chiusa, accettato verbalmente, in gestione, o stati di autorizzazione
+                return [.attoRicevutoSottoscritto, .accettataVerbalmente, .chiusa, .inGestione, .richiestaAutorizzazione, .supervisioneNonConcordata]
+            
+            case .attoInviato:
+                // Quando rileviamo comunicazione "atto da firmare", segue "atto da inviare"
+                // Può avanzare in: atto ricevuto, chiusa, accettato verbalmente, in gestione, o stati di autorizzazione
+                return [.attoRicevutoSottoscritto, .accettataVerbalmente, .chiusa, .inGestione, .richiestaAutorizzazione, .supervisioneNonConcordata]
+            
+            case .attoRicevutoSottoscritto:
+                // Può andare in chiusa direttamente o passare per autorizzazione
+                return [.chiusa, .richiestaAutorizzazione, .supervisioneNonConcordata]
+            
+            case .accettataVerbalmente:
+                // Può andare in chiusa direttamente o passare per autorizzazione
+                return [.chiusa, .richiestaAutorizzazione, .supervisioneNonConcordata]
+            
+            case .inControllo:
+                // Manuale, unica progressione "controllata"
+                return [.controllata]
+            
+            case .controllata:
+                // Automatico quando arriva mail "perizia controllata", avanza come "in gestione/da eseguire"
+                return [.inGestione, .periziaDaEseguire, .chiusa, .richiestaRevisione]
+            
+            case .richiestaAutorizzazione:
+                // In attesa di approvazione dal supervisore
+                return [.chiusa, .controllata, .inGestione]
+            
+            case .supervisioneNonConcordata:
+                // In attesa di approvazione per perizie non concordate
+                return [.chiusa, .controllata, .inGestione]
+            
+            case .sopralluogoFissato:
+                // Manuale, per compatibilità
+                return [.sopralluogoRestituito, .inGestione]
+            
+            case .sopralluogoRestituito:
+                // Quando arriva mail che informa restituzione, procede come "in gestione/da eseguire"
+                return [.inGestione, .periziaDaEseguire, .attoDaInviare, .esitoDaComunicare]
+            
+            case .chiusa:
+                // Manuale, unica evoluzione "richiesta revisione"
+                return [.richiestaRevisione]
+            
+            case .richiestaRevisione:
+                // Solo da "chiusa", può avanzare in "in gestione" e "chiusa"
+                return [.inGestione, .chiusa]
+            
+            case .revocata:
+                // La revoca NON è più uno stato terminale: può rientrare (reincarico)
+                return [.daScaricare]
+            
+            case .annullata:
+                return []
+            }
+        }
+    }
+    
+    // Struttura per gli stati personalizzati
+    struct CustomState: Codable, Identifiable {
+        let id: String          // SP[xxx]
+        var descrizione: String
+        var icon: String
+        var color: String
+        var isActive: Bool      // Indica se lo stato è attualmente utilizzabile
+        var lastUsed: Date?     // Ultima volta che lo stato è stato usato
+        
+        init(id: String, descrizione: String, icon: String, color: String) {
+            self.id = id
+            self.descrizione = descrizione
+            self.icon = icon
+            self.color = color
+            self.isActive = true
+            self.lastUsed = nil
+        }
+    }
+    
+    // Struttura per le personalizzazioni degli stati di sistema
+    private struct StateCustomization: Codable {
+        var icon: String
+        var color: String
+    }
+    
+    @Published private var customizations: [String: StateCustomization] = [:]
+    @Published private var customStates: [CustomState] = []
+    @Published private var updateCounter = 0
+    
+    private let customStatesKey = "customStates"
+    private let customizationsKey = "stateCustomizations"
+    
+    private var nextCustomStateId: String {
+        let existingIds = customStates.map { $0.id }
+        var counter = 1
+        var newId: String
+        
+        repeat {
+            newId = String(format: "SP%03d", counter)
+            counter += 1
+        } while existingIds.contains(newId)
+        
+        return newId
+    }
+    
+    init() {
+        loadCustomStates()
+        loadCustomizations()
+        setupNotificationObservers()
+    }
+    
+    private func setupNotificationObservers() {
+        // Osserva quando viene aggiunto un tag "atto_da_firmare" per cambiare lo stato
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAttoDaFirmareTagged(_:)),
+            name: .attoDaFirmareTagged,
+            object: nil
+        )
+    }
+    
+    @objc private func handleAttoDaFirmareTagged(_ notification: Notification) {
+        guard let filePath = notification.userInfo?["filePath"] as? String else { return }
+        
+        // Estrai il riferimento sinistro dal path
+        let riferimento = extractRiferimentoFromPath(filePath)
+        guard let riferimento = riferimento else {
+            print("[StatoManager] ⚠️ Impossibile estrarre riferimento dal path: \(filePath)")
+            return
+        }
+        
+        // Trova il sinistro corrispondente
+        let context = PersistenceController.shared.container.viewContext
+        let request = NSFetchRequest<Sinistro>(entityName: "Sinistro")
+        request.predicate = NSPredicate(format: "riferimento == %@", riferimento)
+        request.fetchLimit = 1
+        
+        guard let sinistro = try? context.fetch(request).first else {
+            print("[StatoManager] ⚠️ Sinistro non trovato per riferimento: \(riferimento)")
+            return
+        }
+        
+        // Verifica se la transizione a "attoDaInviare" è valida
+        let currentStateDesc = sinistro.stato ?? ""
+        guard let currentStateId = getStatoId(fromDescrizione: currentStateDesc),
+              let currentState = StatoSinistro(rawValue: currentStateId) else {
+            print("[StatoManager] ⚠️ Stato corrente non riconosciuto: \(currentStateDesc)")
+            return
+        }
+        
+        // Verifica se la transizione è valida
+        if currentState.validTransitions.contains(.attoDaInviare) {
+            Task {
+                do {
+                    try await changeState(for: sinistro, to: .attoDaInviare, context: context, skipValidation: true)
+                    print("[StatoManager] ✅ Stato cambiato in 'Atto da inviare' per sinistro \(riferimento)")
+                } catch {
+                    print("[StatoManager] ❌ Errore cambio stato: \(error)")
+                }
+            }
+        } else {
+            print("[StatoManager] ⏭️ Transizione a 'attoDaInviare' non valida da stato: \(currentState.descrizione)")
+        }
+    }
+    
+    /// Estrae il riferimento sinistro dal path del file
+    private func extractRiferimentoFromPath(_ path: String) -> String? {
+        // Il path tipico è: .../Pratiche/[riferimento]/...
+        // Cerca la cartella "Pratiche" e prendi il nome della cartella successiva
+        let components = path.components(separatedBy: "/")
+        if let praticheIndex = components.firstIndex(of: "Pratiche"),
+           praticheIndex + 1 < components.count {
+            return components[praticheIndex + 1]
+        }
+        return nil
+    }
+    
+    private func loadCustomStates() {
+        if let data = UserDefaults.standard.data(forKey: customStatesKey),
+           let decoded = try? JSONDecoder().decode([CustomState].self, from: data) {
+            customStates = decoded
+        }
+    }
+    
+    private func saveCustomStates() {
+        if let encoded = try? JSONEncoder().encode(customStates) {
+            UserDefaults.standard.set(encoded, forKey: customStatesKey)
+        }
+        updateCounter += 1
+        objectWillChange.send()
+    }
+    
+    private func loadCustomizations() {
+        if let data = UserDefaults.standard.data(forKey: customizationsKey),
+           let decoded = try? JSONDecoder().decode([String: StateCustomization].self, from: data) {
+            customizations = decoded
+        }
+    }
+    
+    private func saveCustomizations() {
+        if let encoded = try? JSONEncoder().encode(customizations) {
+            UserDefaults.standard.set(encoded, forKey: customizationsKey)
+        }
+        updateCounter += 1
+        objectWillChange.send()
+    }
+    
+    func addCustomState(descrizione: String, icon: String, color: Color) {
+        let newId = nextCustomStateId
+        let newState = CustomState(
+            id: newId,
+            descrizione: descrizione,
+            icon: icon,
+            color: color.toHex() ?? "#000000"
+        )
+        
+        customStates.append(newState)
+        saveCustomStates()
+    }
+    
+    func deactivateCustomState(_ stateId: String) {
+        if let index = customStates.firstIndex(where: { $0.id == stateId }) {
+            var state = customStates[index]
+            state.isActive = false
+            state.lastUsed = Date()
+            customStates[index] = state
+            saveCustomStates()
+        }
+    }
+    
+    func reactivateCustomState(_ stateId: String) {
+        if let index = customStates.firstIndex(where: { $0.id == stateId }) {
+            var state = customStates[index]
+            state.isActive = true
+            customStates[index] = state
+            saveCustomStates()
+        }
+    }
+    
+    func updateStateIcon(for stato: StatoSinistro, newIcon: String) {
+        guard stato.isCustomizable else { return }
+        
+        let currentCustomization = customizations[stato.id] ?? StateCustomization(
+            icon: stato.icon,
+            color: stato.color.toHex() ?? "#000000"
+        )
+        
+        customizations[stato.id] = StateCustomization(
+            icon: newIcon,
+            color: currentCustomization.color
+        )
+        
+        saveCustomizations()
+    }
+    
+    func updateStateColor(for stato: StatoSinistro, newColor: Color) {
+        guard stato.isCustomizable else { return }
+        
+        let currentCustomization = customizations[stato.id] ?? StateCustomization(
+            icon: stato.icon,
+            color: stato.color.toHex() ?? "#000000"
+        )
+        
+        customizations[stato.id] = StateCustomization(
+            icon: currentCustomization.icon,
+            color: newColor.toHex() ?? "#000000"
+        )
+        
+        saveCustomizations()
+    }
+    
+    // Helper per ottenere tutti gli stati disponibili
+    var availableStates: [StatoInfo] {
+        var states = StatoSinistro.allCases.map { stato in
+            StatoInfo(
+                id: stato.id,
+                descrizione: stato.descrizione,
+                icon: stato.icon,
+                color: stato.color,
+                isSystem: true,
+                isActive: true
+            )
+        }
+        
+        // Aggiungi gli stati personalizzati attivi
+        states.append(contentsOf: customStates
+            .filter { $0.isActive }
+            .map { stato in
+                StatoInfo(
+                    id: stato.id,
+                    descrizione: stato.descrizione,
+                    icon: stato.icon,
+                    color: Color(hex: stato.color) ?? .gray,
+                    isSystem: false,
+                    isActive: true
+                )
+            })
+        
+        return states
+    }
+    
+    // Helper per ottenere tutti gli stati, inclusi quelli disattivati
+    var allStates: [StatoInfo] {
+        var states = availableStates
+        
+        // Aggiungi gli stati personalizzati disattivati
+        states.append(contentsOf: customStates
+            .filter { !$0.isActive }
+            .map { stato in
+                StatoInfo(
+                    id: stato.id,
+                    descrizione: stato.descrizione,
+                    icon: stato.icon,
+                    color: Color(hex: stato.color) ?? .gray,
+                    isSystem: false,
+                    isActive: false
+                )
+            })
+        
+        return states
+    }
+    
+    struct StatoInfo: Identifiable, Equatable {
+        let id: String
+        let descrizione: String
+        let icon: String
+        let color: Color
+        let isSystem: Bool
+        let isActive: Bool
+        
+        static func == (lhs: StatoInfo, rhs: StatoInfo) -> Bool {
+            lhs.id == rhs.id &&
+            lhs.descrizione == rhs.descrizione &&
+            lhs.icon == rhs.icon &&
+            lhs.isSystem == rhs.isSystem &&
+            lhs.isActive == rhs.isActive
+        }
+    }
+    
+    var availableCustomStates: [CustomState] {
+        customStates.filter { $0.isActive }
+    }
+    
+    var allAvailableStates: [StatoInfo] {
+        var states = StatoSinistro.allCases.map { stato in
+            StatoInfo(
+                id: stato.id,
+                descrizione: stato.descrizione,
+                icon: stato.icon,
+                color: stato.color,
+                isSystem: true,
+                isActive: true
+            )
+        }
+        
+        states.append(contentsOf: customStates.filter { $0.isActive }.map { stato in
+            StatoInfo(
+                id: stato.id,
+                descrizione: stato.descrizione,
+                icon: stato.icon,
+                color: Color(hex: stato.color) ?? .gray,
+                isSystem: false,
+                isActive: stato.isActive
+            )
+        })
+        
+        return states
+    }
+    
+    func updateCustomStateIcon(_ id: String, newIcon: String) {
+        if let index = customStates.firstIndex(where: { $0.id == id }) {
+            var stato = customStates[index]
+            stato.icon = newIcon
+            customStates[index] = stato
+            saveCustomStates()
+            objectWillChange.send()
+        }
+    }
+    
+    func updateCustomStateColor(_ id: String, newColor: Color) {
+        if let index = customStates.firstIndex(where: { $0.id == id }) {
+            var stato = customStates[index]
+            stato.color = newColor.toHex() ?? "#000000"
+            customStates[index] = stato
+            saveCustomStates()
+            objectWillChange.send()
+        }
+    }
+    
+    // Metodo per migrare i vecchi stati ai nuovi
+    func migrateOldStates() {
+        let context = PersistenceController.shared.container.viewContext
+        let request = NSFetchRequest<Sinistro>(entityName: "Sinistro")
+        
+        do {
+            let sinistri = try context.fetch(request)
+            for sinistro in sinistri {
+                if let oldStato = sinistro.stato {
+                    // Mappa i vecchi stati ai nuovi
+                    switch oldStato {
+                    case "Chiuso":
+                        sinistro.stato = StatoSinistro.chiusa.descrizione
+                    case "In Gestione":
+                        sinistro.stato = StatoSinistro.inGestione.descrizione
+                    case "Da Scaricare":
+                        sinistro.stato = StatoSinistro.daScaricare.descrizione
+                    case "Atto Inviato":
+                        sinistro.stato = StatoSinistro.attoInviato.descrizione
+                    case "Revocato":
+                        sinistro.stato = StatoSinistro.revocata.descrizione
+                    default:
+                        // Se lo stato non è riconosciuto, cerca una corrispondenza nelle descrizioni
+                        if let matchingState = StatoSinistro.allCases.first(where: { $0.descrizione.lowercased() == oldStato.lowercased() }) {
+                            sinistro.stato = matchingState.descrizione
+                        }
+                    }
+                }
+            }
+            try context.save()
+        } catch {
+            print("Errore durante la migrazione degli stati: \(error)")
+        }
+    }
+    
+    // Helper per ottenere la descrizione corretta dello stato
+    func getStatoDescrizione(_ statoId: String) -> String {
+        if let stato = StatoSinistro.allCases.first(where: { $0.id == statoId }) {
+            return stato.descrizione
+        }
+        return statoId
+    }
+    
+    // Helper per ottenere l'ID dello stato dalla descrizione
+    func getStatoId(fromDescrizione descrizione: String) -> String? {
+        if let stato = StatoSinistro.allCases.first(where: { $0.descrizione == descrizione }) {
+            return stato.id
+        }
+        return nil
+    }
+    
+    /// Verifica se una transizione è permessa con validazioni condizionali
+    /// - Parameters:
+    ///   - from: Stato di partenza
+    ///   - to: Stato di destinazione
+    ///   - sinistro: Il sinistro per cui verificare le condizioni
+    ///   - context: Context per eventuali query
+    /// - Returns: true se la transizione è permessa, false altrimenti
+    func canTransition(
+        from: StatoSinistro,
+        to: StatoSinistro,
+        for sinistro: Sinistro,
+        context: NSManagedObjectContext
+    ) -> Bool {
+        // Verifica base: la transizione deve essere nelle validTransitions
+        guard from.validTransitions.contains(to) else {
+            return false
+        }
+        
+        // Validazioni condizionali specifiche
+        switch to {
+        case .inAttesaDocumentale:
+            // Solo se è stata inviata mail "richiesta documentazione"
+            // Questa validazione sarà fatta nei handler che chiamano changeState
+            // Qui restituiamo true se la transizione base è valida
+            return true
+            
+        case .periziaDaEseguireDocumentale:
+            // Solo se stato precedente era "in attesa documentale"
+            let currentStateDesc = sinistro.stato ?? ""
+            let currentStateId = getStatoId(fromDescrizione: currentStateDesc)
+            let currentState = currentStateId.flatMap { StatoSinistro(rawValue: $0) }
+            return currentState == .inAttesaDocumentale
+            
+        case .videoperiziaFissata:
+            // Solo da "videoperizia da fissare"
+            let currentStateDesc = sinistro.stato ?? ""
+            let currentStateId = getStatoId(fromDescrizione: currentStateDesc)
+            let currentState = currentStateId.flatMap { StatoSinistro(rawValue: $0) }
+            return currentState == .videoperiziaDaFissare
+            
+        case .attoDaInviare:
+            // Solo quando esiste file "atto da firmare" in cartella
+            // Questa validazione sarà fatta nel servizio che rileva il file
+            return true
+            
+        case .richiestaRevisione:
+            // Solo da "chiusa"
+            let currentStateDesc = sinistro.stato ?? ""
+            let currentStateId = getStatoId(fromDescrizione: currentStateDesc)
+            let currentState = currentStateId.flatMap { StatoSinistro(rawValue: $0) }
+            return currentState == .chiusa
+            
+        case .supervisioneNonConcordata:
+            // Solo se la definizione del sinistro è "non concordata"
+            return isDefinizioneNonConcordata(sinistro)
+            
+        default:
+            return true
+        }
+    }
+    
+    /// Verifica se la definizione del sinistro è "non concordata"
+    private func isDefinizioneNonConcordata(_ sinistro: Sinistro) -> Bool {
+        guard let definizione = sinistro.definizione?.uppercased() else { return false }
+        return definizione.starts(with: "NON CONCORDATO") || definizione.contains("NON CONCORDAT")
+    }
+    
+    /// Verifica se uno stato può essere usato come stato iniziale
+    func isInitialState(_ state: StatoSinistro) -> Bool {
+        switch state {
+        case .daScaricare:
+            return true
+        default:
+            return false
+        }
+    }
+    
+    // MARK: - Risoluzione Automatica Variante
+    
+    /// Determina la variante corretta di uno stato in base al contesto del sinistro.
+    /// Chiamare questo metodo quando si vuole passare a uno stato "generico" (es. .inGestione)
+    /// e si vuole che il sistema scelga automaticamente la variante appropriata.
+    /// - Parameters:
+    ///   - targetGroup: Il gruppo di stato desiderato
+    ///   - sinistro: Il sinistro per cui determinare la variante
+    /// - Returns: Lo stato specifico (con variante) da usare
+    func resolveStateVariant(for targetGroup: StateGroup, sinistro: Sinistro) -> StatoSinistro {
+        // Determina il "tipo" del sinistro dal suo storico/contesto
+        let isVideoperizia = detectIsVideoperizia(sinistro)
+        let isDocumentale = detectIsDocumentale(sinistro)
+        let isNoResidui = detectIsNoResidui(sinistro)
+        
+        switch targetGroup {
+        case .inGestione:
+            if isVideoperizia { return .inGestioneVideoperizia }
+            if isDocumentale { return .inGestioneDocumentale }
+            return .inGestione
+            
+        case .periziaDaEseguire:
+            if isDocumentale { return .periziaDaEseguireDocumentale }
+            if isNoResidui { return .periziaDaEseguireNoResidui }
+            return .periziaDaEseguire
+            
+        case .inAttesa:
+            // Per "in attesa" la variante dipende da chi si attende risposta
+            // Default a documentale (richiesta documentazione)
+            return .inAttesaDocumentale
+            
+        default:
+            // Per gruppi senza varianti, restituisci il primo membro
+            return targetGroup.members.first ?? .daScaricare
+        }
+    }
+    
+    /// Determina la variante corretta basandosi sullo stato di partenza.
+    /// Utile per transizioni automatiche che devono "ereditare" la variante.
+    func resolveStateVariant(for targetGroup: StateGroup, fromCurrentState currentState: StatoSinistro) -> StatoSinistro {
+        // Eredita la variante dallo stato corrente se compatibile
+        let currentVariant = currentState.variant
+        
+        switch targetGroup {
+        case .inGestione:
+            switch currentVariant {
+            case .videoperizia: return .inGestioneVideoperizia
+            case .documentale: return .inGestioneDocumentale
+            default: return .inGestione
+            }
+            
+        case .periziaDaEseguire:
+            switch currentVariant {
+            case .documentale: return .periziaDaEseguireDocumentale
+            case .noResidui: return .periziaDaEseguireNoResidui
+            default: return .periziaDaEseguire
+            }
+            
+        default:
+            return targetGroup.members.first ?? .daScaricare
+        }
+    }
+    
+    // MARK: - Rilevamento Tipo Sinistro
+    
+    /// Rileva se il sinistro è di tipo videoperizia
+    private func detectIsVideoperizia(_ sinistro: Sinistro) -> Bool {
+        // 1. Verifica stato corrente/precedente
+        if let statoDesc = sinistro.stato {
+            let statoLower = statoDesc.lowercased()
+            if statoLower.contains("videoperizia") || statoLower.contains("video") {
+                return true
+            }
+        }
+        
+        // 2. Verifica diario per tracce di videoperizia
+        let diario = sinistro.diarioArray
+        for entry in diario {
+            let testo = (entry.testo + (entry.contenutoCompleto ?? "")).lowercased()
+            if testo.contains("videoperizia") || testo.contains("video call") || testo.contains("videocall") {
+                return true
+            }
+        }
+        
+        // 3. Verifica complessità (se impostata come "videoperizia")
+        if sinistro.complessita?.lowercased().contains("video") == true {
+            return true
+        }
+        
+        return false
+    }
+    
+    /// Rileva se il sinistro è di tipo documentale (senza sopralluogo fisico)
+    private func detectIsDocumentale(_ sinistro: Sinistro) -> Bool {
+        // 1. Verifica stato corrente/precedente
+        if let statoDesc = sinistro.stato {
+            let statoLower = statoDesc.lowercased()
+            if statoLower.contains("documentale") {
+                return true
+            }
+        }
+        
+        // 2. Verifica sopralluogo (se false → potenzialmente documentale)
+        // Ma attenzione: sopralluogo = false può significare anche "non ancora deciso"
+        // Quindi usiamo solo se c'è evidenza positiva
+        
+        // 3. Verifica diario
+        let diario = sinistro.diarioArray
+        for entry in diario {
+            let testo = (entry.testo + (entry.contenutoCompleto ?? "")).lowercased()
+            if testo.contains("perizia documentale") || testo.contains("senza sopralluogo") {
+                return true
+            }
+        }
+        
+        // 4. Verifica complessità
+        if sinistro.complessita?.lowercased().contains("documentale") == true {
+            return true
+        }
+        
+        return false
+    }
+    
+    /// Rileva se il sinistro è senza residui (beni già sostituiti/riparati)
+    private func detectIsNoResidui(_ sinistro: Sinistro) -> Bool {
+        // 1. Verifica stato corrente
+        if let statoDesc = sinistro.stato {
+            if statoDesc.lowercased().contains("no residui") {
+                return true
+            }
+        }
+        
+        // 2. Verifica diario
+        let diario = sinistro.diarioArray
+        for entry in diario {
+            let testo = (entry.testo + (entry.contenutoCompleto ?? "")).lowercased()
+            if testo.contains("no residui") || testo.contains("senza residui") || 
+               testo.contains("beni non più presenti") || testo.contains("già sostituiti") {
+                return true
+            }
+        }
+        
+        return false
+    }
+    
+    // MARK: - Helper per Gruppi
+    
+    /// Restituisce tutti gli stati che appartengono a un gruppo
+    func statesInGroup(_ group: StateGroup) -> [StatoSinistro] {
+        group.members
+    }
+    
+    /// Restituisce le descrizioni di tutti gli stati in un gruppo (per filtri)
+    func stateDescriptionsInGroup(_ group: StateGroup) -> [String] {
+        group.members.map { $0.descrizione }
+    }
+    
+    /// Conta i sinistri per gruppo (somma di tutte le varianti)
+    func countSinistri(inGroup group: StateGroup, from sinistri: [Sinistro]) -> Int {
+        let descriptions = stateDescriptionsInGroup(group)
+        return sinistri.filter { descriptions.contains($0.stato ?? "") }.count
+    }
+    
+    // MARK: - Filtri per Tipo Perizia (Documentale vs Tradizionale)
+    
+    /// Restituisce gli stati disponibili filtrati in base al tipo di perizia del sinistro
+    /// - Parameter isTradizionale: true se il sinistro prevede sopralluogo (ha cartella Sopralluogo)
+    /// - Returns: Array di stati compatibili con il tipo di perizia
+    func availableStatesForTipoPerizia(isTradizionale: Bool) -> [StatoSinistro] {
+        return StatoSinistro.allCases.filter { $0.isCompatible(withTipoPerizia: isTradizionale) }
+    }
+    
+    /// Restituisce le transizioni valide filtrate in base al tipo di perizia
+    /// - Parameters:
+    ///   - state: Lo stato corrente
+    ///   - isTradizionale: true se il sinistro prevede sopralluogo
+    /// - Returns: Transizioni valide e compatibili con il tipo di perizia
+    func validTransitionsForTipoPerizia(from state: StatoSinistro, isTradizionale: Bool) -> [StatoSinistro] {
+        return state.validTransitions.filter { $0.isCompatible(withTipoPerizia: isTradizionale) }
+    }
+    
+    /// Aggiorna lo stato del sinistro quando cambia il tipo di perizia (da documentale a tradizionale o viceversa)
+    /// Questo metodo dovrebbe essere chiamato quando:
+    /// - Si rileva la cartella "Sopralluogo" (documentale → tradizionale)
+    /// - Si esegue un sopralluogo su un sinistro originariamente documentale
+    /// - Si rimuove la cartella "Sopralluogo" (tradizionale → documentale)
+    /// - Parameter sinistro: Il sinistro di cui è cambiato il tipo
+    /// - Parameter isTradizionale: Il nuovo tipo di perizia (true = tradizionale con sopralluogo)
+    /// - Parameter context: Il contesto Core Data
+    func handleTipoPeriziaChanged(
+        for sinistro: Sinistro,
+        isTradizionale: Bool,
+        context: NSManagedObjectContext
+    ) async throws {
+        guard let currentStateDesc = sinistro.stato,
+              let currentStateId = getStatoId(fromDescrizione: currentStateDesc),
+              let currentState = StatoSinistro(rawValue: currentStateId) else {
+            print("[StatoManager] ⚠️ Impossibile determinare stato corrente per cambio tipo perizia")
+            return
+        }
+        
+        // Verifica se lo stato corrente è compatibile con il nuovo tipo
+        if currentState.isCompatible(withTipoPerizia: isTradizionale) {
+            print("[StatoManager] ✅ Stato '\(currentState.descrizione)' già compatibile con tipo perizia \(isTradizionale ? "tradizionale" : "documentale")")
+            return
+        }
+        
+        // Trova lo stato equivalente per il nuovo tipo di perizia
+        guard let equivalentState = currentState.equivalentState(forTipoPerizia: isTradizionale) else {
+            print("[StatoManager] ⚠️ Nessuno stato equivalente trovato per '\(currentState.descrizione)' → tipo \(isTradizionale ? "tradizionale" : "documentale")")
+            return
+        }
+        
+        // Aggiorna il flag sopralluogo
+        sinistro.sopralluogo = isTradizionale
+        
+        // Esegui il cambio stato
+        print("[StatoManager] 🔄 Cambio tipo perizia: \(currentState.descrizione) → \(equivalentState.descrizione)")
+        
+        try await changeState(
+            for: sinistro,
+            to: equivalentState,
+            context: context,
+            skipValidation: true // Skip perché è un cambio di variante, non una transizione normale
+        )
+        
+        // Notifica il cambio tipo perizia
+        await MainActor.run {
+            NotificationCenter.default.post(
+                name: .tipoPeriziaChanged,
+                object: nil,
+                userInfo: [
+                    "sinistroID": sinistro.riferimento ?? "",
+                    "isTradizionale": isTradizionale,
+                    "oldState": currentState.descrizione,
+                    "newState": equivalentState.descrizione
+                ]
+            )
+        }
+    }
+    
+    /// Verifica e aggiorna automaticamente lo stato quando viene rilevata la cartella Sopralluogo
+    /// Chiamare questo metodo dopo aver sincronizzato/scaricato la cartella del sinistro
+    /// - Parameters:
+    ///   - sinistro: Il sinistro da verificare
+    ///   - hasSopralluogoFolder: true se è stata rilevata la cartella "Sopralluogo"
+    ///   - hasFoto: true se sono presenti foto nella cartella
+    ///   - context: Il contesto Core Data
+    func updateStateBasedOnFolderStructure(
+        for sinistro: Sinistro,
+        hasSopralluogoFolder: Bool,
+        hasFoto: Bool,
+        context: NSManagedObjectContext
+    ) async throws {
+        let previousIsTradizionale = sinistro.sopralluogo
+        let newIsTradizionale = hasSopralluogoFolder
+        
+        // Se il tipo non è cambiato, non fare nulla
+        guard previousIsTradizionale != newIsTradizionale else {
+            print("[StatoManager] ℹ️ Tipo perizia invariato (\(newIsTradizionale ? "tradizionale" : "documentale"))")
+            return
+        }
+        
+        // Il tipo è cambiato, aggiorna lo stato
+        if newIsTradizionale {
+            // Da documentale a tradizionale (rilevata cartella Sopralluogo)
+            print("[StatoManager] 📁 Rilevata cartella 'Sopralluogo' → Cambio a TRADIZIONALE")
+            try await handleTipoPeriziaChanged(for: sinistro, isTradizionale: true, context: context)
+        } else {
+            // Da tradizionale a documentale (rimossa cartella Sopralluogo - caso raro)
+            print("[StatoManager] 📁 Cartella 'Sopralluogo' rimossa → Cambio a DOCUMENTALE")
+            try await handleTipoPeriziaChanged(for: sinistro, isTradizionale: false, context: context)
+            
+            // Se documentale e mancano le foto, metti in attesa documentale
+            if !hasFoto {
+                guard let currentStateDesc = sinistro.stato,
+                      let currentStateId = getStatoId(fromDescrizione: currentStateDesc),
+                      let currentState = StatoSinistro(rawValue: currentStateId) else { return }
+                
+                // Se è in uno stato di "perizia da eseguire", cambia in "in attesa documentale"
+                if currentState.stateGroup == .periziaDaEseguire {
+                    try await changeState(
+                        for: sinistro,
+                        to: .inAttesaDocumentale,
+                        context: context,
+                        skipValidation: true
+                    )
+                    print("[StatoManager] 📷 Foto mancanti → Stato cambiato in 'In attesa (documentale)'")
+                }
+            }
+        }
+    }
+    
+    // MARK: - Change State con Risoluzione Automatica
+    
+    /// Cambia lo stato risolvendo automaticamente la variante corretta in base al contesto del sinistro.
+    /// Usare questo metodo quando si vuole passare a uno stato "generico" (es. "in gestione")
+    /// e lasciare che il sistema scelga la variante appropriata.
+    /// - Parameters:
+    ///   - sinistro: Il sinistro da aggiornare
+    ///   - targetGroup: Il gruppo di stato desiderato
+    ///   - context: Contesto Core Data
+    ///   - userEmail: Email utente per logging
+    func changeStateToGroup(
+        for sinistro: Sinistro,
+        to targetGroup: StateGroup,
+        context: NSManagedObjectContext,
+        userEmail: String? = nil
+    ) async throws {
+        // Risolvi la variante corretta
+        let resolvedState = resolveStateVariant(for: targetGroup, sinistro: sinistro)
+        
+        // Esegui il cambio stato
+        try await changeState(
+            for: sinistro,
+            to: resolvedState,
+            context: context,
+            userEmail: userEmail,
+            skipValidation: false
+        )
+        
+        print("[StatoManager] 🎯 Stato risolto automaticamente: \(targetGroup.shortLabel) → \(resolvedState.descrizione)")
+    }
+    
+    /// Cambia lo stato ereditando la variante dallo stato corrente quando appropriato.
+    /// Utile per transizioni che devono mantenere il "tipo" di perizia (documentale, videoperizia, ecc.)
+    func changeStatePreservingVariant(
+        for sinistro: Sinistro,
+        to targetGroup: StateGroup,
+        context: NSManagedObjectContext,
+        userEmail: String? = nil
+    ) async throws {
+        // Ottieni lo stato corrente
+        let currentStateDesc = sinistro.stato ?? ""
+        let currentStateId = getStatoId(fromDescrizione: currentStateDesc)
+        let currentState = currentStateId.flatMap { StatoSinistro(rawValue: $0) } ?? .daScaricare
+        
+        // Risolvi la variante ereditando dal corrente
+        let resolvedState = resolveStateVariant(for: targetGroup, fromCurrentState: currentState)
+        
+        // Esegui il cambio stato
+        try await changeState(
+            for: sinistro,
+            to: resolvedState,
+            context: context,
+            userEmail: userEmail,
+            skipValidation: false
+        )
+        
+        print("[StatoManager] 🔄 Stato con variante ereditata: \(currentState.descrizione) → \(resolvedState.descrizione)")
+    }
+    
+    /// Cambia lo stato di un sinistro, aggiornando le date, memorizzando nei metadati e avviando la lettura Excel quando necessario
+    func changeState(
+        for sinistro: Sinistro,
+        to newState: StatoSinistro,
+        context: NSManagedObjectContext,
+        userEmail: String? = nil,
+        skipValidation: Bool = false
+    ) async throws {
+        let oldStateDesc = sinistro.stato ?? "Non specificato"
+        let oldStateId = getStatoId(fromDescrizione: oldStateDesc)
+        let oldStateEnum = oldStateId.flatMap { StatoSinistro(rawValue: $0) }
+        let oggi = Date()
+        
+        // Snapshot owner/assegnatario prima di eventuali modifiche (serve per revoca/trasferimenti)
+        let previousOwnerEmail = (sinistro.assignedToUserEmail ?? sinistro.ownerEmail)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let previousOwnerName = sinistro.assignedToUserName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Valida la transizione se lo stato precedente è noto
+        if let oldState = oldStateEnum, !skipValidation {
+            // Verifica validazione base
+            guard oldState.validTransitions.contains(newState) else {
+                let errorMsg = "Transizione non permessa: da \(oldState.descrizione) a \(newState.descrizione)"
+                print("[StatoManager] ❌ \(errorMsg)")
+                throw NSError(domain: "StatoManager", code: 1, userInfo: [NSLocalizedDescriptionKey: errorMsg])
+            }
+            
+            // Verifica validazioni condizionali
+            guard canTransition(from: oldState, to: newState, for: sinistro, context: context) else {
+                let errorMsg = "Transizione condizionale non soddisfatta: da \(oldState.descrizione) a \(newState.descrizione)"
+                print("[StatoManager] ❌ \(errorMsg)")
+                throw NSError(domain: "StatoManager", code: 2, userInfo: [NSLocalizedDescriptionKey: errorMsg])
+            }
+        }
+        
+        // Aggiorna lo stato
+        sinistro.stato = newState.descrizione
+        
+        // Gestione speciale: se si passa da "chiusa" a "richiesta revisione", rimuovi dataChiusura
+        if let oldState = oldStateEnum, oldState == .chiusa && newState == .richiestaRevisione {
+            sinistro.dataChiusura = nil
+            print("[StatoManager] 🔄 Data chiusura rimossa (passaggio da chiusa a richiesta revisione)")
+        }
+        
+        // Se si esce dallo stato "revocata", pulisci metadati di revoca (se presenti)
+        if oldStateEnum == .revocata, newState != .revocata,
+           sinistro.substate?.hasPrefix("revocationFrom=") == true {
+            sinistro.substate = nil
+        }
+        
+        // Aggiorna le date in base al nuovo stato
+        switch newState {
+        case .attoInviato:
+            // Atto inviato → valorizza dataInvioAtto (sovrascrive sempre)
+            sinistro.dataInvioAtto = oggi
+            print("[StatoManager] 📅 dataInvioAtto aggiornata a \(oggi) per stato \(newState.descrizione)")
+            
+        case .esitoComunicato:
+            // Esito comunicato → valorizza dataComunicazioneEsito (e dataInvioAtto per retrocompatibilità)
+            sinistro.dataComunicazioneEsito = oggi
+            sinistro.dataInvioAtto = oggi // Retrocompatibilità
+            print("[StatoManager] 📅 dataComunicazioneEsito aggiornata a \(oggi) per stato \(newState.descrizione)")
+            
+        case .attoRicevutoSottoscritto:
+            // Atto ricevuto sottoscritto → valorizza dataRitornoAtto e dataRicezioneAttoSottoscritto
+            sinistro.dataRitornoAtto = oggi
+            sinistro.dataRicezioneAttoSottoscritto = oggi
+            print("[StatoManager] 📅 dataRitornoAtto/dataRicezioneAttoSottoscritto aggiornate a \(oggi)")
+            
+        case .accettataVerbalmente:
+            // Accettazione verbale → valorizza dataAccettazioneVerbale
+            sinistro.dataAccettazioneVerbale = oggi
+            print("[StatoManager] 📅 dataAccettazioneVerbale aggiornata a \(oggi)")
+            
+        case .chiusa:
+            if sinistro.dataChiusura == nil {
+                sinistro.dataChiusura = oggi
+            }
+            
+        case .revocata:
+            if sinistro.dataRevoca == nil {
+                sinistro.dataRevoca = oggi
+            }
+            
+            // Revoca = disassegnazione dell'owner/assegnatario corrente
+            let actorEmail = userEmail?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            
+            let revokedFromEmail = previousOwnerEmail ?? actorEmail
+            let revokedFromName: String? = {
+                if let n = previousOwnerName, !n.isEmpty { return n }
+                guard let e = revokedFromEmail, let local = e.split(separator: "@").first else { return nil }
+                return String(local).replacingOccurrences(of: ".", with: " ").capitalized
+            }()
+            
+            // Persistiamo un minimo di info per "passaggio owner" al reincarico (usiamo substate, già syncato)
+            let safeEmail = revokedFromEmail ?? ""
+            let safeName = revokedFromName ?? ""
+            sinistro.substate = "revocationFrom=\(safeEmail)|\(safeName)"
+            
+            sinistro.assignedToUserEmail = nil
+            sinistro.assignedToUserName = nil
+            sinistro.ownerEmail = nil
+            
+            let revokedDisplay = (revokedFromName?.isEmpty == false ? revokedFromName : revokedFromEmail) ?? "perito"
+            sinistro.addDiarioEntry(
+                DiarioEntry(
+                    testo: "Sinistro revocato a \(revokedDisplay)",
+                    tipo: .assegnazione,
+                    createdByEmail: actorEmail ?? revokedFromEmail
+                )
+            )
+            
+        case .inGestione, .inGestioneDocumentale, .inGestioneVideoperizia:
+            if sinistro.dataAssegnazione == nil {
+                sinistro.dataAssegnazione = oggi
+            }
+            
+        default:
+            break
+        }
+        
+        // MARK: - Gestione Cicli di Controllo
+        
+        // Stati di CONTROLLO (tutti gli stati che fanno parte di un ciclo di controllo)
+        let statiControllo: [StatoSinistro: CicloControllo.TipoControllo] = [
+            .inControllo: .inControllo,
+            .richiestaAutorizzazione: .richiestaAutorizzazione,
+            .supervisioneNonConcordata: .supervisioneNonConcordata
+        ]
+        
+        // Stati di USCITA controllo (stati che chiudono un ciclo)
+        let statiUscitaControllo: [StatoSinistro: CicloControllo.TipoUscitaControllo] = [
+            .controllata: .controllata,
+            .chiusa: .chiusa,
+            .attoInviato: .attoInviato,
+            .esitoComunicato: .esitoComunicato,
+            .inGestione: .inGestione,
+            .inGestioneDocumentale: .inGestione,
+            .inGestioneVideoperizia: .inGestione
+        ]
+        
+        let venivaDaControllo = oldStateEnum.flatMap { statiControllo[$0] } != nil
+        let vaInControllo = statiControllo[newState] != nil
+        
+        if vaInControllo {
+            if let tipoNuovo = statiControllo[newState] {
+                if venivaDaControllo {
+                    // Transizione tra stati di controllo → aggiorna il tipo del ciclo aperto
+                    sinistro.aggiornaTipoControllo(tipo: tipoNuovo)
+                } else {
+                    // Entrata in controllo da stato non-controllo → apri nuovo ciclo
+                    sinistro.registraEntrataControllo(tipo: tipoNuovo)
+                }
+            }
+        } else if venivaDaControllo {
+            // Uscita da controllo → chiudi il ciclo
+            let tipoUscita = statiUscitaControllo[newState] ?? .altro
+            sinistro.registraUscitaControllo(tipo: tipoUscita)
+        }
+        
+        // Crea entry nel diario per memorizzare il cambio stato
+        let userName = userEmail?.components(separatedBy: "@").first?.capitalized ?? "Sistema"
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateStyle = .medium
+        dateFormatter.timeStyle = .short
+        dateFormatter.locale = Locale(identifier: "it_IT")
+        let dataOra = dateFormatter.string(from: oggi)
+        
+        let notaTesto = "Stato cambiato da \"\(oldStateDesc)\" a \"\(newState.descrizione)\""
+        let contenutoCompleto = "Utente: \(userName)\nAvvenimento: \(notaTesto)\nData e ora: \(dataOra)"
+        
+        let diarioEntry = DiarioEntry(
+            timestamp: oggi,
+            tipo: .cambioStato,
+            titolo: "Cambio Stato",
+            riassunto: notaTesto,
+            contenutoCompleto: contenutoCompleto
+        )
+        
+        sinistro.addDiarioEntry(diarioEntry)
+        
+        // Aggiorna il timestamp CloudKit per evitare che il server sovrascriva modifiche locali
+        sinistro.cloudKitLastModified = oggi
+        
+        // Salva le modifiche sul main thread per evitare crash con FetchRequest
+        // Il viewContext deve essere salvato sempre sul main thread
+        try await MainActor.run {
+            guard context.hasChanges else { return }
+            try context.save()
+        }
+        
+        // Notifica cambio stato sul main thread
+        await MainActor.run {
+            NotificationCenter.default.post(
+                name: .sinistroStatoChanged,
+                object: nil,
+                userInfo: [
+                    "sinistroID": sinistro.riferimento ?? "",
+                    "oldState": oldStateEnum as Any,
+                    "newState": newState
+                ]
+            )
+        }
+        
+        // Avvia la lettura Excel per "atto inviato" e "chiusa"
+        if newState == .attoInviato || newState == .chiusa {
+            Task {
+                do {
+                    print("[StatoManager] 📊 Avvio lettura Excel per sinistro \(sinistro.riferimento ?? "N/A") - stato: \(newState.descrizione)")
+                    let excelURL = try await ExcelFinderService.shared.findElaboratoPeritale(forSinistro: sinistro)
+                    print("[StatoManager] ✅ Trovato file Excel: \(excelURL.lastPathComponent)")
+                    await AutoCheckService.shared.readAndUpdateExcel(excelURL: excelURL, sinistro: sinistro)
+                    print("[StatoManager] ✅ Lettura Excel completata per sinistro \(sinistro.riferimento ?? "N/A")")
+                } catch {
+                    print("[StatoManager] ⚠️ Errore nella lettura Excel per sinistro \(sinistro.riferimento ?? "N/A"): \(error.localizedDescription)")
+                }
+            }
+        }
+        
+        // Genera automaticamente i file di chiusura quando lo stato diventa "chiusa"
+        if newState == .chiusa {
+            generateClosureFilesForSinistro(sinistro)
+        }
+    }
+    
+    // MARK: - Generazione File Chiusura
+    
+    /// Genera automaticamente i file di chiusura e invia notifica se ci sono problemi
+    private func generateClosureFilesForSinistro(_ sinistro: Sinistro) {
+        print("[StatoManager] 📁 Avvio generazione file di chiusura per \(sinistro.riferimento ?? "N/A")")
+        
+        // Verifica prima i file mancanti
+        Task { @MainActor in
+            let missingFiles = await ClosureFilesService.shared.checkMissingEssentialFiles(for: sinistro)
+            if !missingFiles.isEmpty {
+                print("[StatoManager] ⚠️ File essenziali mancanti: \(missingFiles)")
+                NotificationService.shared.sendMissingFilesNotification(sinistro: sinistro, missingFiles: missingFiles)
+            }
+            
+            // Genera i file
+            ClosureFilesService.shared.generateClosureFiles(for: sinistro) { result in
+                if !result.errors.isEmpty {
+                    print("[StatoManager] ❌ Errori generazione file: \(result.errors)")
+                    NotificationService.shared.sendClosureErrorNotification(sinistro: sinistro, errors: result.errors)
+                } else {
+                    print("[StatoManager] ✅ File di chiusura generati: \(result.generatedFiles.count) file")
+                    // Notifica solo in caso di successo se ci sono file generati
+                    NotificationCenter.default.post(
+                        name: .closureFilesGenerated,
+                        object: nil,
+                        userInfo: [
+                            "sinistroID": sinistro.riferimento ?? "",
+                            "files": result.generatedFiles
+                        ]
+                    )
+                }
+            }
+        }
+    }
+    
+    // MARK: - Helper Methods for Task System
+    
+    /// Ottiene lo stato attuale di un sinistro come enum
+    func getCurrentState(sinistro: Sinistro) -> StatoSinistro {
+        guard let statoDesc = sinistro.stato else { return .daScaricare }
+        return StatoSinistro.allCases.first { $0.descrizione == statoDesc } ?? .daScaricare
+    }
+    
+    /// Ottiene lo stato attuale di un sinistro tramite ID
+    @MainActor
+    func getCurrentState(sinistroID: String) -> StatoSinistro? {
+        let context = PersistenceController.shared.container.viewContext
+        let request = NSFetchRequest<Sinistro>(entityName: "Sinistro")
+        request.predicate = NSPredicate(format: "riferimento == %@", sinistroID)
+        
+        guard let sinistro = try? context.fetch(request).first else { return nil }
+        return getCurrentState(sinistro: sinistro)
+    }
+}
+
+// Estensione per le notifiche
+extension Notification.Name {
+    static let sinistroStatoChanged = Notification.Name("sinistroStatoChanged")
+    static let sinistroUpdated = Notification.Name("sinistroUpdated")
+    static let sinistroCreated = Notification.Name("sinistroCreated")
+    static let taskCreated = Notification.Name("taskCreated")
+    static let emailReceived = Notification.Name("emailReceived")
+    static let emailSent = Notification.Name("emailSent")
+    static let documentationReceived = Notification.Name("documentationReceived")
+    static let emailAssociated = Notification.Name("emailAssociated")
+    static let workScheduleChanged = Notification.Name("workScheduleChanged")
+    static let attoDaFirmareTagged = Notification.Name("attoDaFirmareTagged")
+    static let closureFilesGenerated = Notification.Name("closureFilesGenerated")
+    static let claimFolderChanged = Notification.Name("claimFolderChanged")
+    /// Emessa quando un sinistro con sync attiva passa a chiuso e richiede decisione utente
+    static let sinistroClosedNeedsSyncDecision = Notification.Name("sinistroClosedNeedsSyncDecision")
+    /// Emessa quando un file o cartella viene eliminato (spostato nel cestino)
+    static let fileOrFolderDeleted = Notification.Name("fileOrFolderDeleted")
+    /// Emessa quando cambia il tipo di perizia di un sinistro (documentale ↔ tradizionale)
+    static let tipoPeriziaChanged = Notification.Name("tipoPeriziaChanged")
+} 

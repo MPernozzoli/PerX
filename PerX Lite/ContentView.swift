@@ -1,8 +1,8 @@
 //
 //  ContentView.swift
-//  PerX
+//  PerX Lite
 //
-//  Created by Massimo Pernozzoli on 13/11/24.
+//  Created by Massimo Pernozzoli on 21/01/26.
 //
 
 import SwiftUI
@@ -29,6 +29,9 @@ struct ContentView: View {
                 .onDelete(perform: deleteItems)
             }
             .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    EditButton()
+                }
                 ToolbarItem {
                     Button(action: addItem) {
                         Label("Add Item", systemImage: "plus")

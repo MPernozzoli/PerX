@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.perx.wa-bridge</string>
+    
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/opt/perx-hub/workers/wa-bridge/run-wa-bridge.sh</string>
+    </array>
+    
+    <key>WorkingDirectory</key>
+    <string>/opt/perx-hub/workers/wa-bridge</string>
+    
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HUB_URL</key>
+        <string>http://localhost:8080</string>
+        <key>PORT</key>
+        <string>5002</string>
+        <key>NODE_ENV</key>
+        <string>production</string>
+        <key>PATH</key>
+        <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+    </dict>
+    
+    <!-- Avvia al boot del sistema -->
+    <key>RunAtLoad</key>
+    <true/>
+    
+    <!-- Riavvia sempre -->
+    <key>KeepAlive</key>
+    <true/>
+    
+    <key>StandardOutPath</key>
+    <string>/opt/perx-hub/logs/wa-bridge.log</string>
+    
+    <key>StandardErrorPath</key>
+    <string>/opt/perx-hub/logs/wa-bridge-error.log</string>
+    
+    <!-- Esegui come root per daemon h24 -->
+    <key>UserName</key>
+    <string>root</string>
+    
+    <!-- Tipo processo background -->
+    <key>ProcessType</key>
+    <string>Background</string>
+    
+    <!-- Previeni sonno -->
+    <key>PreventsSleep</key>
+    <true/>
+    
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+    
+    <key>ExitTimeOut</key>
+    <integer>30</integer>
+</dict>
+</plist>

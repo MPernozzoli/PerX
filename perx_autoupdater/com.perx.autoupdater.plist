@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.perx.autoupdater</string>
+    
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/perx-hub/workers/autoupdater/venv/bin/python</string>
+        <string>-m</string>
+        <string>uvicorn</string>
+        <string>main:app</string>
+        <string>--host</string>
+        <string>0.0.0.0</string>
+        <string>--port</string>
+        <string>8084</string>
+    </array>
+    
+    <key>WorkingDirectory</key>
+    <string>/opt/perx-hub/workers/autoupdater</string>
+    
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HUB_URL</key>
+        <string>http://localhost:8080</string>
+        <key>PORT</key>
+        <string>8084</string>
+        <key>SCAN_INTERVAL</key>
+        <string>60</string>
+        <key>REPO_BASE</key>
+        <string>/Users/mpernozzoli/PerX HUB</string>
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
+    </dict>
+    
+    <!-- Avvia al boot del sistema -->
+    <key>RunAtLoad</key>
+    <true/>
+    
+    <!-- Riavvia sempre -->
+    <key>KeepAlive</key>
+    <true/>
+    
+    <key>StandardOutPath</key>
+    <string>/opt/perx-hub/logs/autoupdater.log</string>
+    
+    <key>StandardErrorPath</key>
+    <string>/opt/perx-hub/logs/autoupdater-error.log</string>
+    
+    <!-- Esegui come root per daemon h24 -->
+    <key>UserName</key>
+    <string>root</string>
+    
+    <!-- Tipo processo background -->
+    <key>ProcessType</key>
+    <string>Background</string>
+    
+    <!-- Previeni sonno -->
+    <key>PreventsSleep</key>
+    <true/>
+    
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+    
+    <key>ExitTimeOut</key>
+    <integer>30</integer>
+</dict>
+</plist>

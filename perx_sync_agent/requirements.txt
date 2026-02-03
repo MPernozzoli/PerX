@@ -1,0 +1,8 @@
+fastapi==0.115.6
+uvicorn[standard]==0.32.0
+python-multipart==0.0.9
+pydantic==1.10.19
+python-dotenv==1.0.1
+watchdog==4.0.1
+zipstream-ng==1.7.1
+

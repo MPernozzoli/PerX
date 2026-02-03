@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PerX Sync Agent - Dashboard</title>
+  <style>
+    :root{
+      --bg: #0b1220;
+      --panel: rgba(255,255,255,.06);
+      --panel2: rgba(255,255,255,.085);
+      --border: rgba(255,255,255,.10);
+      --text: rgba(255,255,255,.92);
+      --muted: rgba(255,255,255,.64);
+      --muted2: rgba(255,255,255,.48);
+      --accent: #7c3aed;
+      --accent2: #22c55e;
+      --warn: #f59e0b;
+      --danger: #ef4444;
+      --shadow: 0 10px 30px rgba(0,0,0,.35);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--text);
+      background:
+        radial-gradient(1200px 600px at 20% -10%, rgba(124, 58, 237, .25), transparent 60%),
+        radial-gradient(900px 500px at 80% 0%, rgba(34, 197, 94, .18), transparent 55%),
+        var(--bg);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      line-height: 1.35;
+    }
+
+    a { color: inherit; }
+    .container { max-width: 1180px; margin: 0 auto; padding: 24px 18px 42px; }
+    .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+    .title h1 { margin: 0; font-size: 22px; letter-spacing: .2px; }
+    .title .subtitle { margin-top: 6px; color: var(--muted); font-size: 13px; }
+    .pill {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 8px 10px; border-radius: 999px;
+      background: var(--panel); border: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 12px;
+      box-shadow: var(--shadow);
+      white-space: nowrap;
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); box-shadow: 0 0 0 4px rgba(245,158,11,.15); }
+    .dot.ok { background: var(--accent2); box-shadow: 0 0 0 4px rgba(34,197,94,.15); }
+    .dot.err { background: var(--danger); box-shadow: 0 0 0 4px rgba(239,68,68,.15); }
+
+    .grid { display: grid; grid-template-columns: 1.1fr .9fr; gap: 14px; margin-top: 14px; }
+    @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
+
+    .card {
+      background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04));
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .cardHeader {
+      padding: 14px 14px 10px;
+      border-bottom: 1px solid rgba(255,255,255,.06);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .cardHeader h2 { margin: 0; font-size: 14px; color: rgba(255,255,255,.86); font-weight: 650; letter-spacing: .2px; }
+    .cardBody { padding: 14px; }
+
+    .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+    @media (max-width: 980px) { .kpis { grid-template-columns: repeat(2, 1fr); } }
+    .kpi {
+      padding: 12px 12px;
+      border-radius: 12px;
+      background: rgba(255,255,255,.05);
+      border: 1px solid rgba(255,255,255,.08);
+      min-height: 76px;
+    }
+    .kpi .label { color: var(--muted); font-size: 12px; }
+    .kpi .value { margin-top: 8px; font-size: 16px; font-weight: 700; letter-spacing: .2px; }
+    .kpi .hint { margin-top: 6px; color: var(--muted2); font-size: 12px; }
+
+    .controls { display: grid; grid-template-columns: 1.2fr .8fr; gap: 12px; align-items: end; }
+    @media (max-width: 980px) { .controls { grid-template-columns: 1fr; } }
+    label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+    input[type="text"], input[type="password"], select{
+      width: 100%;
+      padding: 10px 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(0,0,0,.28);
+      color: var(--text);
+      outline: none;
+    }
+    input[type="text"]::placeholder, input[type="password"]::placeholder { color: rgba(255,255,255,.42); }
+    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .btn {
+      cursor: pointer;
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.07);
+      color: rgba(255,255,255,.92);
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 650;
+      transition: transform .08s ease, background .18s ease, border-color .18s ease;
+      user-select: none;
+    }
+    .btn:hover { background: rgba(255,255,255,.11); border-color: rgba(255,255,255,.16); }
+    .btn:active { transform: translateY(1px); }
+    .btn.primary { background: rgba(124,58,237,.18); border-color: rgba(124,58,237,.32); }
+    .btn.primary:hover { background: rgba(124,58,237,.24); border-color: rgba(124,58,237,.42); }
+    .btn.danger { background: rgba(239,68,68,.16); border-color: rgba(239,68,68,.34); }
+    .btn.danger:hover { background: rgba(239,68,68,.22); border-color: rgba(239,68,68,.44); }
+    .btn:disabled { opacity: .45; cursor: not-allowed; }
+
+    .muted { color: var(--muted); }
+    .small { font-size: 12px; }
+
+    .split { display: grid; grid-template-columns: 1fr; gap: 10px; }
+
+    .tableWrap { overflow: auto; border-radius: 12px; border: 1px solid rgba(255,255,255,.08); }
+    table { width: 100%; border-collapse: collapse; min-width: 980px; }
+    th, td { padding: 10px 10px; font-size: 13px; text-align: left; border-bottom: 1px solid rgba(255,255,255,.06); }
+    thead th {
+      position: sticky; top: 0;
+      background: rgba(10,16,29,.85);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid rgba(255,255,255,.10);
+      color: rgba(255,255,255,.78);
+      font-weight: 700;
+    }
+    tbody tr:hover { background: rgba(255,255,255,.04); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; color: rgba(255,255,255,.84); }
+    .tag {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.05);
+      color: rgba(255,255,255,.78);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .tag strong { color: rgba(255,255,255,.92); }
+    .groupRow td {
+      background: rgba(255,255,255,.03);
+      border-bottom: 1px solid rgba(255,255,255,.08);
+      color: rgba(255,255,255,.88);
+      font-weight: 750;
+      letter-spacing: .2px;
+    }
+    .checkbox { width: 16px; height: 16px; accent-color: var(--accent); }
+    .right { text-align: right; }
+
+    .toastWrap{
+      position: fixed; right: 16px; bottom: 16px;
+      display: flex; flex-direction: column; gap: 10px;
+      z-index: 9999;
+      max-width: 360px;
+    }
+    .toast{
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(0,0,0,.40);
+      backdrop-filter: blur(10px);
+      box-shadow: var(--shadow);
+      color: rgba(255,255,255,.92);
+      font-size: 13px;
+    }
+    .toast.ok{ border-color: rgba(34,197,94,.30); }
+    .toast.err{ border-color: rgba(239,68,68,.30); }
+    .toast.warn{ border-color: rgba(245,158,11,.30); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div class="title">
+        <h1>PerX Sync Agent</h1>
+        <div class="subtitle">Dashboard monitoring sinistri (auto-refresh, rimozione rapida, tempi leggibili).</div>
+      </div>
+      <div class="pill" title="Stato dashboard">
+        <span id="statusDot" class="dot"></span>
+        <span id="statusText">In attesa…</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="cardHeader">
+        <h2>Riepilogo</h2>
+        <div class="row small muted">
+          <span id="lastUpdated">Ultimo aggiornamento: —</span>
+        </div>
+      </div>
+      <div class="cardBody">
+        <div class="kpis">
+          <div class="kpi">
+            <div class="label">Uptime</div>
+            <div class="value" id="uptime">—</div>
+            <div class="hint" id="uptimeSeconds">—</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Monitoraggi totali</div>
+            <div class="value" id="totalEntries">—</div>
+            <div class="hint" id="totalEntriesHint">—</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Utenti</div>
+            <div class="value" id="totalUsers">—</div>
+            <div class="hint" id="totalUsersHint">—</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Azioni</div>
+            <div class="value" id="selectedCount">0 selezionati</div>
+            <div class="hint">Puoi rimuovere singoli o multipli</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="cardHeader">
+          <h2>Controlli</h2>
+          <div class="row">
+            <button id="refreshBtn" class="btn primary" type="button">Aggiorna</button>
+            <button id="removeSelectedBtn" class="btn danger" type="button" disabled>Rimuovi selezionati</button>
+          </div>
+        </div>
+        <div class="cardBody">
+          <div class="controls">
+            <div>
+              <label for="apiKey">API Key (header <span class="mono">X-API-Key</span>)</label>
+              <div class="row" style="align-items: stretch;">
+                <input id="apiKey" type="password" placeholder="Inserisci API key per abilitare la rimozione…" />
+                <button id="saveKeyBtn" class="btn" type="button">Salva</button>
+              </div>
+              <div class="small muted" style="margin-top: 8px;">
+                La chiave viene salvata in locale nel browser (LocalStorage).
+              </div>
+            </div>
+            <div>
+              <label for="refreshEvery">Auto-refresh</label>
+              <div class="row" style="align-items: stretch;">
+                <select id="refreshEvery">
+                  <option value="0">Off</option>
+                  <option value="5000" selected>Ogni 5s</option>
+                  <option value="10000">Ogni 10s</option>
+                  <option value="30000">Ogni 30s</option>
+                </select>
+                <button id="toggleAutoBtn" class="btn" type="button">Applica</button>
+              </div>
+              <div class="small muted" style="margin-top: 8px;">
+                Stato: <span id="autoState">attivo</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-top: 14px;">
+            <label for="search">Cerca</label>
+            <input id="search" type="text" placeholder="Filtra per utente, claim o path…" />
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="cardHeader">
+          <h2>Totali per utente</h2>
+          <div class="row small muted">
+            <span id="perUserHint">—</span>
+          </div>
+        </div>
+        <div class="cardBody">
+          <div id="perUserList" class="split"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top: 14px;">
+      <div class="cardHeader">
+        <h2>Monitoraggi</h2>
+        <div class="row small muted">
+          <span>Mostro anche <strong>last_change</strong> per capire se la cartella è viva</span>
+        </div>
+      </div>
+      <div class="cardBody">
+        <div class="tableWrap">
+          <table id="table">
+            <thead>
+              <tr>
+                <th style="width:42px;">
+                  <input id="selectAll" class="checkbox" type="checkbox" title="Seleziona tutto" />
+                </th>
+                <th>Utente</th>
+                <th>Claim</th>
+                <th>Path</th>
+                <th>Last change</th>
+                <th>Last sync</th>
+                <th>Added</th>
+                <th class="right" style="width:160px;">Azioni</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toastWrap" id="toastWrap"></div>
+
+  <script>
+    const LS_API_KEY = 'perx_sync_agent_api_key';
+    const LS_REFRESH_MS = 'perx_sync_agent_refresh_ms';
+
+    let autoTimer = null;
+    let lastData = null;
+
+    function escapeHtml(s) {
+      return String(s ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+    }
+
+    function formatDuration(totalSeconds) {
+      const s = Math.max(0, Number(totalSeconds) || 0);
+      const days = Math.floor(s / 86400);
+      const hours = Math.floor((s % 86400) / 3600);
+      const minutes = Math.floor((s % 3600) / 60);
+      const seconds = Math.floor(s % 60);
+
+      const parts = [];
+      if (days > 0) parts.push(`${days}g`);
+      if (hours > 0) parts.push(`${hours}h`);
+      if (minutes > 0) parts.push(`${minutes}m`);
+      if (parts.length === 0) parts.push(`${seconds}s`);
+      return parts.join(' ');
+    }
+
+    function parseDate(iso) {
+      if (!iso) return null;
+      const d = new Date(iso);
+      return isNaN(d.getTime()) ? null : d;
+    }
+
+    function formatRelative(iso) {
+      const d = parseDate(iso);
+      if (!d) return { text: '—', title: '' };
+      const now = new Date();
+      const diffMs = d.getTime() - now.getTime(); // negative if past
+      const abs = Math.abs(diffMs);
+      const minutes = Math.round(abs / 60000);
+
+      let value, unit;
+      if (minutes < 1) { value = Math.round(abs / 1000) * Math.sign(diffMs); unit = 'second'; }
+      else if (minutes < 60) { value = minutes * Math.sign(diffMs); unit = 'minute'; }
+      else {
+        const hours = Math.round(abs / 3600000);
+        if (hours < 24) { value = hours * Math.sign(diffMs); unit = 'hour'; }
+        else {
+          const days = Math.round(abs / 86400000);
+          value = days * Math.sign(diffMs);
+          unit = 'day';
+        }
+      }
+
+      const rtf = new Intl.RelativeTimeFormat('it', { numeric: 'auto' });
+      const title = d.toLocaleString('it-IT');
+      return { text: rtf.format(value, unit), title };
+    }
+
+    function toast(message, kind = 'ok', ttlMs = 3500) {
+      const wrap = document.getElementById('toastWrap');
+      const el = document.createElement('div');
+      el.className = `toast ${kind}`;
+      el.textContent = message;
+      wrap.appendChild(el);
+      setTimeout(() => {
+        el.style.opacity = '0';
+        el.style.transform = 'translateY(4px)';
+        el.style.transition = 'opacity .25s ease, transform .25s ease';
+        setTimeout(() => el.remove(), 260);
+      }, ttlMs);
+    }
+
+    function getApiKey() {
+      const input = document.getElementById('apiKey');
+      return (input.value || '').trim();
+    }
+
+    function setStatus(ok, message) {
+      const dot = document.getElementById('statusDot');
+      const txt = document.getElementById('statusText');
+      dot.classList.remove('ok', 'err');
+      dot.classList.add(ok ? 'ok' : 'err');
+      txt.textContent = message;
+    }
+
+    function updateSelectedCount() {
+      const boxes = Array.from(document.querySelectorAll('input[data-select="row"]'));
+      const selected = boxes.filter(b => b.checked).length;
+      document.getElementById('selectedCount').textContent = `${selected} selezionati`;
+      document.getElementById('removeSelectedBtn').disabled = selected === 0;
+      const selectAll = document.getElementById('selectAll');
+      if (boxes.length === 0) {
+        selectAll.checked = false;
+        selectAll.indeterminate = false;
+      } else if (selected === 0) {
+        selectAll.checked = false;
+        selectAll.indeterminate = false;
+      } else if (selected === boxes.length) {
+        selectAll.checked = true;
+        selectAll.indeterminate = false;
+      } else {
+        selectAll.checked = false;
+        selectAll.indeterminate = true;
+      }
+    }
+
+    async function unregisterMonitoring(userId, claimId) {
+      const apiKey = getApiKey();
+      if (!apiKey) {
+        toast('Inserisci prima una API key per rimuovere i monitoraggi.', 'warn', 4200);
+        return { ok: false };
+      }
+
+      const res = await fetch('/api/monitoring/unregister', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': apiKey,
+        },
+        body: JSON.stringify({ user_id: userId, claim_id: claimId }),
+      });
+
+      let payload = null;
+      try { payload = await res.json(); } catch (_) {}
+
+      if (!res.ok || !payload?.success) {
+        const msg = payload?.message || `Errore HTTP ${res.status}`;
+        toast(`Rimozione fallita (${userId}/${claimId}): ${msg}`, 'err', 5200);
+        return { ok: false };
+      }
+
+      toast(`Rimosso dal monitoring: ${userId} / ${claimId}`, 'ok');
+      return { ok: true };
+    }
+
+    function flattenUsers(usersObj) {
+      const rows = [];
+      Object.entries(usersObj || {}).forEach(([userId, claims]) => {
+        (claims || []).forEach(c => {
+          rows.push({
+            user_id: userId,
+            claim_id: c.claim_id,
+            path: c.path,
+            last_sync_at: c.last_sync_at,
+            last_change_at: c.last_change_at,
+            added_at: c.added_at,
+          });
+        });
+      });
+      return rows;
+    }
+
+    function renderPerUser(usersObj) {
+      const container = document.getElementById('perUserList');
+      container.innerHTML = '';
+
+      const entries = Object.entries(usersObj || {}).map(([user, claims]) => ({
+        user,
+        count: (claims || []).length,
+      })).sort((a,b) => b.count - a.count);
+
+      const total = entries.reduce((acc, e) => acc + e.count, 0);
+      document.getElementById('perUserHint').textContent = total > 0
+        ? `${entries.length} utenti, ${total} monitoraggi`
+        : 'Nessun monitoraggio';
+
+      if (entries.length === 0) {
+        container.innerHTML = `<div class="muted small">Nessun dato disponibile.</div>`;
+        return;
+      }
+
+      entries.forEach(e => {
+        const perc = total ? Math.round((e.count / total) * 100) : 0;
+        const div = document.createElement('div');
+        div.className = 'row';
+        div.style.justifyContent = 'space-between';
+        div.style.padding = '10px 10px';
+        div.style.borderRadius = '12px';
+        div.style.border = '1px solid rgba(255,255,255,.08)';
+        div.style.background = 'rgba(255,255,255,.04)';
+        div.innerHTML = `
+          <span class="tag"><strong>${escapeHtml(e.user)}</strong></span>
+          <span class="tag">${e.count} <span class="muted">(${perc}%)</span></span>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    function renderTable(usersObj, filterText) {
+      const tbody = document.querySelector('#table tbody');
+      tbody.innerHTML = '';
+
+      const f = (filterText || '').trim().toLowerCase();
+      const grouped = Object.entries(usersObj || {})
+        .map(([userId, claims]) => ({ userId, claims: claims || [] }))
+        .sort((a,b) => a.userId.localeCompare(b.userId));
+
+      let totalRendered = 0;
+
+      grouped.forEach(group => {
+        const filteredClaims = group.claims.filter(c => {
+          if (!f) return true;
+          const hay = `${group.userId} ${c.claim_id} ${c.path}`.toLowerCase();
+          return hay.includes(f);
+        });
+        if (filteredClaims.length === 0) return;
+
+        const groupTr = document.createElement('tr');
+        groupTr.className = 'groupRow';
+        groupTr.innerHTML = `<td colspan="8">Utente: ${escapeHtml(group.userId)} · ${filteredClaims.length} monitoraggi</td>`;
+        tbody.appendChild(groupTr);
+
+        filteredClaims.forEach(c => {
+          const lastChange = formatRelative(c.last_change_at);
+          const lastSync = formatRelative(c.last_sync_at);
+          const added = formatRelative(c.added_at);
+
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>
+              <input class="checkbox" type="checkbox" data-select="row"
+                     data-user="${escapeHtml(group.userId)}"
+                     data-claim="${escapeHtml(c.claim_id)}" />
+            </td>
+            <td>${escapeHtml(group.userId)}</td>
+            <td class="mono">${escapeHtml(c.claim_id)}</td>
+            <td class="mono" title="${escapeHtml(c.path)}">${escapeHtml(c.path)}</td>
+            <td title="${escapeHtml(lastChange.title)}">${escapeHtml(lastChange.text)}</td>
+            <td title="${escapeHtml(lastSync.title)}">${escapeHtml(lastSync.text)}</td>
+            <td title="${escapeHtml(added.title)}">${escapeHtml(added.text)}</td>
+            <td class="right">
+              <button class="btn danger" type="button" data-action="remove"
+                      data-user="${escapeHtml(group.userId)}"
+                      data-claim="${escapeHtml(c.claim_id)}">Rimuovi</button>
+            </td>
+          `;
+          tbody.appendChild(tr);
+          totalRendered += 1;
+        });
+      });
+
+      // Event binding (delegation)
+      tbody.querySelectorAll('input[data-select="row"]').forEach(cb => {
+        cb.addEventListener('change', updateSelectedCount);
+      });
+      tbody.querySelectorAll('button[data-action="remove"]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const userId = btn.getAttribute('data-user');
+          const claimId = btn.getAttribute('data-claim');
+          const ok = confirm(`Rimuovere dal monitoring?\n\nUtente: ${userId}\nClaim: ${claimId}`);
+          if (!ok) return;
+          btn.disabled = true;
+          try {
+            const res = await unregisterMonitoring(userId, claimId);
+            if (res.ok) await loadData();
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      });
+
+      updateSelectedCount();
+      document.getElementById('totalEntriesHint').textContent = f
+        ? `Filtrati: ${totalRendered}`
+        : '—';
+    }
+
+    function applySummaryToUI(data) {
+      lastData = data;
+      const uptimeSeconds = Number(data?.uptime_seconds || 0);
+      const totalEntries = Number(data?.total_entries || 0);
+      const userCount = Object.keys(data?.users || {}).length;
+
+      document.getElementById('uptime').textContent = formatDuration(uptimeSeconds);
+      document.getElementById('uptimeSeconds').textContent = `${uptimeSeconds}s`;
+      document.getElementById('totalEntries').textContent = `${totalEntries}`;
+      document.getElementById('totalUsers').textContent = `${userCount}`;
+      document.getElementById('totalUsersHint').textContent = userCount === 1 ? '1 utente' : `${userCount} utenti`;
+
+      const now = new Date();
+      document.getElementById('lastUpdated').textContent = `Ultimo aggiornamento: ${now.toLocaleString('it-IT')}`;
+
+      renderPerUser(data?.users || {});
+      const search = document.getElementById('search').value;
+      renderTable(data?.users || {}, search);
+    }
+
+    async function loadData() {
+      setStatus(true, 'Aggiornamento…');
+      try {
+        const res = await fetch('/api/status/summary', { cache: 'no-store' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        applySummaryToUI(data);
+        setStatus(true, 'Connesso');
+        return true;
+      } catch (e) {
+        setStatus(false, 'Errore');
+        toast(`Errore caricamento: ${e?.message || e}`, 'err', 5200);
+        return false;
+      }
+    }
+
+    function startAutoRefresh(ms) {
+      if (autoTimer) clearInterval(autoTimer);
+      autoTimer = null;
+      if (!ms || ms <= 0) {
+        document.getElementById('autoState').textContent = 'off';
+        return;
+      }
+      document.getElementById('autoState').textContent = `attivo (${formatDuration(ms/1000)})`;
+      autoTimer = setInterval(loadData, ms);
+    }
+
+    function loadPrefs() {
+      const key = localStorage.getItem(LS_API_KEY) || '';
+      document.getElementById('apiKey').value = key;
+
+      const refreshMs = Number(localStorage.getItem(LS_REFRESH_MS) || 5000);
+      const select = document.getElementById('refreshEvery');
+      const values = Array.from(select.options).map(o => Number(o.value));
+      if (values.includes(refreshMs)) select.value = String(refreshMs);
+      else select.value = '5000';
+      startAutoRefresh(Number(select.value));
+    }
+
+    function wireUI() {
+      document.getElementById('saveKeyBtn').addEventListener('click', () => {
+        const key = getApiKey();
+        localStorage.setItem(LS_API_KEY, key);
+        toast(key ? 'API key salvata.' : 'API key rimossa.', 'ok');
+      });
+
+      document.getElementById('toggleAutoBtn').addEventListener('click', () => {
+        const ms = Number(document.getElementById('refreshEvery').value);
+        localStorage.setItem(LS_REFRESH_MS, String(ms));
+        startAutoRefresh(ms);
+        toast(ms > 0 ? `Auto-refresh attivato (${formatDuration(ms/1000)}).` : 'Auto-refresh disattivato.', 'ok');
+      });
+
+      document.getElementById('refreshBtn').addEventListener('click', loadData);
+
+      document.getElementById('search').addEventListener('input', () => {
+        if (!lastData) return;
+        renderTable(lastData.users || {}, document.getElementById('search').value);
+      });
+
+      document.getElementById('selectAll').addEventListener('change', (e) => {
+        const checked = e.target.checked;
+        document.querySelectorAll('input[data-select="row"]').forEach(cb => {
+          cb.checked = checked;
+        });
+        updateSelectedCount();
+      });
+
+      document.getElementById('removeSelectedBtn').addEventListener('click', async () => {
+        const boxes = Array.from(document.querySelectorAll('input[data-select="row"]')).filter(b => b.checked);
+        if (boxes.length === 0) return;
+        const ok = confirm(`Rimuovere ${boxes.length} monitoraggi selezionati?`);
+        if (!ok) return;
+        const btn = document.getElementById('removeSelectedBtn');
+        btn.disabled = true;
+
+        try {
+          let removed = 0;
+          for (const b of boxes) {
+            const userId = b.getAttribute('data-user');
+            const claimId = b.getAttribute('data-claim');
+            const res = await unregisterMonitoring(userId, claimId);
+            if (res.ok) removed += 1;
+          }
+          toast(`Rimossi: ${removed}/${boxes.length}`, removed === boxes.length ? 'ok' : 'warn', 4200);
+          await loadData();
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    }
+
+    // init
+    loadPrefs();
+    wireUI();
+    loadData();
+  </script>
+</body>
+</html>
+

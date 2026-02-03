@@ -1,9 +1,374 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="1" systemVersion="11A491" minimumToolsVersion="Automatic" sourceLanguage="Swift" usedWithCloudKit="false" userDefinedModelVersionIdentifier="">
-    <entity name="Item" representedClassName="Item" syncable="YES" codeGenerationType="class">
-        <attribute name="timestamp" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="24233.11" systemVersion="25A5279m" minimumToolsVersion="Automatic" sourceLanguage="Swift" userDefinedModelVersionIdentifier="">
+    <entity name="EmailMetadata" representedClassName="EmailMetadata" syncable="YES">
+        <attribute name="messageId" attributeType="String"/>
+        <attribute name="categoryTag" optional="YES" attributeType="String"/>
+        <attribute name="isManualTag" optional="YES" attributeType="Boolean" usesScalarValueType="YES" defaultValueString="NO"/>
+        <attribute name="tagConfidence" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
+        <attribute name="tagAppliedDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="sinistroReference" optional="YES" attributeType="String"/>
+        <attribute name="processingStatus" optional="YES" attributeType="String" defaultValueString="in_coda"/>
+        <attribute name="processingError" optional="YES" attributeType="String"/>
+        <attribute name="processingDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="processingResult" optional="YES" attributeType="String"/>
+        <relationship name="tags" toMany="YES" deletionRule="No Action" destinationEntity="Tag" inverseName="emails" inverseEntity="Tag"/>
     </entity>
-    <elements>
-        <element name="Item" positionX="-63" positionY="-18" width="128" height="44"/>
-    </elements>
+    <entity name="ProcessedEmail" representedClassName="ProcessedEmail" syncable="YES">
+        <attribute name="messageId" optional="YES" attributeType="String"/>
+        <attribute name="processedDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+    </entity>
+    <entity name="Sinistro" representedClassName="Sinistro" syncable="YES">
+        <attribute name="agenzia" optional="YES" attributeType="String"/>
+        <attribute name="assicurato" optional="YES" attributeType="String"/>
+        <attribute name="cartella" optional="YES" attributeType="String"/>
+        <attribute name="codiceAgenzia" optional="YES" attributeType="String"/>
+        <attribute name="subagenzia" optional="YES" attributeType="String"/>
+        <attribute name="collegamenti" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromData" customClassName="NSSet"/>
+        <attribute name="contraente" optional="YES" attributeType="String"/>
+        <attribute name="danneggiato" optional="YES" attributeType="String"/>
+        <attribute name="dannoAccertato" optional="YES" attributeType="Decimal"/>
+        <attribute name="dannoAccertatoNetto" optional="YES" attributeType="Decimal"/>
+        <attribute name="dataAperturaGestione" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="dataAssegnazione" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="dataChiusura" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="dataCreazione" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="dataInvioAtto" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="dataRevoca" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="dataRitornoAtto" optional="YES" attributeType="Date"/>
+        <attribute name="dataComunicazioneEsito" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="dataRicezioneAttoSottoscritto" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="dataAccettazioneVerbale" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="dataSinistro" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="diarioEntries" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromData" customClassName="NSObject"/>
+        <attribute name="divisioneCompagnia" optional="YES" attributeType="String"/>
+        <attribute name="emailAgenzia" optional="YES" attributeType="String"/>
+        <attribute name="emailAssicurato" optional="YES" attributeType="String"/>
+        <attribute name="emailAssicurato_legacy" optional="YES" attributeType="String"/>
+        <attribute name="emailContraente" optional="YES" attributeType="String"/>
+        <attribute name="emailDanneggiato" optional="YES" attributeType="String"/>
+        <attribute name="emailSignature" optional="YES" attributeType="Transformable" valueTransformerName="NSAttributedStringTransformer" customClassName="NSAttributedString"/>
+        <attribute name="foto" optional="YES" attributeType="Boolean" defaultValueString="NO"/>
+        <attribute name="fulminazione" optional="YES" attributeType="String"/>
+        <attribute name="giustificativi" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
+        <attribute name="iban" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
+        <attribute name="gruppo" optional="YES" attributeType="String"/>
+        <attribute name="area" optional="YES" attributeType="String"/>
+        <attribute name="dataDenuncia" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="dataIncarico" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="dataSopralluogo" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="numeroPolizza" optional="YES" attributeType="String"/>
+        <attribute name="tipoPolizza" optional="YES" attributeType="String"/>
+        <attribute name="definizione" optional="YES" attributeType="String"/>
+        <attribute name="definizioneManuale" optional="YES" attributeType="Boolean" usesScalarValueType="YES" defaultValueString="NO"/>
+        <attribute name="stimaDanno" optional="YES" attributeType="Decimal"/>
+        <attribute name="propensionePerito" optional="YES" attributeType="String"/>
+        <attribute name="complessita" optional="YES" attributeType="String"/>
+        <attribute name="ubicazioneValidata" optional="YES" attributeType="Boolean" usesScalarValueType="YES" defaultValueString="NO"/>
+        <attribute name="ubicazioneNote" optional="YES" attributeType="String"/>
+        <attribute name="concordata" optional="YES" attributeType="Boolean" usesScalarValueType="YES" defaultValueString="NO"/>
+        <attribute name="negativa" optional="YES" attributeType="Boolean" usesScalarValueType="YES" defaultValueString="NO"/>
+        <attribute name="idSinistroCollegato" optional="YES" attributeType="String"/>
+        <attribute name="indirizzoAssicurato" optional="YES" attributeType="String"/>
+        <attribute name="indirizzoAssicurato_legacy" optional="YES" attributeType="String"/>
+        <attribute name="indirizzoContraente" optional="YES" attributeType="String"/>
+        <attribute name="indirizzoDanneggiato" optional="YES" attributeType="String"/>
+        <attribute name="liquidato" optional="YES" attributeType="Decimal"/>
+        <attribute name="nomeAssicurato" optional="YES" attributeType="String"/>
+        <attribute name="nomeAssicurato_legacy" optional="YES" attributeType="String"/>
+        <attribute name="nomeCompagnia" optional="YES" attributeType="String"/>
+        <attribute name="nomeContraente" optional="YES" attributeType="String"/>
+        <attribute name="nomeDanneggiato" optional="YES" attributeType="String"/>
+        <attribute name="numeroSinistroCompagnia" optional="YES" attributeType="String"/>
+        <attribute name="oltreDieciBeni" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
+        <attribute name="ownerEmail" optional="YES" attributeType="String"/>
+        <attribute name="assignedToUserEmail" optional="YES" attributeType="String"/>
+        <attribute name="assignedToUserName" optional="YES" attributeType="String"/>
+        <attribute name="cloudKitRecordID" optional="YES" attributeType="String"/>
+        <attribute name="cloudKitLastModified" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="substate" optional="YES" attributeType="String"/>
+        <attribute name="richiesta" optional="YES" attributeType="Decimal"/>
+        <attribute name="riferimento" optional="YES" attributeType="String"/>
+        <attribute name="sinistroCollegato" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
+        <attribute name="sopralluogo" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
+        <attribute name="stato" optional="YES" attributeType="String"/>
+        <attribute name="telefonoAgenzia" optional="YES" attributeType="String"/>
+        <attribute name="telefonoAssicurato" optional="YES" attributeType="String"/>
+        <attribute name="telefonoAssicurato_legacy" optional="YES" attributeType="String"/>
+        <attribute name="telefonoContraente" optional="YES" attributeType="String"/>
+        <attribute name="telefonoDanneggiato" optional="YES" attributeType="String"/>
+        <attribute name="telefoniAssicurato" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromData" customClassName="NSArray"/>
+        <attribute name="emailAssicuratoArrayStorage" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromData" customClassName="NSArray"/>
+        <attribute name="regolaritaAmministrativa" optional="YES" attributeType="Boolean" usesScalarValueType="NO"/>
+        <attribute name="dataPagamentoPremio" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="regolaritaAmministrativaOverride" optional="YES" attributeType="Boolean" usesScalarValueType="YES" defaultValueString="NO"/>
+        <attribute name="prioritaManuale" optional="YES" attributeType="Double" usesScalarValueType="NO"/>
+        <attribute name="codiceFiscaleAssicurato" optional="YES" attributeType="String"/>
+        <attribute name="partitaIVAAssicurato" optional="YES" attributeType="String"/>
+        <attribute name="sollecitiRicevutiCount" optional="YES" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="sollecitiInviatiCount" optional="YES" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="dataUltimoSollecitoRicevuto" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="dataUltimoSollecitoInviato" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="tipoMittenteSollecitoMax" optional="YES" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="sollecitiRicevutiJSON" optional="YES" attributeType="String"/>
+        <attribute name="cicliControlloJSON" optional="YES" attributeType="String"/>
+        <relationship name="tags" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="Tag" inverseName="sinistri" inverseEntity="Tag"/>
+        <relationship name="emailThreads" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="SinistroEmailThread" inverseName="sinistro" inverseEntity="SinistroEmailThread"/>
+        <relationship name="whatsAppThreads" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="SinistroWhatsAppThread" inverseName="sinistro" inverseEntity="SinistroWhatsAppThread"/>
+        <relationship name="perizia" optional="YES" maxCount="1" deletionRule="Cascade" destinationEntity="Perizia" inverseName="sinistro" inverseEntity="Perizia"/>
+        <relationship name="coassicurazioni" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="Coassicurazione" inverseName="sinistro" inverseEntity="Coassicurazione"/>
+        <relationship name="perxiaAnalisi" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="PerxiaAnalisi" inverseName="sinistro" inverseEntity="PerxiaAnalisi"/>
+        <relationship name="triggerStates" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="TriggerState" inverseName="sinistro" inverseEntity="TriggerState"/>
+    </entity>
+    <entity name="Perizia" representedClassName="Perizia" syncable="YES">
+        <attribute name="id" attributeType="UUID"/>
+        <attribute name="descrizioneRischio" optional="YES" attributeType="String"/>
+        <attribute name="strutturaPortante" optional="YES" attributeType="String"/>
+        <attribute name="tamponamenti" optional="YES" attributeType="String"/>
+        <attribute name="ordituraTetto" optional="YES" attributeType="String"/>
+        <attribute name="copertura" optional="YES" attributeType="String"/>
+        <attribute name="finiture" optional="YES" attributeType="String"/>
+        <attribute name="condizioneRischio" optional="YES" attributeType="String"/>
+        <attribute name="rischio" optional="YES" attributeType="String"/>
+        <attribute name="deprezzamentoFabbricato" optional="YES" attributeType="Decimal"/>
+        <attribute name="numeroPiani" optional="YES" attributeType="Integer 16"/>
+        <attribute name="annoCostruzione" optional="YES" attributeType="Integer 16"/>
+        <attribute name="denunciaTardiva" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
+        <attribute name="mantenimentoResidui" optional="YES" attributeType="String"/>
+        <attribute name="rivalsaPresente" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
+        <attribute name="rivalsaNota" optional="YES" attributeType="String"/>
+        <attribute name="arrotondamentoLiquidazione" optional="YES" attributeType="Decimal"/>
+        <attribute name="stimaDannoIndennizzabile" optional="YES" attributeType="Decimal"/>
+        <attribute name="vociPersonalizzateJSON" optional="YES" attributeType="String"/>
+        <attribute name="relazionePerizia" optional="YES" attributeType="String"/>
+        <attribute name="noteConclusive" optional="YES" attributeType="String"/>
+        <attribute name="noteRiserva" optional="YES" attributeType="String"/>
+        <attribute name="noteOsservazioni" optional="YES" attributeType="String"/>
+        <attribute name="hasRiserva" optional="YES" attributeType="Boolean" usesScalarValueType="YES" defaultValueString="NO"/>
+        <attribute name="eventoCausatoDa" optional="YES" attributeType="String"/>
+        <attribute name="determinazione" optional="YES" attributeType="String"/>
+        <relationship name="sinistro" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Sinistro" inverseName="perizia" inverseEntity="Sinistro"/>
+        <relationship name="partite" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="Partita" inverseName="perizia" inverseEntity="Partita"/>
+        <relationship name="garanzie" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="Garanzia" inverseName="perizia" inverseEntity="Garanzia"/>
+        <relationship name="beniBozza" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="Bene" inverseName="periziaBozza" inverseEntity="Bene"/>
+        <relationship name="versioni" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="PeriziaVersion" inverseName="perizia" inverseEntity="PeriziaVersion"/>
+    </entity>
+    <entity name="Partita" representedClassName="Partita" syncable="YES">
+        <attribute name="id" attributeType="UUID"/>
+        <attribute name="tipoPartita" attributeType="String"/>
+        <attribute name="nomeFornitoCompagnia" optional="YES" attributeType="String"/>
+        <attribute name="nomeEditabile" attributeType="String"/>
+        <attribute name="tipologia" attributeType="String"/>
+        <attribute name="valoreAssicurato" attributeType="Decimal"/>
+        <attribute name="percentualeDeroga" optional="YES" attributeType="Decimal"/>
+        <attribute name="determinazioneDanno" attributeType="String"/>
+        <attribute name="regoleSpeciali" optional="YES" attributeType="String"/>
+        <attribute name="ordine" optional="YES" attributeType="Integer 16" defaultValueString="0"/>
+        <attribute name="partitaAcquistata" optional="YES" attributeType="Boolean" usesScalarValueType="YES" defaultValueString="YES"/>
+        <relationship name="perizia" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Perizia" inverseName="partite" inverseEntity="Perizia"/>
+        <relationship name="beni" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="Bene" inverseName="partita" inverseEntity="Bene"/>
+    </entity>
+    <entity name="Garanzia" representedClassName="Garanzia" syncable="YES">
+        <attribute name="id" attributeType="UUID"/>
+        <attribute name="tipoGaranzia" attributeType="String"/>
+        <attribute name="nomeFornitoCompagnia" optional="YES" attributeType="String"/>
+        <attribute name="nomeEditabile" attributeType="String"/>
+        <attribute name="tipologia" attributeType="String"/>
+        <attribute name="valorePRA" optional="YES" attributeType="Decimal"/>
+        <attribute name="massimale" attributeType="Decimal"/>
+        <attribute name="massimaleUnico" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
+        <attribute name="franchigiaMinimo" optional="YES" attributeType="Decimal"/>
+        <attribute name="franchigiaMassimo" optional="YES" attributeType="Decimal"/>
+        <attribute name="scopertoPercentuale" optional="YES" attributeType="Decimal"/>
+        <attribute name="scopertoMinimo" optional="YES" attributeType="Decimal"/>
+        <attribute name="scopertoMassimo" optional="YES" attributeType="Decimal"/>
+        <attribute name="ordine" optional="YES" attributeType="Integer 16" defaultValueString="0"/>
+        <relationship name="perizia" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Perizia" inverseName="garanzie" inverseEntity="Perizia"/>
+        <relationship name="beni" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="Bene" inverseName="garanzia" inverseEntity="Bene"/>
+    </entity>
+    <entity name="Bene" representedClassName="Bene" syncable="YES">
+        <attribute name="id" attributeType="UUID"/>
+        <attribute name="nome" attributeType="String"/>
+        <attribute name="marca" optional="YES" attributeType="String"/>
+        <attribute name="modello" optional="YES" attributeType="String"/>
+        <attribute name="numeroSerie" optional="YES" attributeType="String"/>
+        <attribute name="anno" optional="YES" attributeType="Integer 16"/>
+        <attribute name="stimata" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
+        <attribute name="relazioneTecnica" optional="YES" attributeType="String"/>
+        <attribute name="richiesta" optional="YES" attributeType="Decimal"/>
+        <attribute name="ivaInclusa" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
+        <attribute name="ripristiniUltimati" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
+        <attribute name="residuiMantenuti" optional="YES" attributeType="String"/>
+        <attribute name="sostituzioneIntero" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
+        <attribute name="determinazioneDanno" optional="YES" attributeType="String"/>
+        <attribute name="deprezzamento" optional="YES" attributeType="Double" defaultValueString="20"/>
+        <attribute name="aliquotaIVA" optional="YES" attributeType="Double" defaultValueString="22"/>
+        <attribute name="liquidazioneForzata" optional="YES" attributeType="Decimal"/>
+        <attribute name="ordine" optional="YES" attributeType="Integer 16" defaultValueString="0"/>
+        <attribute name="diversiPerRiga" optional="YES" attributeType="Boolean" usesScalarValueType="YES" defaultValueString="NO"/>
+        <attribute name="riconosciIVA" optional="YES" attributeType="Boolean" usesScalarValueType="YES" defaultValueString="YES"/>
+        <relationship name="partita" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Partita" inverseName="beni" inverseEntity="Partita"/>
+        <relationship name="garanzia" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Garanzia" inverseName="beni" inverseEntity="Garanzia"/>
+        <relationship name="vociCosto" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="VoceCosto" inverseName="bene" inverseEntity="VoceCosto"/>
+        <relationship name="periziaBozza" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Perizia" inverseName="beniBozza" inverseEntity="Perizia"/>
+    </entity>
+    <entity name="VoceCosto" representedClassName="VoceCosto" syncable="YES">
+        <attribute name="id" attributeType="UUID"/>
+        <attribute name="descrizione" attributeType="String"/>
+        <attribute name="unitaMisura" attributeType="String"/>
+        <attribute name="quantita" attributeType="Decimal"/>
+        <attribute name="valoreUnitario" attributeType="Decimal"/>
+        <attribute name="totaleANuovo" optional="YES" attributeType="Decimal"/>
+        <attribute name="percentualeMigliorie" optional="YES" attributeType="Decimal"/>
+        <attribute name="nettoMigliorie" optional="YES" attributeType="Decimal"/>
+        <attribute name="percentualeIllesi" optional="YES" attributeType="Decimal"/>
+        <attribute name="nettoIllesi" optional="YES" attributeType="Decimal"/>
+        <attribute name="vsu" optional="YES" attributeType="Decimal"/>
+        <attribute name="si" optional="YES" attributeType="Decimal"/>
+        <attribute name="indennizzabile" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
+        <attribute name="formula" optional="YES" attributeType="String"/>
+        <attribute name="ordine" optional="YES" attributeType="Integer 16" defaultValueString="0"/>
+        <attribute name="campiForzati" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromData" customClassName="NSSet"/>
+        <relationship name="bene" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Bene" inverseName="vociCosto" inverseEntity="Bene"/>
+    </entity>
+    <entity name="Coassicurazione" representedClassName="Coassicurazione" syncable="YES">
+        <attribute name="id" attributeType="UUID"/>
+        <attribute name="tipo" attributeType="String"/>
+        <attribute name="compagnia" attributeType="String"/>
+        <attribute name="polizza" attributeType="String"/>
+        <attribute name="numeroSinistro" attributeType="String"/>
+        <attribute name="ordine" optional="YES" attributeType="Integer 16" defaultValueString="0"/>
+        <relationship name="sinistro" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Sinistro" inverseName="coassicurazioni" inverseEntity="Sinistro"/>
+    </entity>
+    <entity name="SinistroEmailThread" representedClassName="SinistroEmailThread" syncable="YES">
+        <attribute name="id" attributeType="UUID"/>
+        <attribute name="dataCreazione" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="dataUltimaModifica" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="emailMessageIds" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromData" customClassName="NSArray"/>
+        <relationship name="sinistro" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Sinistro" inverseName="emailThreads" inverseEntity="Sinistro"/>
+    </entity>
+    <entity name="SinistroWhatsAppThread" representedClassName="SinistroWhatsAppThread" syncable="YES">
+        <attribute name="id" attributeType="UUID"/>
+        <attribute name="dataCreazione" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="dataUltimaModifica" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="whatsAppChatIds" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromData" customClassName="NSArray"/>
+        <relationship name="sinistro" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Sinistro" inverseName="whatsAppThreads" inverseEntity="Sinistro"/>
+    </entity>
+    <entity name="Tag" representedClassName="Tag" syncable="YES">
+        <attribute name="color" optional="YES" attributeType="String"/>
+        <attribute name="id" attributeType="UUID"/>
+        <attribute name="name" attributeType="String"/>
+        <attribute name="type" attributeType="Integer 16" defaultValueString="0"/>
+        <relationship name="emails" toMany="YES" deletionRule="No Action" destinationEntity="EmailMetadata" inverseName="tags" inverseEntity="EmailMetadata"/>
+        <relationship name="sinistri" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="Sinistro" inverseName="tags" inverseEntity="Sinistro"/>
+    </entity>
+    <entity name="PerxiaAnalisi" representedClassName="PerxiaAnalisi" syncable="YES">
+        <attribute name="id" attributeType="UUID"/>
+        <attribute name="dataAnalisi" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="relazioneComplessiva" optional="YES" attributeType="String"/>
+        <attribute name="systemPrompt" optional="YES" attributeType="String"/>
+        <attribute name="contextSummary" optional="YES" attributeType="String"/>
+        <relationship name="sinistro" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Sinistro" inverseName="perxiaAnalisi" inverseEntity="Sinistro"/>
+        <relationship name="beni" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="PerxiaBene" inverseName="analisi" inverseEntity="PerxiaBene"/>
+    </entity>
+    <entity name="PerxiaBene" representedClassName="PerxiaBene" syncable="YES">
+        <attribute name="id" attributeType="UUID"/>
+        <attribute name="tipologia" attributeType="String"/>
+        <attribute name="componenti" optional="YES" attributeType="String"/>
+        <attribute name="modello" optional="YES" attributeType="String"/>
+        <attribute name="anno" optional="YES" attributeType="String"/>
+        <attribute name="osservazioniVisive" optional="YES" attributeType="String"/>
+        <attribute name="valutazioneTest" optional="YES" attributeType="String"/>
+        <attribute name="compatibilitaGaranzia" optional="YES" attributeType="String"/>
+        <attribute name="stimaEconomica" optional="YES" attributeType="String"/>
+        <attribute name="noteAggiuntive" optional="YES" attributeType="String"/>
+        <attribute name="ordine" optional="YES" attributeType="Integer 16" defaultValueString="0"/>
+        <attribute name="certezzaTipologia" optional="YES" attributeType="Double" defaultValueString="0.0"/>
+        <attribute name="certezzaModello" optional="YES" attributeType="Double" defaultValueString="0.0"/>
+        <attribute name="certezzaAnno" optional="YES" attributeType="Double" defaultValueString="0.0"/>
+        <attribute name="certezzaOsservazioni" optional="YES" attributeType="Double" defaultValueString="0.0"/>
+        <attribute name="certezzaTest" optional="YES" attributeType="Double" defaultValueString="0.0"/>
+        <attribute name="certezzaCompatibilita" optional="YES" attributeType="Double" defaultValueString="0.0"/>
+        <attribute name="certezzaStima" optional="YES" attributeType="Double" defaultValueString="0.0"/>
+        <attribute name="fotoAssociate" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromData" customClassName="NSArray"/>
+        <attribute name="compatibilitaDanno" optional="YES" attributeType="String"/>
+        <attribute name="tipoBene" optional="YES" attributeType="String"/>
+        <relationship name="beneParent" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="PerxiaBene" inverseName="componentiDettaglio" inverseEntity="PerxiaBene"/>
+        <relationship name="componentiDettaglio" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="PerxiaBene" inverseName="beneParent" inverseEntity="PerxiaBene"/>
+        <relationship name="analisi" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="PerxiaAnalisi" inverseName="beni" inverseEntity="PerxiaAnalisi"/>
+    </entity>
+    <entity name="RelazioneTemplate" representedClassName="RelazioneTemplate" syncable="YES">
+        <attribute name="id" attributeType="UUID"/>
+        <attribute name="nome" attributeType="String"/>
+        <attribute name="contenuto" attributeType="String"/>
+        <attribute name="tipoSinistro" optional="YES" attributeType="String"/>
+        <attribute name="dataCreazione" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="attivo" optional="YES" attributeType="Boolean" usesScalarValueType="YES" defaultValueString="YES"/>
+        <attribute name="condSopralluogo" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
+        <attribute name="condFulminazione" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
+        <attribute name="condLiquidiamo" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
+    </entity>
+    <entity name="PerxiaFileAnalysis" representedClassName="PerxiaFileAnalysis" syncable="YES">
+        <attribute name="id" attributeType="UUID"/>
+        <attribute name="filePath" attributeType="String"/>
+        <attribute name="jsonAnalisi" attributeType="String"/>
+        <attribute name="tagSuggerito" optional="YES" attributeType="String"/>
+        <attribute name="daAllegare" optional="YES" attributeType="Boolean" usesScalarValueType="YES" defaultValueString="NO"/>
+        <relationship name="analisi" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="PerxiaAnalisi"/>
+    </entity>
+    <entity name="PerxiaAnalisiVersion" representedClassName="PerxiaAnalisiVersion" syncable="YES">
+        <attribute name="id" attributeType="UUID"/>
+        <attribute name="numeroVersione" attributeType="Integer 16"/>
+        <attribute name="dataCreazione" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="jsonDescrizioniCloud" optional="YES" attributeType="String"/>
+        <attribute name="outputPhi4" optional="YES" attributeType="String"/>
+        <attribute name="relazioneGenerata" optional="YES" attributeType="String"/>
+        <attribute name="modificheUtente" optional="YES" attributeType="String"/>
+        <relationship name="analisi" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="PerxiaAnalisi"/>
+    </entity>
+    <entity name="AIKnowledgeDocument" representedClassName="AIKnowledgeDocument" syncable="YES">
+        <attribute name="id" attributeType="UUID"/>
+        <attribute name="titolo" attributeType="String"/>
+        <attribute name="contenuto" attributeType="String"/>
+        <attribute name="categoria" attributeType="String"/>
+        <attribute name="ordine" attributeType="Integer 16" defaultValueString="0"/>
+        <attribute name="attivo" optional="YES" attributeType="Boolean" usesScalarValueType="YES" defaultValueString="YES"/>
+    </entity>
+    <entity name="TriggerState" representedClassName="TriggerState" syncable="YES">
+        <attribute name="id" attributeType="UUID"/>
+        <attribute name="triggerType" attributeType="String"/>
+        <attribute name="sinistroID" attributeType="String"/>
+        <attribute name="startDate" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="timeoutDays" optional="YES" attributeType="Integer 16"/>
+        <attribute name="isActive" attributeType="Boolean" usesScalarValueType="YES" defaultValueString="YES"/>
+        <attribute name="lastCheckDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="metadata" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromData" customClassName="NSDictionary"/>
+        <relationship name="sinistro" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Sinistro" inverseName="triggerStates" inverseEntity="Sinistro"/>
+    </entity>
+    <entity name="EmailQueueItem" representedClassName="EmailQueueItem" syncable="YES">
+        <attribute name="id" attributeType="UUID"/>
+        <attribute name="messageId" attributeType="String"/>
+        <attribute name="mailboxId" optional="YES" attributeType="String"/>
+        <attribute name="priority" attributeType="Integer 16" defaultValueString="50"/>
+        <attribute name="status" attributeType="String" defaultValueString="pending"/>
+        <attribute name="retryCount" attributeType="Integer 16" defaultValueString="0"/>
+        <attribute name="maxRetries" attributeType="Integer 16" defaultValueString="3"/>
+        <attribute name="createdAt" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="scheduledAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="startedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="completedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="lastError" optional="YES" attributeType="String"/>
+        <attribute name="emailCategory" optional="YES" attributeType="String"/>
+        <attribute name="emailSubject" optional="YES" attributeType="String"/>
+        <attribute name="emailSender" optional="YES" attributeType="String"/>
+        <attribute name="emailDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="sinistroReference" optional="YES" attributeType="String"/>
+    </entity>
+    <entity name="PeriziaVersion" representedClassName="PeriziaVersion" syncable="YES">
+        <attribute name="id" attributeType="UUID"/>
+        <attribute name="campo" attributeType="String"/>
+        <attribute name="contenuto" attributeType="String"/>
+        <attribute name="numeroVersione" attributeType="Integer 16"/>
+        <attribute name="dataCreazione" attributeType="Date" usesScalarValueType="NO"/>
+        <relationship name="perizia" optional="YES" maxCount="1" deletionRule="Cascade" destinationEntity="Perizia" inverseName="versioni" inverseEntity="Perizia"/>
+    </entity>
 </model>

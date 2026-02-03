@@ -1,0 +1,263 @@
+//
+//  SettingsView.swift
+//  PerX per iPad
+//
+//  Impostazioni app iPad: account, hub, sync, cache.
+//
+
+import SwiftUI
+
+struct SettingsView: View {
+    @EnvironmentObject var session: SessionCoordinator
+    @StateObject private var hubClient = HubAPIClient.shared
+    @State private var showingLogoutConfirm = false
+    @State private var hubURL = HubAPIClient.shared.hubBaseURL
+    @State private var isCheckingHub = false
+    @State private var hubCheckResult: String?
+    
+    var body: some View {
+        NavigationStack {
+            List {
+                // Account
+                Section("Account") {
+                    HStack {
+                        Image(systemName: "person.circle.fill")
+                            .font(.title)
+                            .foregroundColor(.accentColor)
+                        
+                        VStack(alignment: .leading) {
+                            Text(session.currentUserName ?? "Utente")
+                                .font(.headline)
+                            
+                            Text(session.currentUserEmail ?? "")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                    
+                    Button(role: .destructive) {
+                        showingLogoutConfirm = true
+                    } label: {
+                        Label("Disconnetti", systemImage: "rectangle.portrait.and.arrow.right")
+                    }
+                }
+                
+                // Hub Configuration
+                Section("Hub Server") {
+                    TextField("URL Hub (es: https://hub.example.com)", text: $hubURL)
+                        .textContentType(.URL)
+                        .keyboardType(.URL)
+                        .autocapitalization(.none)
+                        .autocorrectionDisabled()
+                        .onChange(of: hubURL) { newValue in
+                            hubClient.hubBaseURL = newValue
+                        }
+                    
+                    HStack {
+                        Circle()
+                            .fill(hubClient.isConnected ? Color.green : Color.red)
+                            .frame(width: 8, height: 8)
+                        
+                        Text(hubClient.isConnected ? "Connesso" : "Non connesso")
+                        
+                        Spacer()
+                        
+                        Button {
+                            Task { await checkHubConnection() }
+                        } label: {
+                            if isCheckingHub {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                            } else {
+                                Text("Testa")
+                            }
+                        }
+                        .disabled(hubURL.isEmpty || isCheckingHub)
+                    }
+                    
+                    if let result = hubCheckResult {
+                        Text(result)
+                            .font(.caption)
+                            .foregroundColor(hubClient.isConnected ? .green : .red)
+                    }
+                }
+                
+                // Sync Status
+                Section("Sincronizzazione") {
+                    HStack {
+                        Circle()
+                            .fill(session.cloudKitSyncService != nil ? Color.green : Color.red)
+                            .frame(width: 8, height: 8)
+                        
+                        Text("Dati")
+                        
+                        Spacer()
+                        
+                        Text(session.cloudKitSyncService?.dataSource.rawValue ?? "Non attivo")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    if let lastSync = session.cloudKitSyncService?.lastSyncAt {
+                        HStack {
+                            Text("Ultimo sync")
+                            Spacer()
+                            Text(lastSync, style: .relative)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    
+                    syncStatusRow(
+                        title: "Chat",
+                        isActive: session.chatService != nil,
+                        lastSync: nil
+                    )
+                    
+                    HStack {
+                        Circle()
+                            .fill(Color.green)
+                            .frame(width: 8, height: 8)
+                        
+                        Text("Outbox")
+                        
+                        Spacer()
+                        
+                        Text("\(session.outboxService.pendingRequests.count) in coda")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    Button {
+                        Task {
+                            await session.cloudKitSyncService?.syncNow()
+                            await session.chatService?.fetchRooms()
+                        }
+                    } label: {
+                        Label("Sincronizza ora", systemImage: "arrow.clockwise")
+                    }
+                }
+                
+                // Cache
+                Section("Cache") {
+                    cacheStatusRow
+                    
+                    Button(role: .destructive) {
+                        Task {
+                            await session.folderCacheService?.purgeExpiredFolders()
+                        }
+                    } label: {
+                        Label("Pulisci cache scadute", systemImage: "trash")
+                    }
+                }
+                
+                // Info
+                Section("Informazioni") {
+                    LabeledContent("Versione", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")
+                    LabeledContent("Build", value: Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1")
+                    LabeledContent("Piattaforma", value: "iPad")
+                }
+                
+                // Note
+                Section {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("Architettura Hub-first", systemImage: "server.rack")
+                            .font(.headline)
+                        
+                        Text("Questa versione iPad comunica con l'Hub centrale per email, WhatsApp e dati sinistri. L'Hub orchestra tutte le operazioni.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+            .navigationTitle("Impostazioni")
+            .confirmationDialog("Vuoi disconnetterti?", isPresented: $showingLogoutConfirm, titleVisibility: .visible) {
+                Button("Disconnetti", role: .destructive) {
+                    Task {
+                        await session.signOut()
+                    }
+                }
+                Button("Annulla", role: .cancel) {}
+            } message: {
+                Text("Tutti i dati locali verranno rimossi. Le cartelle scaricate non ancora scadute verranno eliminate.")
+            }
+        }
+    }
+    
+    private func checkHubConnection() async {
+        isCheckingHub = true
+        hubCheckResult = nil
+        
+        do {
+            let health = try await hubClient.checkHealth()
+            hubCheckResult = "✓ \(health.status) - v\(health.version)"
+        } catch {
+            hubCheckResult = "✗ \(error.localizedDescription)"
+        }
+        
+        isCheckingHub = false
+    }
+    
+    @ViewBuilder
+    private func syncStatusRow(title: String, isActive: Bool, lastSync: Date?) -> some View {
+        HStack {
+            Circle()
+                .fill(isActive ? Color.green : Color.red)
+                .frame(width: 8, height: 8)
+            
+            Text(title)
+            
+            Spacer()
+            
+            if isActive {
+                if let lastSync = lastSync {
+                    Text(lastSync, style: .relative)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                } else {
+                    Text("Attivo")
+                        .font(.caption)
+                        .foregroundColor(.green)
+                }
+            } else {
+                Text("Non attivo")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var cacheStatusRow: some View {
+        let cachedCount = session.folderCacheService?.cachedFolders.count ?? 0
+        let expiredCount = session.folderCacheService?.cachedFolders.values.filter { $0.isExpired }.count ?? 0
+        
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("Cartelle in cache")
+                Spacer()
+                Text("\(cachedCount)")
+                    .foregroundColor(.secondary)
+            }
+            
+            if expiredCount > 0 {
+                HStack {
+                    Text("Scadute")
+                    Spacer()
+                    Text("\(expiredCount)")
+                        .foregroundColor(.orange)
+                }
+                .font(.caption)
+            }
+        }
+    }
+}
+
+// MARK: - Preview
+
+#Preview {
+    SettingsView()
+        .environmentObject(SessionCoordinator.shared)
+}

@@ -21,17 +21,86 @@
 			remoteGlobalIDString = 780395542CE509530093FAB4;
 			remoteInfo = PerX;
 		};
+		78DB5B992F20BBDF006E08CB /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7803954D2CE509530093FAB4 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 78DB5B842F20BBDE006E08CB;
+			remoteInfo = "PerX Lite";
+		};
+		78DB5BA32F20BBDF006E08CB /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7803954D2CE509530093FAB4 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 78DB5B842F20BBDE006E08CB;
+			remoteInfo = "PerX Lite";
+		};
+		78EFBA382F318CEA00720EFF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7803954D2CE509530093FAB4 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 78EFBA232F318CE800720EFF;
+			remoteInfo = "PerX per iPad";
+		};
+		78EFBA422F318CEA00720EFF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7803954D2CE509530093FAB4 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 78EFBA232F318CE800720EFF;
+			remoteInfo = "PerX per iPad";
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		780395552CE509530093FAB4 /* PerX.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PerX.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7803956B2CE509550093FAB4 /* PerXTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PerXTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		780395752CE509550093FAB4 /* PerXUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PerXUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		78DB5B852F20BBDE006E08CB /* PerX Lite.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "PerX Lite.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		78DB5B982F20BBDF006E08CB /* PerX LiteTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "PerX LiteTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		78DB5BA22F20BBDF006E08CB /* PerX LiteUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "PerX LiteUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		78EFBA242F318CE800720EFF /* PerX per iPad.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "PerX per iPad.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		78EFBA372F318CEA00720EFF /* PerX per iPadTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "PerX per iPadTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		78EFBA412F318CEA00720EFF /* PerX per iPadUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "PerX per iPadUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		78DB5BAA2F20BBDF006E08CB /* Exceptions for "PerX Lite" folder in "PerX Lite" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 78DB5B842F20BBDE006E08CB /* PerX Lite */;
+		};
+		78EFBA4F2F318CEA00720EFF /* Exceptions for "PerX per iPad" folder in "PerX per iPad" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 78EFBA232F318CE800720EFF /* PerX per iPad */;
+		};
+		78EFBA722F318D7300720EFF /* Exceptions for "PerX" folder in "PerX Lite" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				PerX.xcdatamodeld,
+			);
+			target = 78DB5B842F20BBDE006E08CB /* PerX Lite */;
+		};
+		78EFBA732F318D7300720EFF /* Exceptions for "PerX" folder in "PerX per iPad" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				PerX.xcdatamodeld,
+			);
+			target = 78EFBA232F318CE800720EFF /* PerX per iPad */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		780395572CE509530093FAB4 /* PerX */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				78EFBA722F318D7300720EFF /* Exceptions for "PerX" folder in "PerX Lite" target */,
+				78EFBA732F318D7300720EFF /* Exceptions for "PerX" folder in "PerX per iPad" target */,
+			);
 			path = PerX;
 			sourceTree = "<group>";
 		};
@@ -43,6 +112,42 @@
 		780395782CE509550093FAB4 /* PerXUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = PerXUITests;
+			sourceTree = "<group>";
+		};
+		78DB5B862F20BBDE006E08CB /* PerX Lite */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				78DB5BAA2F20BBDF006E08CB /* Exceptions for "PerX Lite" folder in "PerX Lite" target */,
+			);
+			path = "PerX Lite";
+			sourceTree = "<group>";
+		};
+		78DB5B9B2F20BBDF006E08CB /* PerX LiteTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "PerX LiteTests";
+			sourceTree = "<group>";
+		};
+		78DB5BA52F20BBDF006E08CB /* PerX LiteUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "PerX LiteUITests";
+			sourceTree = "<group>";
+		};
+		78EFBA252F318CE900720EFF /* PerX per iPad */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				78EFBA4F2F318CEA00720EFF /* Exceptions for "PerX per iPad" folder in "PerX per iPad" target */,
+			);
+			path = "PerX per iPad";
+			sourceTree = "<group>";
+		};
+		78EFBA3A2F318CEA00720EFF /* PerX per iPadTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "PerX per iPadTests";
+			sourceTree = "<group>";
+		};
+		78EFBA442F318CEA00720EFF /* PerX per iPadUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "PerX per iPadUITests";
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -69,6 +174,48 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		78DB5B822F20BBDE006E08CB /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		78DB5B952F20BBDF006E08CB /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		78DB5B9F2F20BBDF006E08CB /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		78EFBA212F318CE800720EFF /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		78EFBA342F318CEA00720EFF /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		78EFBA3E2F318CEA00720EFF /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -78,6 +225,12 @@
 				780395572CE509530093FAB4 /* PerX */,
 				7803956E2CE509550093FAB4 /* PerXTests */,
 				780395782CE509550093FAB4 /* PerXUITests */,
+				78DB5B862F20BBDE006E08CB /* PerX Lite */,
+				78DB5B9B2F20BBDF006E08CB /* PerX LiteTests */,
+				78DB5BA52F20BBDF006E08CB /* PerX LiteUITests */,
+				78EFBA252F318CE900720EFF /* PerX per iPad */,
+				78EFBA3A2F318CEA00720EFF /* PerX per iPadTests */,
+				78EFBA442F318CEA00720EFF /* PerX per iPadUITests */,
 				780395562CE509530093FAB4 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -88,6 +241,12 @@
 				780395552CE509530093FAB4 /* PerX.app */,
 				7803956B2CE509550093FAB4 /* PerXTests.xctest */,
 				780395752CE509550093FAB4 /* PerXUITests.xctest */,
+				78DB5B852F20BBDE006E08CB /* PerX Lite.app */,
+				78DB5B982F20BBDF006E08CB /* PerX LiteTests.xctest */,
+				78DB5BA22F20BBDF006E08CB /* PerX LiteUITests.xctest */,
+				78EFBA242F318CE800720EFF /* PerX per iPad.app */,
+				78EFBA372F318CEA00720EFF /* PerX per iPadTests.xctest */,
+				78EFBA412F318CEA00720EFF /* PerX per iPadUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -163,6 +322,142 @@
 			productReference = 780395752CE509550093FAB4 /* PerXUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		78DB5B842F20BBDE006E08CB /* PerX Lite */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 78DB5BAB2F20BBDF006E08CB /* Build configuration list for PBXNativeTarget "PerX Lite" */;
+			buildPhases = (
+				78DB5B812F20BBDE006E08CB /* Sources */,
+				78DB5B822F20BBDE006E08CB /* Frameworks */,
+				78DB5B832F20BBDE006E08CB /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				78DB5B862F20BBDE006E08CB /* PerX Lite */,
+			);
+			name = "PerX Lite";
+			packageProductDependencies = (
+			);
+			productName = "PerX Lite";
+			productReference = 78DB5B852F20BBDE006E08CB /* PerX Lite.app */;
+			productType = "com.apple.product-type.application";
+		};
+		78DB5B972F20BBDF006E08CB /* PerX LiteTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 78DB5BAE2F20BBDF006E08CB /* Build configuration list for PBXNativeTarget "PerX LiteTests" */;
+			buildPhases = (
+				78DB5B942F20BBDF006E08CB /* Sources */,
+				78DB5B952F20BBDF006E08CB /* Frameworks */,
+				78DB5B962F20BBDF006E08CB /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				78DB5B9A2F20BBDF006E08CB /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				78DB5B9B2F20BBDF006E08CB /* PerX LiteTests */,
+			);
+			name = "PerX LiteTests";
+			packageProductDependencies = (
+			);
+			productName = "PerX LiteTests";
+			productReference = 78DB5B982F20BBDF006E08CB /* PerX LiteTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		78DB5BA12F20BBDF006E08CB /* PerX LiteUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 78DB5BB12F20BBDF006E08CB /* Build configuration list for PBXNativeTarget "PerX LiteUITests" */;
+			buildPhases = (
+				78DB5B9E2F20BBDF006E08CB /* Sources */,
+				78DB5B9F2F20BBDF006E08CB /* Frameworks */,
+				78DB5BA02F20BBDF006E08CB /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				78DB5BA42F20BBDF006E08CB /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				78DB5BA52F20BBDF006E08CB /* PerX LiteUITests */,
+			);
+			name = "PerX LiteUITests";
+			packageProductDependencies = (
+			);
+			productName = "PerX LiteUITests";
+			productReference = 78DB5BA22F20BBDF006E08CB /* PerX LiteUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		78EFBA232F318CE800720EFF /* PerX per iPad */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 78EFBA502F318CEA00720EFF /* Build configuration list for PBXNativeTarget "PerX per iPad" */;
+			buildPhases = (
+				78EFBA202F318CE800720EFF /* Sources */,
+				78EFBA212F318CE800720EFF /* Frameworks */,
+				78EFBA222F318CE800720EFF /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				78EFBA252F318CE900720EFF /* PerX per iPad */,
+			);
+			name = "PerX per iPad";
+			packageProductDependencies = (
+			);
+			productName = "PerX per iPad";
+			productReference = 78EFBA242F318CE800720EFF /* PerX per iPad.app */;
+			productType = "com.apple.product-type.application";
+		};
+		78EFBA362F318CEA00720EFF /* PerX per iPadTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 78EFBA512F318CEA00720EFF /* Build configuration list for PBXNativeTarget "PerX per iPadTests" */;
+			buildPhases = (
+				78EFBA332F318CEA00720EFF /* Sources */,
+				78EFBA342F318CEA00720EFF /* Frameworks */,
+				78EFBA352F318CEA00720EFF /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				78EFBA392F318CEA00720EFF /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				78EFBA3A2F318CEA00720EFF /* PerX per iPadTests */,
+			);
+			name = "PerX per iPadTests";
+			packageProductDependencies = (
+			);
+			productName = "PerX per iPadTests";
+			productReference = 78EFBA372F318CEA00720EFF /* PerX per iPadTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		78EFBA402F318CEA00720EFF /* PerX per iPadUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 78EFBA522F318CEA00720EFF /* Build configuration list for PBXNativeTarget "PerX per iPadUITests" */;
+			buildPhases = (
+				78EFBA3D2F318CEA00720EFF /* Sources */,
+				78EFBA3E2F318CEA00720EFF /* Frameworks */,
+				78EFBA3F2F318CEA00720EFF /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				78EFBA432F318CEA00720EFF /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				78EFBA442F318CEA00720EFF /* PerX per iPadUITests */,
+			);
+			name = "PerX per iPadUITests";
+			packageProductDependencies = (
+			);
+			productName = "PerX per iPadUITests";
+			productReference = 78EFBA412F318CEA00720EFF /* PerX per iPadUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -170,8 +465,8 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 1610;
-				LastUpgradeCheck = 1610;
+				LastSwiftUpdateCheck = 2620;
+				LastUpgradeCheck = 2620;
 				TargetAttributes = {
 					780395542CE509530093FAB4 = {
 						CreatedOnToolsVersion = 16.1;
@@ -184,17 +479,43 @@
 						CreatedOnToolsVersion = 16.1;
 						TestTargetID = 780395542CE509530093FAB4;
 					};
+					78DB5B842F20BBDE006E08CB = {
+						CreatedOnToolsVersion = 26.2;
+					};
+					78DB5B972F20BBDF006E08CB = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = 78DB5B842F20BBDE006E08CB;
+					};
+					78DB5BA12F20BBDF006E08CB = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = 78DB5B842F20BBDE006E08CB;
+					};
+					78EFBA232F318CE800720EFF = {
+						CreatedOnToolsVersion = 26.2;
+					};
+					78EFBA362F318CEA00720EFF = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = 78EFBA232F318CE800720EFF;
+					};
+					78EFBA402F318CEA00720EFF = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = 78EFBA232F318CE800720EFF;
+					};
 				};
 			};
 			buildConfigurationList = 780395502CE509530093FAB4 /* Build configuration list for PBXProject "PerX" */;
-			developmentRegion = en;
+			developmentRegion = it;
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
+				it,
 				Base,
 			);
 			mainGroup = 7803954C2CE509530093FAB4;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				78137BDC2CF10D57008FB369 /* XCRemoteSwiftPackageReference "GCDWebServer" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 780395562CE509530093FAB4 /* Products */;
 			projectDirPath = "";
@@ -203,6 +524,12 @@
 				780395542CE509530093FAB4 /* PerX */,
 				7803956A2CE509550093FAB4 /* PerXTests */,
 				780395742CE509550093FAB4 /* PerXUITests */,
+				78DB5B842F20BBDE006E08CB /* PerX Lite */,
+				78DB5B972F20BBDF006E08CB /* PerX LiteTests */,
+				78DB5BA12F20BBDF006E08CB /* PerX LiteUITests */,
+				78EFBA232F318CE800720EFF /* PerX per iPad */,
+				78EFBA362F318CEA00720EFF /* PerX per iPadTests */,
+				78EFBA402F318CEA00720EFF /* PerX per iPadUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -223,6 +550,48 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		780395732CE509550093FAB4 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		78DB5B832F20BBDE006E08CB /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		78DB5B962F20BBDF006E08CB /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		78DB5BA02F20BBDF006E08CB /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		78EFBA222F318CE800720EFF /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		78EFBA352F318CEA00720EFF /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		78EFBA3F2F318CEA00720EFF /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -253,6 +622,48 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		78DB5B812F20BBDE006E08CB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		78DB5B942F20BBDF006E08CB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		78DB5B9E2F20BBDF006E08CB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		78EFBA202F318CE800720EFF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		78EFBA332F318CEA00720EFF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		78EFBA3D2F318CEA00720EFF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -266,6 +677,26 @@
 			target = 780395542CE509530093FAB4 /* PerX */;
 			targetProxy = 780395762CE509550093FAB4 /* PBXContainerItemProxy */;
 		};
+		78DB5B9A2F20BBDF006E08CB /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 78DB5B842F20BBDE006E08CB /* PerX Lite */;
+			targetProxy = 78DB5B992F20BBDF006E08CB /* PBXContainerItemProxy */;
+		};
+		78DB5BA42F20BBDF006E08CB /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 78DB5B842F20BBDE006E08CB /* PerX Lite */;
+			targetProxy = 78DB5BA32F20BBDF006E08CB /* PBXContainerItemProxy */;
+		};
+		78EFBA392F318CEA00720EFF /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 78EFBA232F318CE800720EFF /* PerX per iPad */;
+			targetProxy = 78EFBA382F318CEA00720EFF /* PBXContainerItemProxy */;
+		};
+		78EFBA432F318CEA00720EFF /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 78EFBA232F318CE800720EFF /* PerX per iPad */;
+			targetProxy = 78EFBA422F318CEA00720EFF /* PBXContainerItemProxy */;
+		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
@@ -274,6 +705,7 @@
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
@@ -303,7 +735,9 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = G48384PHQK;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -327,6 +761,7 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -337,6 +772,7 @@
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
@@ -366,7 +802,9 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = G48384PHQK;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -383,6 +821,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 			};
 			name = Release;
@@ -392,25 +831,58 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = PerX/PerX.entitlements;
+				AUTOMATION_APPLE_EVENTS = YES;
+				CODE_SIGN_ENTITLEMENTS = "PerX/PerX-Debug.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 110;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"PerX/Preview Content\"";
 				DEVELOPMENT_TEAM = G48384PHQK;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_FILE_ACCESS_DOWNLOADS_FOLDER = readwrite;
+				ENABLE_FILE_ACCESS_MOVIES_FOLDER = readwrite;
+				ENABLE_FILE_ACCESS_MUSIC_FOLDER = readwrite;
+				ENABLE_FILE_ACCESS_PICTURE_FOLDER = readwrite;
 				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
+				ENABLE_RESOURCE_ACCESS_BLUETOOTH = NO;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = YES;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = YES;
+				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = YES;
+				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
+				ENABLE_RESOURCE_ACCESS_USB = NO;
+				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = PerX;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
+				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads = YES;
+				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoadsInLocalNetwork = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = it.pernozzoli.PerX;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = YES;
+				RUNTIME_EXCEPTION_ALLOW_JIT = YES;
+				RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY = YES;
+				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = YES;
+				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "2,7";
+				"com.apple.security.temporary-exception.child-process.path-in-bundle" = true;
 			};
 			name = Debug;
 		};
@@ -419,25 +891,58 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				AUTOMATION_APPLE_EVENTS = YES;
 				CODE_SIGN_ENTITLEMENTS = PerX/PerX.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 110;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"PerX/Preview Content\"";
 				DEVELOPMENT_TEAM = G48384PHQK;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_FILE_ACCESS_DOWNLOADS_FOLDER = readwrite;
+				ENABLE_FILE_ACCESS_MOVIES_FOLDER = readwrite;
+				ENABLE_FILE_ACCESS_MUSIC_FOLDER = readwrite;
+				ENABLE_FILE_ACCESS_PICTURE_FOLDER = readwrite;
 				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
+				ENABLE_RESOURCE_ACCESS_BLUETOOTH = NO;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = YES;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = YES;
+				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = YES;
+				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
+				ENABLE_RESOURCE_ACCESS_USB = NO;
+				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = PerX;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
+				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads = YES;
+				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoadsInLocalNetwork = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = it.pernozzoli.PerX;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = YES;
+				RUNTIME_EXCEPTION_ALLOW_JIT = YES;
+				RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY = YES;
+				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = YES;
+				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "2,7";
+				"com.apple.security.temporary-exception.child-process.path-in-bundle" = true;
 			};
 			name = Release;
 		};
@@ -447,7 +952,7 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = G48384PHQK;
+				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 15.1;
 				MARKETING_VERSION = 1.0;
@@ -465,7 +970,7 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = G48384PHQK;
+				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 15.1;
 				MARKETING_VERSION = 1.0;
@@ -482,7 +987,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = G48384PHQK;
+				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = it.pernozzoli.PerXUITests;
@@ -498,7 +1003,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = G48384PHQK;
+				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = it.pernozzoli.PerXUITests;
@@ -506,6 +1011,344 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TEST_TARGET_NAME = PerX;
+			};
+			name = Release;
+		};
+		78DB5BAC2F20BBDF006E08CB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "PerX Lite/PerX_Lite.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = G48384PHQK;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "PerX Lite/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "PerX Lite";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "it.pernozzoli.PerX-Lite";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		78DB5BAD2F20BBDF006E08CB /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "PerX Lite/PerX_Lite.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = G48384PHQK;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "PerX Lite/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "PerX Lite";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "it.pernozzoli.PerX-Lite";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		78DB5BAF2F20BBDF006E08CB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = G48384PHQK;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "it.pernozzoli.PerX-LiteTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PerX Lite.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/PerX Lite";
+			};
+			name = Debug;
+		};
+		78DB5BB02F20BBDF006E08CB /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = G48384PHQK;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "it.pernozzoli.PerX-LiteTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PerX Lite.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/PerX Lite";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		78DB5BB22F20BBDF006E08CB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = G48384PHQK;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "it.pernozzoli.PerX-LiteUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = "PerX Lite";
+			};
+			name = Debug;
+		};
+		78DB5BB32F20BBDF006E08CB /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = G48384PHQK;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "it.pernozzoli.PerX-LiteUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = "PerX Lite";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		78EFBA492F318CEA00720EFF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "PerX per iPad/PerX_per_iPad.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = G48384PHQK;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "PerX per iPad/Info.plist";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "it.pernozzoli.PerX-per-iPad";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		78EFBA4A2F318CEA00720EFF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "PerX per iPad/PerX_per_iPad.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = G48384PHQK;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "PerX per iPad/Info.plist";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "it.pernozzoli.PerX-per-iPad";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		78EFBA4B2F318CEA00720EFF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = G48384PHQK;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "it.pernozzoli.PerX-per-iPadTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PerX per iPad.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/PerX per iPad";
+			};
+			name = Debug;
+		};
+		78EFBA4C2F318CEA00720EFF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = G48384PHQK;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "it.pernozzoli.PerX-per-iPadTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PerX per iPad.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/PerX per iPad";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		78EFBA4D2F318CEA00720EFF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = G48384PHQK;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "it.pernozzoli.PerX-per-iPadUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = "PerX per iPad";
+			};
+			name = Debug;
+		};
+		78EFBA4E2F318CEA00720EFF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = G48384PHQK;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "it.pernozzoli.PerX-per-iPadUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = "PerX per iPad";
+				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
 		};
@@ -548,7 +1391,72 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		78DB5BAB2F20BBDF006E08CB /* Build configuration list for PBXNativeTarget "PerX Lite" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				78DB5BAC2F20BBDF006E08CB /* Debug */,
+				78DB5BAD2F20BBDF006E08CB /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		78DB5BAE2F20BBDF006E08CB /* Build configuration list for PBXNativeTarget "PerX LiteTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				78DB5BAF2F20BBDF006E08CB /* Debug */,
+				78DB5BB02F20BBDF006E08CB /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		78DB5BB12F20BBDF006E08CB /* Build configuration list for PBXNativeTarget "PerX LiteUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				78DB5BB22F20BBDF006E08CB /* Debug */,
+				78DB5BB32F20BBDF006E08CB /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		78EFBA502F318CEA00720EFF /* Build configuration list for PBXNativeTarget "PerX per iPad" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				78EFBA492F318CEA00720EFF /* Debug */,
+				78EFBA4A2F318CEA00720EFF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		78EFBA512F318CEA00720EFF /* Build configuration list for PBXNativeTarget "PerX per iPadTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				78EFBA4B2F318CEA00720EFF /* Debug */,
+				78EFBA4C2F318CEA00720EFF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		78EFBA522F318CEA00720EFF /* Build configuration list for PBXNativeTarget "PerX per iPadUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				78EFBA4D2F318CEA00720EFF /* Debug */,
+				78EFBA4E2F318CEA00720EFF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		78137BDC2CF10D57008FB369 /* XCRemoteSwiftPackageReference "GCDWebServer" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/swisspol/GCDWebServer";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 3.5.4;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
 	};
 	rootObject = 7803954D2CE509530093FAB4 /* Project object */;
 }

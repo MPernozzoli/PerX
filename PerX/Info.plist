@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Altri elementi esistenti -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsArbitraryLoads</key>
+        <true/>
+    </dict>
+
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>com.pernozzoli.perx</string>
+            </array>
+            <key>CFBundleURLName</key>
+            <string>it.pernozzoli.PerX</string>
+        </dict>
+    </array>
+    
+    <key>NSAppleEventsUsageDescription</key>
+    <string>L'app ha bisogno di accedere a Numbers per leggere i dati dai file Excel.</string>
+    
+    <key>NSAppleScriptEnabled</key>
+    <true/>
+    
+    <key>NSServices</key>
+    <array>
+        <dict>
+            <key>NSMenuItem</key>
+            <dict>
+                <key>default</key>
+                <string>PerX</string>
+            </dict>
+            <key>NSMessage</key>
+            <string>runWorkflowAsService</string>
+            <key>NSRequiredContext</key>
+            <dict>
+                <key>NSApplicationIdentifier</key>
+                <string>com.apple.iWork.Numbers</string>
+            </dict>
+            <key>NSSendTypes</key>
+            <array>
+                <string>public.data</string>
+            </array>
+        </dict>
+    </array>
+    
+    <key>GMSApiKey</key>
+    <string>AIzaSyCjIke3sCl8DZsOjToocpG8CZLkZG3GkBM</string>
+</dict>
+</plist> 
