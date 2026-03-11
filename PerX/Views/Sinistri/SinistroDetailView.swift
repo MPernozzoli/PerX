@@ -260,6 +260,16 @@ struct SinistroDetailView: View {
                 }
             }
             
+            // Auto-associa compagnia all'agenzia in rubrica se non abbinata
+            Task {
+                await CloudKitRubricaSyncService.shared.tryAutoAssociateCompagnia(
+                    codiceAgenzia: sinistro.codiceAgenzia,
+                    nomeAgenzia: sinistro.agenzia,
+                    nomeCompagnia: sinistro.nomeCompagnia,
+                    gruppo: sinistro.gruppo
+                )
+            }
+            
             // Trigger Hub sync per cartella (se in modalità Hub)
             if let riferimento = sinistro.riferimento,
                HubModeService.shared.fileMode == .hub {

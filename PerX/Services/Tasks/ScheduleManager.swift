@@ -217,7 +217,19 @@ class ScheduleManager: ObservableObject {
             }
         }
 
-        return scheduledTasks
+        // Deduplica: evita ScheduledTask duplicati (stessa task, stesso orario di inizio)
+        // Può capitare quando la riorganizzazione passa più volte sugli stessi slot.
+        var seenKeys = Set<String>()
+        let dedupedScheduledTasks = scheduledTasks.filter { scheduled in
+            let key = "\(scheduled.task.id.uuidString)_\(scheduled.scheduledStartTime.timeIntervalSince1970)"
+            if seenKeys.contains(key) {
+                return false
+            }
+            seenKeys.insert(key)
+            return true
+        }
+
+        return dedupedScheduledTasks
     }
 
     /// Riorganizza tutte le task quando cambiano gli orari lavorativi.

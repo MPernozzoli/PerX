@@ -22,37 +22,33 @@ struct PerXApp: App {
     var body: some Scene {
         WindowGroup {
             ZStack {
+                // ContentView solo quando autenticato (così non è in memoria sulla splash)
                 if authService.isAuthenticated {
                     ContentView()
                         .environment(\.managedObjectContext, persistenceController.container.viewContext)
                         .onAppear {
-                            // Inizializza il folder scanning dopo che l'app è completamente caricata
                             setupFolderScanning()
-                            // Inizializza l'invalidator della cache del fatturato
                             _ = FatturatoCacheInvalidator.shared
-                            
-                            // Controlla se mostrare l'onboarding o le novità
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                                // Onboarding disabilitato temporaneamente
-                                // if onboardingService.shouldShowOnboarding {
-                                //     showOnboarding = true
-                                // } else
                                 if whatsNewService.hasUnseenUpdates {
                                     showWhatsNew = true
                                 }
                             }
                         }
                         .background(WindowTitleHider())
-                } else {
-                    SplashScreenView()
-                        .environment(\.managedObjectContext, persistenceController.container.viewContext)
-                        .onAppear {
-                            // Inizializza il folder scanning anche nella splash screen
-                            setupFolderScanning()
-                            // Inizializza l'invalidator della cache del fatturato
-                            _ = FatturatoCacheInvalidator.shared
-                        }
                 }
+                
+                // Splash SEMPRE in albero così non viene mai distrutta e .task parte una sola volta
+                SplashScreenView()
+                    .environment(\.managedObjectContext, persistenceController.container.viewContext)
+                    .opacity(authService.isAuthenticated ? 0 : 1)
+                    .allowsHitTesting(!authService.isAuthenticated)
+                    .zIndex(authService.isAuthenticated ? 0 : 1)
+                    .onAppear {
+                        guard !authService.isAuthenticated else { return }
+                        setupFolderScanning()
+                        _ = FatturatoCacheInvalidator.shared
+                    }
                 
                 // Onboarding overlay (priorità più alta)
                 if showOnboarding {
@@ -73,8 +69,10 @@ struct PerXApp: App {
             }
             .onChange(of: authService.isAuthenticated) { newValue in
                 if !newValue {
-                    // Logout: ferma tutti i servizi
-                    handleLogout()
+                    // Logout: ferma tutti i servizi, ma SEMPRE fuori dal ciclo di rendering SwiftUI
+                    DispatchQueue.main.async {
+                        handleLogout()
+                    }
                 }
             }
         }

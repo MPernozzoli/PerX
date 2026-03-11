@@ -7,7 +7,7 @@ enum ComposeEmailMode {
     case reply(Email)
     case replyAll(Email)
     case forward(Email)
-    case new(to: String? = nil, subject: String? = nil)
+    case new(to: String? = nil, subject: String? = nil, cc: String? = nil)
 }
 
 struct ComposeEmailView: View {
@@ -541,13 +541,17 @@ struct ComposeEmailView: View {
                 emailBody = NSAttributedString(string: forwardedBody)
             }
             
-        case .new(let toAddress, let subjectText):
+        case .new(let toAddress, let subjectText, let ccAddress):
             if let toAddress = toAddress, !toAddress.isEmpty {
                 to = parseContacts(from: toAddress)
                 toText = toAddress
             } else {
                 to = []
                 toText = ""
+            }
+            if let ccAddress = ccAddress, !ccAddress.isEmpty {
+                cc = parseContacts(from: ccAddress)
+                ccText = ccAddress
             }
             subject = subjectText ?? ""
             let signature = signatureService.getActiveSignature()

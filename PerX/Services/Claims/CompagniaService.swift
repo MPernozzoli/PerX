@@ -324,50 +324,50 @@ enum Compagnia: String, CaseIterable, Codable {
 }
 
 extension GruppoAssicurativo {
-    /// Range per il calcolo della media liquidato (esclusi negativi) - usa il range della prima compagnia del gruppo
+    /// Range per il calcolo della media liquidato (esclusi negativi) - usa valori effettivi (override o default)
     var rangeLiquidatoMedio: (min: Double, max: Double) {
         if let primaCompagnia = compagnie.first {
-            return primaCompagnia.rangeLiquidatoMedio
+            return CompagniaSettingsService.shared.effectiveRangeLiquidatoMedio(primaCompagnia)
         }
         return (min: 1, max: 10000)
     }
     
-    /// Range per il calcolo della media PL (solo sinistri in PL) - usa il range della prima compagnia del gruppo
+    /// Range per il calcolo della media PL (solo sinistri in PL) - usa valori effettivi (override o default)
     var rangePL: (min: Double, max: Double) {
         if let primaCompagnia = compagnie.first {
-            return primaCompagnia.rangePL
+            return CompagniaSettingsService.shared.effectiveRangePL(primaCompagnia)
         }
         return (min: 1, max: 10000)
     }
     
-    /// Valore target per la media liquidato (sotto questo valore è ottimale) - usa il target della prima compagnia del gruppo
+    /// Valore target per la media liquidato - usa valori effettivi (override o default)
     var targetLiquidatoMedio: Double {
         if let primaCompagnia = compagnie.first {
-            return primaCompagnia.targetLiquidatoMedio
+            return CompagniaSettingsService.shared.effectiveTargetLiquidatoMedio(primaCompagnia)
         }
         return 1000
     }
     
-    /// Valore target per la percentuale di negative (sopra questo valore è ottimale) - usa il target della prima compagnia del gruppo
+    /// Valore target per la percentuale di negative - usa valori effettivi (override o default)
     var targetNegative: Double {
         if let primaCompagnia = compagnie.first {
-            return primaCompagnia.targetNegative
+            return CompagniaSettingsService.shared.effectiveTargetNegative(primaCompagnia)
         }
         return 10
     }
     
-    /// Valore target per il tempo medio di gestione in giorni - usa il target della prima compagnia del gruppo
+    /// Valore target per il tempo medio di gestione - usa valori effettivi (override o default)
     var targetTempoGestione: Double {
         if let primaCompagnia = compagnie.first {
-            return primaCompagnia.targetTempoGestione
+            return CompagniaSettingsService.shared.effectiveTargetTempoGestione(primaCompagnia)
         }
         return 20
     }
     
-    /// Valore target per la percentuale di concordate - usa il target della prima compagnia del gruppo
+    /// Valore target per la percentuale di concordate - usa valori effettivi (override o default)
     var targetConcordate: Double {
         if let primaCompagnia = compagnie.first {
-            return primaCompagnia.targetConcordate
+            return CompagniaSettingsService.shared.effectiveTargetConcordate(primaCompagnia)
         }
         return 85
     }
@@ -845,7 +845,7 @@ class CompagniaService {
     ///   - sinistro: Il sinistro da verificare
     /// - Returns: Array dei tipi di file richiesti
     func getFileRichiestiPerChiusura(compagnia: Compagnia, sinistro: Sinistro) -> [TipoFileCompagnia] {
-        var fileRichiesti = compagnia.fileObbligatoriChiusura
+        var fileRichiesti = CompagniaSettingsService.shared.effectiveFileObbligatoriChiusura(compagnia)
         
         // Per Zurich, aggiungi l'atto solo se il sinistro lo richiede
         if compagnia == .zurichItalia {
@@ -864,7 +864,7 @@ class CompagniaService {
     /// - Returns: true se l'atto è richiesto
     func isAttoRichiesto(compagnia: Compagnia, sinistro: Sinistro) -> Bool {
         // Se la compagnia richiede sempre l'atto, restituisci true
-        if compagnia.fileObbligatoriChiusura.contains(.atto) {
+        if CompagniaSettingsService.shared.effectiveFileObbligatoriChiusura(compagnia).contains(.atto) {
             return true
         }
         
@@ -929,7 +929,7 @@ class CompagniaService {
     /// - Returns: true se la fulminazione deve essere inclusa
     func shouldIncludeFulminazione(compagnia: Compagnia, sottotipo: String?) -> Bool {
         // Unipol allega sempre
-        if compagnia.sempreAllegaFulminazione {
+        if CompagniaSettingsService.shared.effectiveSempreAllegaFulminazione(compagnia) {
             return true
         }
         

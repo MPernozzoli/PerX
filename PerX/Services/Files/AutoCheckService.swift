@@ -320,41 +320,32 @@ class AutoCheckService {
         }
     }
     
-    // MARK: - Coordinamento con SyncAgent (cartella mancante)
+    // MARK: - Coordinamento con Hub (cartella mancante)
     
-    /// Se la cartella del sinistro non è disponibile localmente:
-    /// - se `ClaimSyncService` la sta scaricando, attende che compaia
-    /// - altrimenti richiede un download e attende la creazione
+    /// Se la cartella non è disponibile localmente, richiede download via Hub e attende.
     private func ensureSinistroFolderAvailable(sinistro: Sinistro, riferimento: String, timeout: TimeInterval = 120) async -> String? {
         if let existing = fileService.getSinistroPath(riferimento: riferimento) {
             return existing
-        }
-        if await MainActor.run(body: { HubConfigService.shared.fileManagementMode == .cloud }) {
-            return nil
         }
         let initialStatus = await ClaimSyncService.shared.status(for: sinistro)
         if initialStatus.isActive {
             print("[AutoCheck] ⏳ Cartella mancante ma sync in corso per \(riferimento), attendo...")
         } else {
-            print("[AutoCheck] 📥 Cartella mancante per \(riferimento), richiedo download al SyncAgent...")
+            print("[AutoCheck] 📥 Cartella mancante per \(riferimento), richiedo download via Hub...")
             await ClaimSyncService.shared.manualDownload(for: sinistro)
         }
-        
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             if let path = fileService.getSinistroPath(riferimento: riferimento) {
                 return path
             }
-            
             let status = await ClaimSyncService.shared.status(for: sinistro)
             if case .error(let message) = status {
-                print("[AutoCheck] ❌ SyncAgent errore per \(riferimento): \(message)")
+                print("[AutoCheck] ❌ Hub sync errore per \(riferimento): \(message)")
                 return nil
             }
-            
             try? await Task.sleep(nanoseconds: 400_000_000) // 0.4s
         }
-        
         print("[AutoCheck] ⚠️ Timeout attesa cartella per \(riferimento)")
         return fileService.getSinistroPath(riferimento: riferimento)
     }

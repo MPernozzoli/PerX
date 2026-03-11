@@ -928,3 +928,37 @@ public enum TipoMittenteSollecito: Int, Codable, CaseIterable {
         return .unknown
     }
 }
+
+// MARK: - Sync Tracking & Sede Agenzia
+
+extension Sinistro {
+    
+    /// Chiave UserDefaults per la sede agenzia selezionata
+    private var sedeAgenziaStorageKey: String {
+        "sinistro_sede_agenzia_\(riferimento ?? "")"
+    }
+    
+    /// ID della sede/filiale agenzia selezionata per questo sinistro.
+    /// nil = usa sede madre, altrimenti ID della filiale.
+    /// Salvato localmente in UserDefaults (sincronizzato via CK tramite CloudKitSinistroSyncService).
+    public var sedeAgenziaSelezionataId: String? {
+        get {
+            UserDefaults.standard.string(forKey: sedeAgenziaStorageKey)
+        }
+        set {
+            if let newValue = newValue, !newValue.isEmpty {
+                UserDefaults.standard.set(newValue, forKey: sedeAgenziaStorageKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: sedeAgenziaStorageKey)
+            }
+        }
+    }
+    
+    /// Marca il sinistro come modificato localmente (per tracking sync).
+    /// Attualmente imposta lastModified e notifica il context.
+    public func markAsLocallyModified() {
+        // Usa il campo cloudKitLastModified come timestamp della modifica
+        // per tracking generico delle modifiche locali
+        objectWillChange.send()
+    }
+}

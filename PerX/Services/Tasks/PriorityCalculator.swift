@@ -14,6 +14,7 @@ struct PriorityBreakdown {
     let sollecitiInviatiCount: Int          // Numero solleciti inviati
     let backlogComponent: Double       // Boost anni precedenti (0-0.8)
     let statoComponent: Double         // Impatto stato (-0.5 to +0.5)
+    let agenziaPrioritariaComponent: Double // Boost agenzia prioritaria in rubrica (0 o 0.3)
     let totalCalculated: Double        // Totale calcolato
     let isManual: Bool                 // Se priorità è manuale
     let manualValue: Double?           // Valore manuale (se presente)
@@ -66,6 +67,9 @@ struct PriorityBreakdown {
         if statoComponent != 0 {
             let sign = statoComponent > 0 ? "+" : ""
             lines.append("Stato: \(sign)\(formatValue(statoComponent))")
+        }
+        if agenziaPrioritariaComponent > 0 {
+            lines.append("Agenzia prioritaria: \(formatValue(agenziaPrioritariaComponent))")
         }
         
         lines.append("─────────────")
@@ -139,6 +143,9 @@ class PriorityCalculator {
         // 8. IMPATTO STATO (Incrementi per stati azionabili, decrementi per stati in attesa)
         let stateImpact = calculateStateImpact(for: sinistro, now: now, calendar: calendar)
         
+        // 9. BOOST AGENZIA PRIORITARIA (0.3 se in rubrica l'agenzia ha flag prioritaria)
+        let agenziaPrioritariaBoost = calculateAgenziaPrioritariaBoost(for: sinistro)
+        
         // GRACE PERIOD: Se nei primi 7 giorni e senza solleciti ricevuti, 
         // disattiviamo i boost di pressione (obiettivo e accelerazione)
         if daysPassed < 7 && receivedReminderCount == 0 {
@@ -146,8 +153,8 @@ class PriorityCalculator {
             accelerationBoost = 0.0
         }
         
-        // Somma totale (incluso debuff solleciti inviati)
-        var totalPriority = timePriority + goalBoost + accelerationBoost + complexityPriority + receivedReminderBoost + sentReminderDebuff + backlogBoost + stateImpact
+        // Somma totale (incluso debuff solleciti inviati e boost agenzia prioritaria)
+        var totalPriority = timePriority + goalBoost + accelerationBoost + complexityPriority + receivedReminderBoost + sentReminderDebuff + backlogBoost + stateImpact + agenziaPrioritariaBoost
         
         // Cap a "Bassa" (< 0.25) se siamo nel grace period e non ci sono solleciti ricevuti
         // NOTA: il backlogBoost, complexityPriority e stateImpact possono forzare l'uscita dal grace period 
@@ -195,6 +202,7 @@ class PriorityCalculator {
         let sentReminderDebuff = calculateSentReminderDebuff(sinistro: sinistro, now: now, calendar: calendar)
         let backlogBoost = calculateBacklogBoost(for: sinistro)
         let stateImpact = calculateStateImpact(for: sinistro, now: now, calendar: calendar)
+        let agenziaPrioritariaBoost = calculateAgenziaPrioritariaBoost(for: sinistro)
         
         // Grace period
         if daysPassed < 7 && receivedReminderCount == 0 {
@@ -202,7 +210,7 @@ class PriorityCalculator {
             accelerationBoost = 0.0
         }
         
-        var totalPriority = timePriority + goalBoost + accelerationBoost + complexityPriority + receivedReminderBoost + sentReminderDebuff + backlogBoost + stateImpact
+        var totalPriority = timePriority + goalBoost + accelerationBoost + complexityPriority + receivedReminderBoost + sentReminderDebuff + backlogBoost + stateImpact + agenziaPrioritariaBoost
         
         // Cap grace period
         if daysPassed < 7 && receivedReminderCount == 0 && backlogBoost == 0 && complexityPriority < 0.2 && stateImpact <= 0 {
@@ -284,14 +292,17 @@ class PriorityCalculator {
         // 8. IMPATTO STATO
         let stateImpact = calculateStateImpact(for: sinistro, now: now, calendar: calendar)
         
+        // 9. BOOST AGENZIA PRIORITARIA
+        let agenziaPrioritariaBoost = calculateAgenziaPrioritariaBoost(for: sinistro)
+        
         // GRACE PERIOD
         if daysPassed < 7 && receivedReminderCount == 0 {
             goalBoost = 0.0
             accelerationBoost = 0.0
         }
         
-        // Somma totale (incluso debuff solleciti inviati)
-        var totalPriority = timePriority + goalBoost + accelerationBoost + complexityPriority + receivedReminderBoost + sentReminderDebuff + backlogBoost + stateImpact
+        // Somma totale (incluso debuff solleciti inviati e boost agenzia prioritaria)
+        var totalPriority = timePriority + goalBoost + accelerationBoost + complexityPriority + receivedReminderBoost + sentReminderDebuff + backlogBoost + stateImpact + agenziaPrioritariaBoost
         
         // Cap grace period
         if daysPassed < 7 && receivedReminderCount == 0 && backlogBoost == 0 && complexityPriority < 0.2 && stateImpact <= 0 {
@@ -319,6 +330,7 @@ class PriorityCalculator {
             sollecitiInviatiCount: Int(sinistro.sollecitiInviatiCount),
             backlogComponent: backlogBoost,
             statoComponent: stateImpact,
+            agenziaPrioritariaComponent: agenziaPrioritariaBoost,
             totalCalculated: min(1.0, totalPriority),
             isManual: isManual,
             manualValue: manualValue
@@ -620,5 +632,15 @@ class PriorityCalculator {
     /// Conta i solleciti RICEVUTI dal sinistro (usa campo consolidato sul modello)
     private func countReceivedReminders(in sinistro: Sinistro) -> Int {
         return Int(sinistro.sollecitiRicevutiCount)
+    }
+    
+    /// Boost +0.3 se l'agenzia del sinistro è in rubrica con flag prioritaria
+    private func calculateAgenziaPrioritariaBoost(for sinistro: Sinistro) -> Double {
+        let rubrica = CloudKitRubricaSyncService.shared
+        guard let agenzia = rubrica.findAgenziaByMatch(codice: sinistro.codiceAgenzia, nome: sinistro.agenzia)
+            ?? (sinistro.codiceAgenzia.flatMap { rubrica.findAgenziaByCodice($0) }) else {
+            return 0.0
+        }
+        return agenzia.prioritaria ? 0.3 : 0.0
     }
 }

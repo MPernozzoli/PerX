@@ -369,7 +369,7 @@ struct ImportiSectionView: View {
         
         // Il valore di oltreDieciBeni è già legato al toggle via binding
         
-        sinistro.cloudKitLastModified = Date()
+        sinistro.markAsLocallyModified()
         try? viewContext.save()
     }
 }
@@ -416,7 +416,7 @@ struct DefinizioneOverrideView: View {
                 Button("Salva") {
                     sinistro.definizione = definizione.isEmpty ? nil : definizione
                     sinistro.definizioneManuale = true
-                    sinistro.cloudKitLastModified = Date()
+                    sinistro.markAsLocallyModified()
                     try? viewContext.save()
                     dismiss()
                 }

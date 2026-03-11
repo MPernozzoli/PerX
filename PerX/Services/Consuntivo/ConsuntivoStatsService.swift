@@ -287,13 +287,18 @@ class ConsuntivoStatsService {
                     gruppo: claims.first?.gruppo,
                     compagnia: claims.first?.nomeCompagnia
                 )
-                rangeLiquidato = compagnia.rangeLiquidatoMedio
-                rangePL = compagnia.rangePL
+                rangeLiquidato = CompagniaSettingsService.shared.effectiveRangeLiquidatoMedio(compagnia)
+                rangePL = CompagniaSettingsService.shared.effectiveRangePL(compagnia)
             } else {
-                // Raggruppato per gruppo
+                // Raggruppato per gruppo (usa effective della prima compagnia)
                 let gruppo = GruppoAssicurativo.from(nomeGruppo: claims.first?.gruppo)
-                rangeLiquidato = gruppo.rangeLiquidatoMedio
-                rangePL = gruppo.rangePL
+                if let prima = gruppo.compagnie.first {
+                    rangeLiquidato = CompagniaSettingsService.shared.effectiveRangeLiquidatoMedio(prima)
+                    rangePL = CompagniaSettingsService.shared.effectiveRangePL(prima)
+                } else {
+                    rangeLiquidato = gruppo.rangeLiquidatoMedio
+                    rangePL = gruppo.rangePL
+                }
             }
             
             // Sinistri in PL

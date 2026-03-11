@@ -5,6 +5,9 @@ struct MailboxCustomization: Codable, Identifiable {
     /// Corrisponde all'ID dell'etichetta di Gmail.
     var id: String
     
+    /// Nome personalizzato per la casella (se diverso dal default).
+    var customName: String?
+    
     /// Il nome dell'icona SF Symbol da visualizzare.
     var iconName: String
     

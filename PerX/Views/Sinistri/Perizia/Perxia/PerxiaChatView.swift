@@ -1,5 +1,7 @@
 import SwiftUI
+#if os(macOS)
 import AppKit
+#endif
 
 struct PerxiaStructuredBene: Identifiable {
     let id = UUID()

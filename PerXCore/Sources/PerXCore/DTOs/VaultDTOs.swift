@@ -352,6 +352,9 @@ public struct HubStatsResponse: Codable, Sendable {
     public let jobs: JobStats
     public let emails: EmailStats
     public let attachments: AttachmentStats
+    public let whatsapp: WhatsAppStats?
+    public let sync: SyncStats?
+    public let chromeExt: ChromeExtStats?
     public let sinistri: Int
     public let uptime: TimeInterval
     public let connectedUsers: Int
@@ -360,6 +363,9 @@ public struct HubStatsResponse: Codable, Sendable {
         jobs: JobStats,
         emails: EmailStats,
         attachments: AttachmentStats,
+        whatsapp: WhatsAppStats? = nil,
+        sync: SyncStats? = nil,
+        chromeExt: ChromeExtStats? = nil,
         sinistri: Int,
         uptime: TimeInterval,
         connectedUsers: Int = 0
@@ -367,6 +373,9 @@ public struct HubStatsResponse: Codable, Sendable {
         self.jobs = jobs
         self.emails = emails
         self.attachments = attachments
+        self.whatsapp = whatsapp
+        self.sync = sync
+        self.chromeExt = chromeExt
         self.sinistri = sinistri
         self.uptime = uptime
         self.connectedUsers = connectedUsers
@@ -399,6 +408,42 @@ public struct HubStatsResponse: Codable, Sendable {
         public init(pending: Int, processing: Int) {
             self.pending = pending
             self.processing = processing
+        }
+    }
+    
+    public struct WhatsAppStats: Codable, Sendable {
+        public let totalMessages: Int
+        public let todayMessages: Int
+        public let unreadChats: Int
+        public let scheduledPending: Int
+        
+        public init(totalMessages: Int, todayMessages: Int, unreadChats: Int, scheduledPending: Int) {
+            self.totalMessages = totalMessages
+            self.todayMessages = todayMessages
+            self.unreadChats = unreadChats
+            self.scheduledPending = scheduledPending
+        }
+    }
+    
+    public struct SyncStats: Codable, Sendable {
+        public let activeFolders: Int
+        public let pendingSyncs: Int
+        public let lastSyncAt: Date?
+        
+        public init(activeFolders: Int, pendingSyncs: Int, lastSyncAt: Date?) {
+            self.activeFolders = activeFolders
+            self.pendingSyncs = pendingSyncs
+            self.lastSyncAt = lastSyncAt
+        }
+    }
+    
+    public struct ChromeExtStats: Codable, Sendable {
+        public let todayDiarioEntries: Int
+        public let todayJFishSyncs: Int
+        
+        public init(todayDiarioEntries: Int, todayJFishSyncs: Int) {
+            self.todayDiarioEntries = todayDiarioEntries
+            self.todayJFishSyncs = todayJFishSyncs
         }
     }
 }

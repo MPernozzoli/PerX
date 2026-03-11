@@ -3,11 +3,11 @@ import CoreData
 
 struct SettingsView: View {
     @Environment(\.managedObjectContext) private var viewContext
-    @State private var selectedSection: SettingsSection = .files
+    @State private var selectedSection: SettingsSection = .sinistri
     @AppStorage("useSingleDirectory") private var useSingleDirectory = false
     @AppStorage("activeDirectory") private var activeDirectory = ""
     @AppStorage("closedDirectory") private var closedDirectory = ""
-    @StateObject private var authService = GoogleAuthService()
+    @ObservedObject private var authService = GoogleAuthService.shared
     @StateObject private var whatsNewService = WhatsNewService.shared
     @StateObject private var onboardingService = OnboardingService.shared
     @State private var showWhatsNew = false
@@ -15,8 +15,8 @@ struct SettingsView: View {
     
     enum SettingsSection: String, CaseIterable {
         case account = "Account e Mail"
-        case files = "File e Cartelle"
-        case claims = "Gestione Sinistri"
+        case sinistri = "Sinistri"
+        case compagnie = "Compagnie"
         case billing = "Fatturazione"
         case ai = "Intelligenza Artificiale"
         case sync = "Sincronizzazione"
@@ -47,11 +47,11 @@ struct SettingsView: View {
                     case .account:
                         AccountSettingsView()
                         
-                    case .files:
-                        FileSettingsView()
+                    case .sinistri:
+                        SinistriSettingsView()
                         
-                    case .claims:
-                        ClaimsSettingsView()
+                    case .compagnie:
+                        CompagnieSettingsView()
                         
                     case .billing:
                         CompensationSettingsView()
@@ -63,8 +63,6 @@ struct SettingsView: View {
                         VStack(spacing: 20) {
                             HubSettingsView()
                             CloudSettingsView()
-                            SyncAgentSettingsView()
-                            WhatsAppBridgeSettingsView()
                         }
                         
                     case .info:

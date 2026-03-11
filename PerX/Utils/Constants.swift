@@ -113,6 +113,9 @@ enum NotificationNames {
     /// Emessa quando CloudKit aggiorna UserDefaults (per ricaricare manager in memoria)
     static let cloudKitSettingsUpdated = Notification.Name("cloudKitSettingsUpdated")
     
+    /// Emessa quando CloudKit aggiorna Shared UserDefaults (es. compagnie, impostazioni comuni)
+    static let cloudKitSharedSettingsUpdated = Notification.Name("cloudKitSharedSettingsUpdated")
+    
     /// Emessa quando un sinistro viene reclamato da un altro utente
     static let sinistroReclaimed = Notification.Name("sinistroReclaimed")
 }

@@ -183,7 +183,7 @@ class MailViewModel: ObservableObject {
         }
         
         isMonitoringActive = true
-        print("[ViewModel] 🚀 Avvio monitoring persistente delle email")
+        print("[ViewModel] 🚀 Avvio monitoring email via Hub")
         
         // Task.detached con delay per evitare modifiche @Published durante il rendering delle view
         Task.detached { [weak self] in
@@ -192,49 +192,35 @@ class MailViewModel: ObservableObject {
             // Delay iniziale per evitare loop di pubblicazione durante l'avvio
             try? await Task.sleep(nanoseconds: 500_000_000) // 500ms
             
+            // Verifica connessione Hub
+            await HubModeService.shared.checkHubConnection()
+            
+            let hubConnected = await MainActor.run { HubModeService.shared.hubConnected }
+            guard hubConnected else {
+                await MainActor.run {
+                    self.errorMessage = "Hub non connesso - email non disponibili"
+                }
+                print("[ViewModel] ❌ Hub non connesso, monitoring non avviato")
+                return
+            }
+            
+            // Recupera email utente
+            guard let userEmail = await MainActor.run(body: { self.authService.userEmail }) else {
+                print("[ViewModel] ⚠️ Utente non autenticato")
+                return
+            }
+            
+            // Sync iniziale da Hub
+            print("[ViewModel] 📥 Sincronizzazione iniziale email da Hub...")
+            await self.fetchEmailsFromHub(prioritize: nil)
+            
+            // Avvia polling Hub (ogni 60 secondi)
+            print("[ViewModel] 🔄 Avvio polling Hub (ogni 60s)...")
             await MainActor.run {
-            // EmailRepository carica automaticamente dalla cache all'inizializzazione
-                self.syncEmailsFromRepository()
-                self.updateDisplayableMailboxes()
+                self.emailAdapter.startPolling(userEmail: userEmail, interval: 60)
             }
             
-            let stats = await MainActor.run { self.emailRepository.getStats() }
-            if stats.totalEmails > 0 {
-                print("[ViewModel] ✅ Caricate \(stats.mailboxes) caselle (\(stats.totalEmails) email) dalla cache")
-                } else {
-                    print("[ViewModel] ℹ️ Nessuna email in cache")
-            }
-            
-            // Scarica solo le etichette (veloce)
-            print("[ViewModel] 📥 Scaricamento etichette Gmail...")
-            await self.fetchLabels()
-            
-            // Aggiorna le caselle visualizzabili dopo aver caricato le etichette
-            await MainActor.run {
-                self.updateDisplayableMailboxes()
-                print("[ViewModel] ✅ Caselle disponibili: \(self.displayableMailboxes.count)")
-            }
-            
-            // Controlla e scarica solo le nuove email degli ultimi 7 giorni
-            print("[ViewModel] 🔍 Controllo nuove email (ultimi 7 giorni)...")
-            await self.checkForNewEmailsOnly()
-            
-            // Avvia il controllo periodico per nuove email (ogni 10 minuti per ridurre rate limiting)
-            print("[ViewModel] 🔄 Avvio controllo periodico email (ogni 10 minuti)...")
-            await MailManager.shared.startMonitoring(interval: 600) // 10 minuti (aumentato per ridurre rate limiting)
-            
-            // Avvia la coda di processamento se ci sono email pending
-            // (con delay per evitare sovraccarico all'avvio)
-            if await EmailQueueService.shared.queueStats.pending > 0 {
-                print("[ViewModel] 🚀 Avvio processamento coda email...")
-                try? await Task.sleep(nanoseconds: 5_000_000_000) // 5s dopo l'avvio
-                await EmailQueueService.shared.startProcessing()
-            }
-            
-            // Pre-costruisci l'indice sinistri chiusi per ottimizzazione skip
-            await ClosedSinistroEmailIndex.shared.rebuildIndex()
-            
-            print("[ViewModel] ✅ Monitoring completamente avviato")
+            print("[ViewModel] ✅ Monitoring Hub completamente avviato")
         }
     }
     
@@ -242,8 +228,7 @@ class MailViewModel: ObservableObject {
     func stopMonitoring() {
         guard isMonitoringActive else { return }
         isMonitoringActive = false
-        MailManager.shared.stopMonitoring()
-        EmailQueueService.shared.stopProcessing()
+        emailAdapter.stopPolling()
         print("[ViewModel] 🛑 Monitoring email fermato")
     }
     
@@ -668,69 +653,8 @@ class MailViewModel: ObservableObject {
         // Se c'è già una sincronizzazione in corso, non avviarne un'altra
         guard !isDownloading else { return }
         
-        // HUB MODE: usa EmailAdapter se attivo
-        if hubMode.shouldUseHub(for: .email) {
-            await fetchEmailsFromHub(prioritize: mailboxId)
-            return
-        }
-        
-        syncTask = Task {
-            isLoading = true
-            isDownloading = true
-            downloadProgress = 0.0
-            errorMessage = nil
-            
-            // Mappa "PRINCIPALE" su "INBOX" per la priorità di scaricamento
-            let prioritizedId = (mailboxId == "PRINCIPALE") ? "INBOX" : mailboxId
-            
-            // Esegui con priorità bassa usando yield per permettere all'app di respirare
-            await Task.yield()
-            
-            // Fase 1: Scarica i metadati di tutte le email (spostato su MailManager)
-            await mailManager.fetchAndProcessEmailsForLabels(labels: labels, prioritizeMailboxId: prioritizedId) { [weak self] status, progress in
-                guard let self else { return }
-                self.downloadStatus = status
-                self.downloadProgress = progress
-            }
-            
-            if Task.isCancelled {
-                await MainActor.run {
-                    self.isDownloading = false
-                    self.isLoading = false
-                    self.downloadStatus = "Sincronizzazione interrotta"
-                }
-                return
-            }
-            
-            // Pausa per permettere all'app di processare altre operazioni
-            try? await Task.sleep(nanoseconds: 500_000_000) // 500ms
-            
-            if Task.isCancelled {
-                await MainActor.run {
-                    self.isDownloading = false
-                    self.isLoading = false
-                }
-                return
-            }
-            
-            // Fase 2: Crea la coda di download cronologica
-            let allEmails = emailRepository.getAllEmails()
-            let undownloadedEmails = allEmails.filter { !($0.isDownloaded ?? false) }
-                .sorted { $0.date > $1.date } // Ordinamento cronologico
-            
-            let idsToDownload = undownloadedEmails.map { $0.id }
-            if !idsToDownload.isEmpty {
-                print("[ViewModel] \(idsToDownload.count) email da scaricare - gestite automaticamente da MailManager")
-                // MailManager gestisce automaticamente il download delle email
-            }
-            
-            isLoading = false
-            isDownloading = false
-            downloadProgress = 1.0
-            syncTask = nil
-        }
-        
-        await syncTask?.value
+        // TUTTO passa dall'Hub - nessun fallback locale
+        await fetchEmailsFromHub(prioritize: mailboxId)
     }
     
     /// Interrompe la sincronizzazione in corso
@@ -761,8 +685,14 @@ class MailViewModel: ObservableObject {
                 throw NSError(domain: "MailViewModel", code: -1, userInfo: [NSLocalizedDescriptionKey: "Utente non autenticato"])
             }
             
+            downloadStatus = "Scaricamento caselle da Hub..."
+            downloadProgress = 0.2
+            
+            // Recupera mailbox disponibili dall'Hub
+            let hubMailboxes = try await emailAdapter.getMailboxes(userEmail: userEmail)
+            
             downloadStatus = "Scaricamento email da Hub..."
-            downloadProgress = 0.3
+            downloadProgress = 0.4
             
             let emailItems = try await emailAdapter.getEmails(userEmail: userEmail, limit: 500)
             
@@ -778,7 +708,7 @@ class MailViewModel: ObservableObject {
                 
                 let email = Email(
                     id: item.id,
-                    isRead: true, // Da Hub consideriamo lette
+                    isRead: item.isRead,
                     isDownloaded: true,
                     sender: sender,
                     recipients: [],
@@ -792,8 +722,8 @@ class MailViewModel: ObservableObject {
                     associationStatus: nil
                 )
                 
-                // Raggruppa per categoria (direction: in/out)
-                let mailboxKey = item.direction == "out" ? "SENT" : "INBOX"
+                // Raggruppa per mailbox (usa quella dall'Hub o default)
+                let mailboxKey = item.mailbox ?? (item.direction == "OUT" ? "SENT" : "INBOX")
                 if newEmailsByMailbox[mailboxKey] == nil {
                     newEmailsByMailbox[mailboxKey] = []
                 }
@@ -802,11 +732,14 @@ class MailViewModel: ObservableObject {
             
             // Aggiorna lo stato
             emailsByMailbox = newEmailsByMailbox
-            updateDisplayableMailboxes()
+            
+            // Aggiorna displayableMailboxes dalle mailbox Hub
+            updateDisplayableMailboxesFromHub(hubMailboxes)
             
             downloadProgress = 1.0
             downloadStatus = "Sincronizzazione completata"
-            print("[MailViewModel] ✅ Caricate \(emailItems.count) email da Hub")
+            lastSyncDate = Date()
+            print("[MailViewModel] ✅ Caricate \(emailItems.count) email e \(hubMailboxes.count) caselle da Hub")
             
         } catch {
             print("[MailViewModel] ❌ Errore Hub: \(error)")
@@ -816,6 +749,49 @@ class MailViewModel: ObservableObject {
         
         isLoading = false
         isDownloading = false
+    }
+    
+    /// Aggiorna displayableMailboxes dalle mailbox ricevute dall'Hub
+    private func updateDisplayableMailboxesFromHub(_ mailboxes: [MailboxDTO]) {
+        var newDisplayable: [DisplayableMailbox] = []
+        
+        for mailbox in mailboxes {
+            let custom = customizations[mailbox.id]
+            let displayable = DisplayableMailbox(
+                id: mailbox.id,
+                name: custom?.customName ?? mailbox.name,
+                iconName: custom?.iconName ?? iconForMailbox(mailbox.id),
+                isVisible: custom?.isVisible ?? true,
+                unreadCount: mailbox.unreadCount,
+                showUnreadCount: custom?.showUnreadCount ?? true
+            )
+            newDisplayable.append(displayable)
+        }
+        
+        // Ordina: INBOX prima, poi SENT, poi altri alfabeticamente
+        newDisplayable.sort { a, b in
+            if a.id == "INBOX" { return true }
+            if b.id == "INBOX" { return false }
+            if a.id == "SENT" { return true }
+            if b.id == "SENT" { return false }
+            return a.name < b.name
+        }
+        
+        displayableMailboxes = newDisplayable
+    }
+    
+    /// Icona default per mailbox
+    private func iconForMailbox(_ mailboxId: String) -> String {
+        switch mailboxId.uppercased() {
+        case "INBOX": return "tray.fill"
+        case "SENT": return "paperplane.fill"
+        case "DRAFT", "DRAFTS": return "doc.text"
+        case "TRASH": return "trash"
+        case "SPAM": return "exclamationmark.triangle"
+        case "STARRED": return "star.fill"
+        case "IMPORTANT": return "bookmark.fill"
+        default: return "folder"
+        }
     }
 
     /// Scarica e processa i metadati delle email per tutte le etichette memorizzate.

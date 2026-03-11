@@ -21,6 +21,15 @@ struct EmailDTO: Codable, Identifiable {
     let category: String
     let sinistroRef: String?
     let direction: String?
+    let mailbox: String?
+    let isRead: Bool?
+}
+
+struct MailboxDTO: Codable, Identifiable {
+    let id: String
+    let name: String
+    let unreadCount: Int
+    let totalCount: Int
 }
 
 struct EmailDetailDTO: Codable, Identifiable {

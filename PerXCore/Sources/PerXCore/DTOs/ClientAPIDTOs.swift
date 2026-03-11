@@ -16,6 +16,8 @@ public struct EmailDTO: Codable, Sendable, Identifiable {
     public let category: String
     public let sinistroRef: String?
     public let direction: String?
+    public let mailbox: String?
+    public let isRead: Bool?
     
     public init(
         id: String,
@@ -25,7 +27,9 @@ public struct EmailDTO: Codable, Sendable, Identifiable {
         date: Date,
         category: String,
         sinistroRef: String?,
-        direction: String?
+        direction: String?,
+        mailbox: String? = nil,
+        isRead: Bool? = nil
     ) {
         self.id = id
         self.subject = subject
@@ -35,6 +39,8 @@ public struct EmailDTO: Codable, Sendable, Identifiable {
         self.category = category
         self.sinistroRef = sinistroRef
         self.direction = direction
+        self.mailbox = mailbox
+        self.isRead = isRead
     }
 }
 
@@ -75,6 +81,27 @@ public struct EmailDetailDTO: Codable, Sendable, Identifiable {
         self.category = category
         self.sinistroRef = sinistroRef
         self.direction = direction
+    }
+}
+
+// MARK: - Mailbox DTOs
+
+public struct MailboxDTO: Codable, Sendable, Identifiable {
+    public let id: String
+    public let name: String
+    public let totalCount: Int
+    public let unreadCount: Int
+    
+    public init(
+        id: String,
+        name: String,
+        totalCount: Int,
+        unreadCount: Int
+    ) {
+        self.id = id
+        self.name = name
+        self.totalCount = totalCount
+        self.unreadCount = unreadCount
     }
 }
 

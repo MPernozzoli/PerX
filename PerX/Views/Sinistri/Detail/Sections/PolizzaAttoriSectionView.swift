@@ -1,5 +1,7 @@
 import SwiftUI
+#if os(macOS)
 import AppKit
+#endif
 
 /// Sezione Polizza e Attori (Contraente, Assicurato, Danneggiato)
 struct PolizzaAttoriSectionView: View {
@@ -382,12 +384,35 @@ Buongiorno sono il perito incaricato da \(compagnia) per il suo sinistro da Feno
         )
     }
     
+    /// Recupera l'email dell'agenzia da rubrica (priorità) o dal sinistro
+    private var emailAgenziaPerCC: String? {
+        // Prima cerca in rubrica
+        if let codice = sinistro.codiceAgenzia, !codice.isEmpty {
+            if let agenzia = CloudKitRubricaSyncService.shared.agenzie.first(where: { $0.matches(codice: codice) }) {
+                if let email = agenzia.emailPrincipale, !email.isEmpty {
+                    return email
+                }
+            }
+        }
+        // Fallback: email dal sinistro
+        if let email = sinistro.emailAgenzia, !email.isEmpty {
+            return email
+        }
+        return nil
+    }
+    
     private func openEmailComposer(to email: String) {
         let numeroSinistro = sinistro.numeroSinistroCompagnia ?? "N/A"
         let nome = sinistro.nomeContraente ?? sinistro.nomeAssicurato ?? "Assicurato"
         let riferimento = sinistro.riferimento ?? ""
         let oggetto = "Sinistro n.\(numeroSinistro) - Assicurato: \(nome) - ns. rif. \(riferimento)"
-        ComposeEmailWindowManager.shared.openComposeEmail(mode: .new(to: email, subject: oggetto))
+        
+        // Se il destinatario è l'assicurato, aggiunge l'agenzia in CC
+        let ccAgenzia = emailAgenziaPerCC
+        // Evita di mettere in CC se l'email è la stessa del destinatario
+        let cc = (ccAgenzia != nil && ccAgenzia!.lowercased() != email.lowercased()) ? ccAgenzia : nil
+        
+        ComposeEmailWindowManager.shared.openComposeEmail(mode: .new(to: email, subject: oggetto, cc: cc))
     }
     
     private func openMailApp(to email: String) {
@@ -398,11 +423,19 @@ Buongiorno sono il perito incaricato da \(compagnia) per il suo sinistro da Feno
         let signature = EmailSignatureService.shared.getActiveSignature()
         let corpo = signature.isEmpty ? "" : "\n\n\(signature)"
         
+        // Se il destinatario è l'assicurato, aggiunge l'agenzia in CC
+        let ccAgenzia = emailAgenziaPerCC
+        let ccParam = (ccAgenzia != nil && ccAgenzia!.lowercased() != email.lowercased()) ? ccAgenzia : nil
+        
         var mailtoComponents = URLComponents(string: "mailto:\(email)")
-        mailtoComponents?.queryItems = [
+        var queryItems = [
             URLQueryItem(name: "subject", value: oggetto),
             URLQueryItem(name: "body", value: corpo)
         ]
+        if let cc = ccParam {
+            queryItems.append(URLQueryItem(name: "cc", value: cc))
+        }
+        mailtoComponents?.queryItems = queryItems
         
         guard let mailtoURL = mailtoComponents?.url else { return }
         
@@ -443,7 +476,7 @@ Buongiorno sono il perito incaricato da \(compagnia) per il suo sinistro da Feno
     }
     
     private func saveChanges() {
-        sinistro.cloudKitLastModified = Date()
+        sinistro.markAsLocallyModified()
         try? viewContext.save()
     }
 }

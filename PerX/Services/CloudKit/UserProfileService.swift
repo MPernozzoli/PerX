@@ -13,6 +13,12 @@ final class UserProfileService: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var error: String?
     
+    /// True se l'utente corrente ha ruolo admin (CloudKit) o è l'admin hardcoded
+    var isCurrentUserAdmin: Bool {
+        guard let p = currentProfile else { return false }
+        return p.roles.contains(.admin) || p.isAdmin
+    }
+    
     private let container: CKContainer
     private let publicDB: CKDatabase
     private var cancellables = Set<AnyCancellable>()

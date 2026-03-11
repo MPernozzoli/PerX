@@ -1,142 +1,79 @@
 import SwiftUI
 
-/// Vista impostazioni Hub centralizzato
+/// Vista impostazioni Hub: stato per tutti; URL e impostazioni avanzate solo per admin.
 struct HubSettingsView: View {
     @ObservedObject private var config = HubConfigService.shared
+    @ObservedObject private var profileService = UserProfileService.shared
     @State private var showingURLEditor = false
     @State private var tempURL = ""
     
+    private var isAdmin: Bool { profileService.isCurrentUserAdmin }
+    
     var body: some View {
-        Form {
-            // MARK: - Stato Hub
-            Section {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 16) {
+                // Stato Hub (tutti)
                 HStack {
-                    Label("Stato Hub", systemImage: config.isHubReachable ? "checkmark.circle.fill" : "xmark.circle.fill")
-                        .foregroundColor(config.isHubReachable ? .green : .red)
-                    
+                    Label(config.isHubReachable ? "Hub online" : "Hub offline", systemImage: config.isHubReachable ? "checkmark.circle.fill" : "xmark.circle.fill")
+                        .foregroundStyle(config.isHubReachable ? .green : .red)
                     Spacer()
-                    
                     Text(config.hubStatusDescription)
-                        .foregroundColor(.secondary)
-                    
+                        .foregroundStyle(.secondary)
                     Button {
-                        Task {
-                            await config.checkHubHealth()
-                        }
+                        Task { await config.checkHubHealth() }
                     } label: {
                         Image(systemName: "arrow.clockwise")
                     }
                     .buttonStyle(.plain)
                 }
                 
-                HStack {
-                    Text("URL Hub")
-                    Spacer()
-                    Text(config.hubBaseURL.isEmpty ? "Non configurato" : config.hubBaseURL)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                    Button("Modifica") {
-                        tempURL = config.hubBaseURL
-                        showingURLEditor = true
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundColor(.accentColor)
-                }
-                
                 if let lastCheck = config.lastHealthCheck {
                     HStack {
                         Text("Ultimo controllo")
+                            .foregroundStyle(.secondary)
                         Spacer()
                         Text(lastCheck, style: .relative)
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                     }
+                    .font(.caption)
                 }
-            } header: {
-                Text("Connessione Hub")
-            } footer: {
-                Text("L'Hub centralizzato gestisce file, email e WhatsApp per tutti i dispositivi. Configurare l'URL prima di attivare la gestione cloud.")
-            }
-            
-            // MARK: - Modalità Gestione
-            Section {
-                // File
-                HStack {
-                    Label("Gestione File", systemImage: "folder")
-                    Spacer()
-                    Picker("", selection: $config.fileManagementMode) {
-                        ForEach(ManagementMode.allCases, id: \.self) { mode in
-                            Label(mode.displayName, systemImage: mode.icon)
-                                .tag(mode)
+                
+                // Solo admin: URL Hub modificabile
+                if isAdmin {
+                    Divider()
+                    HStack {
+                        Text("URL Hub")
+                        Spacer()
+                        Text(config.hubBaseURL.isEmpty ? "Non configurato" : config.hubBaseURL)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .foregroundStyle(.secondary)
+                        Button("Modifica") {
+                            tempURL = config.hubBaseURL
+                            showingURLEditor = true
                         }
+                        .buttonStyle(.bordered)
                     }
-                    .pickerStyle(.segmented)
-                    .frame(width: 200)
-                    .disabled(!config.isHubReady && config.fileManagementMode == .local)
-                }
-                
-                // Email
-                HStack {
-                    Label("Gestione Email", systemImage: "envelope")
-                    Spacer()
-                    Picker("", selection: $config.emailManagementMode) {
-                        ForEach(ManagementMode.allCases, id: \.self) { mode in
-                            Label(mode.displayName, systemImage: mode.icon)
-                                .tag(mode)
-                        }
+                    Text("Impostazioni condivise da tutti gli utenti.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                } else if !config.hubBaseURL.isEmpty {
+                    HStack {
+                        Text("URL Hub")
+                        Spacer()
+                        Text(config.hubBaseURL)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .foregroundStyle(.secondary)
                     }
-                    .pickerStyle(.segmented)
-                    .frame(width: 200)
-                    .disabled(!config.isHubReady && config.emailManagementMode == .local)
-                }
-                
-                // WhatsApp (solo Hub)
-                HStack {
-                    Label("Gestione WhatsApp", systemImage: "message")
-                    Spacer()
-                    HStack(spacing: 8) {
-                        Image(systemName: "cloud.fill")
-                            .foregroundColor(.accentColor)
-                        Text("Solo Hub")
-                            .foregroundColor(.secondary)
-                    }
-                }
-                .help("WhatsApp funziona esclusivamente tramite Hub")
-                
-            } header: {
-                Text("Modalità Gestione")
-            } footer: {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("**Locale**: elaborazione sul dispositivo (comportamento attuale)")
-                    Text("**Cloud (Hub)**: elaborazione centralizzata, dati sincronizzati via Hub")
-                    if !config.isHubReady {
-                        Text("Configura e verifica la connessione all'Hub per attivare la modalità Cloud.")
-                            .foregroundColor(.orange)
-                    }
+                    .font(.caption)
                 }
             }
-            
-            // MARK: - Info
-            if config.isUsingHub {
-                Section {
-                    if config.fileManagementMode == .cloud {
-                        Label("File gestiti dal Vault su Hub", systemImage: "checkmark")
-                            .foregroundColor(.green)
-                    }
-                    if config.emailManagementMode == .cloud {
-                        Label("Email elaborate dall'Hub", systemImage: "checkmark")
-                            .foregroundColor(.green)
-                    }
-                    if config.whatsappManagementMode == .cloud {
-                        Label("WhatsApp gestito dall'Hub", systemImage: "checkmark")
-                            .foregroundColor(.green)
-                    }
-                } header: {
-                    Text("Funzionalità Cloud Attive")
-                }
-            }
+            .padding()
+        } label: {
+            Label("Hub", systemImage: "server.rack")
+                .font(.headline)
         }
-        .formStyle(.grouped)
-        .navigationTitle("Hub Centralizzato")
         .sheet(isPresented: $showingURLEditor) {
             URLEditorSheet(url: $tempURL) { newURL in
                 config.hubBaseURL = newURL
@@ -158,9 +95,9 @@ private struct URLEditorSheet: View {
             Text("Configura URL Hub")
                 .font(.headline)
             
-            Text("Inserisci l'URL dell'Hub centralizzato (es. http://mac-mini.tailnet:8080)")
+            Text("URL dell'Hub centralizzato (es. http://mac-mini.tailnet:8080). Le impostazioni sono condivise da tutti.")
                 .font(.caption)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
             
             TextField("URL Hub", text: $url)
@@ -168,11 +105,8 @@ private struct URLEditorSheet: View {
                 .frame(width: 400)
             
             HStack {
-                Button("Annulla") {
-                    dismiss()
-                }
-                .keyboardShortcut(.cancelAction)
-                
+                Button("Annulla") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
                 Button("Salva") {
                     onSave(url.trimmingCharacters(in: .whitespacesAndNewlines))
                     dismiss()

@@ -924,15 +924,15 @@ struct StateCounterView: View {
         let isGruppoActive = compagnieAttive.contains { selectedCompanies.contains($0.rawValue) }
         let isGruppoExpanded = expandedGruppi.contains(gruppo.rawValue)
         let groupCount = countSinistriForGroup(gruppo)
-        let groupColor = Color(red: gruppo.uiColor.red, green: gruppo.uiColor.green, blue: gruppo.uiColor.blue)
+        let groupColor = CompagniaSettingsService.shared.effectiveUiColor(gruppo)
         
         // Se il gruppo ha una sola compagnia attiva, mostra direttamente la compagnia (senza gerarchia)
         if compagnieAttive.count == 1, let singleCompany = compagnieAttive.first {
-            let compColor = Color(red: singleCompany.uiColor.red, green: singleCompany.uiColor.green, blue: singleCompany.uiColor.blue)
+            let compColor = CompagniaSettingsService.shared.effectiveUiColor(singleCompany)
             let isCompSelected = selectedCompanies.contains(singleCompany.rawValue)
             
             FilterChipView(
-                label: singleCompany.shortLabel,
+                label: CompagniaSettingsService.shared.effectiveShortLabel(singleCompany),
                 icon: singleCompany.uiIconSystemName,
                 count: groupCount,
                 isActive: isCompSelected,
@@ -954,7 +954,7 @@ struct StateCounterView: View {
             HStack(spacing: 6) {
                 // Chip gruppo (figlio della nonna)
                 FilterChipView(
-                    label: gruppo.shortLabel,
+                    label: CompagniaSettingsService.shared.effectiveShortLabel(gruppo),
                     icon: gruppo.uiIconSystemName,
                     count: groupCount,
                     isActive: isGruppoActive || isGruppoExpanded,
@@ -985,12 +985,12 @@ struct StateCounterView: View {
                 // Compagnie figlie (nipoti) - mostrate solo se gruppo espanso
                 if isGruppoExpanded {
                     ForEach(compagnieAttive, id: \.self) { compagnia in
-                        let compColor = Color(red: compagnia.uiColor.red, green: compagnia.uiColor.green, blue: compagnia.uiColor.blue)
+                        let compColor = CompagniaSettingsService.shared.effectiveUiColor(compagnia)
                         let compCount = countSinistriForCompany(compagnia)
                         let isCompSelected = selectedCompanies.contains(compagnia.rawValue)
                         
                         FilterChipView(
-                            label: compagnia.shortLabel,
+                            label: CompagniaSettingsService.shared.effectiveShortLabel(compagnia),
                             icon: compagnia.uiIconSystemName,
                             count: compCount,
                             isActive: isCompSelected,

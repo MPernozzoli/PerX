@@ -75,7 +75,7 @@ struct ComunicazioniView: View {
         case .ibrida:
             placeholderView(for: "Ibrida")
         case .rubrica:
-            placeholderView(for: "Rubrica")
+            RubricaContainerView()
         }
     }
     

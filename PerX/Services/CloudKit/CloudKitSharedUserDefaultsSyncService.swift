@@ -2,7 +2,7 @@ import Foundation
 import CloudKit
 
 /// Sync di impostazioni "comuni" tra tutti gli utenti PerX (Public DB).
-/// Usata per: OpenAI key/baseURL/model/timeout, SyncAgent URL/porta, WhatsApp Bridge URL/porta.
+/// Usata per: OpenAI key/baseURL/model/timeout, parametri compagnie. Hub/WA solo via Hub.
 @MainActor
 final class CloudKitSharedUserDefaultsSyncService {
     static let shared = CloudKitSharedUserDefaultsSyncService()
@@ -26,17 +26,14 @@ final class CloudKitSharedUserDefaultsSyncService {
 
     // Whitelist: solo quello che vogliamo condividere tra tutti
     private let syncedKeys: [String] = [
-        // WhatsApp bridge (porta/host)
-        "whatsappBridgeBaseURL",
-
-        // Sync Agent (porta/host)
-        "syncAgentRemoteURL",
-
         // OpenAI (comune)
         "ai_openai_api_key",
         "ai_openai_base_url",
         "ai_openai_model",
-        "ai_openai_timeout"
+        "ai_openai_timeout",
+        
+        // Parametri compagnie (override + logo base64)
+        "compagniaOverrides_v1"
     ]
 
     private init() {}
@@ -54,6 +51,9 @@ final class CloudKitSharedUserDefaultsSyncService {
                 if remoteAt > lastApplied {
                     applySnapshotJSON(remoteJSON, remoteAt: remoteAt)
                     defaults.set(remoteAt, forKey: lastAppliedKey)
+                    Task { @MainActor in
+                        NotificationCenter.default.post(name: NotificationNames.cloudKitSharedSettingsUpdated, object: nil)
+                    }
                 }
             }
 
@@ -83,13 +83,6 @@ final class CloudKitSharedUserDefaultsSyncService {
 
         for (key, value) in dict {
             if let denorm = UserDefaultsNormalization.denormalize(value) {
-                // Merge policy: per alcuni campi, se l'utente ha modificato localmente dopo il remoteAt,
-                // NON sovrascrivere (evita che CloudKit rimetta :8000 o valori vuoti).
-                if key == "syncAgentRemoteURL" {
-                    let localEditedAt = defaults.object(forKey: "localEditAt.syncAgentRemoteURL") as? Date ?? .distantPast
-                    if localEditedAt > remoteAt { continue }
-                    if let s = denorm as? String, s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { continue }
-                }
                 defaults.set(denorm, forKey: key)
             }
         }

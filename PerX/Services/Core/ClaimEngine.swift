@@ -1418,7 +1418,6 @@ class ClaimEngine: ObservableObject {
             title: "assegnazione perito",
             body: "è stato assegnato il sinistro \(riferimento)"
         )
-        if HubConfigService.shared.fileManagementMode == .cloud { return }
         Task {
             await ClaimSyncService.shared.downloadClaimFolder(riferimento: riferimento)
         }

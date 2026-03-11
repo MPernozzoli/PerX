@@ -60,7 +60,7 @@ class FileService {
     private init() {
         // Non richiedere accesso automaticamente all'avvio
         // L'accesso verrà richiesto solo quando necessario (apertura file/directory)
-        // o tramite le impostazioni in FileSettingsView
+        // o tramite Impostazioni → Sinistri (cartella esportazione)
     }
     
     /// Restituisce il path base per i sinistri in Application Support

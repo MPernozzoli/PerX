@@ -302,7 +302,7 @@ struct VerificheSectionView: View {
     }
     
     private func saveChanges() {
-        sinistro.cloudKitLastModified = Date()
+        sinistro.markAsLocallyModified()
         try? viewContext.save()
     }
 }

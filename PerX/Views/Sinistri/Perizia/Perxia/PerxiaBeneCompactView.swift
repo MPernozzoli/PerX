@@ -1,5 +1,7 @@
 import SwiftUI
+#if os(macOS)
 import AppKit
+#endif
 
 struct PerxiaBeneCompactView: View {
     let bene: PerxiaService.PhiBeniResult.Bene

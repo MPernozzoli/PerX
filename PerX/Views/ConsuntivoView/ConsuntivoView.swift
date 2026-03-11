@@ -3264,14 +3264,18 @@ struct LiquidationDetailsView: View {
     
     /// Determina la compagnia o il gruppo dal nome
     private func getTarget(for companyName: String) -> (liquidato: Double, negative: Double) {
+        let settings = CompagniaSettingsService.shared
         // Cerca prima per compagnia
         let compagnia = Compagnia.from(nomeCompagnia: companyName)
         if compagnia != .unknown {
-            return (compagnia.targetLiquidatoMedio, compagnia.targetNegative)
+            return (settings.effectiveTargetLiquidatoMedio(compagnia), settings.effectiveTargetNegative(compagnia))
         }
         
         // Se non trovata, cerca per gruppo
         let gruppo = GruppoAssicurativo.from(nomeGruppo: companyName)
+        if let prima = gruppo.compagnie.first {
+            return (settings.effectiveTargetLiquidatoMedio(prima), settings.effectiveTargetNegative(prima))
+        }
         return (gruppo.targetLiquidatoMedio, gruppo.targetNegative)
     }
     
@@ -3488,7 +3492,7 @@ struct CompanyLiquidationCard: View {
     }
     
     private func getAverageColor(_ stat: LiquidationStats, isInPL: Bool) -> Color {
-        let target = Compagnia.from(nomeCompagnia: stat.company).targetLiquidatoMedio
+        let target = CompagniaSettingsService.shared.effectiveTargetLiquidatoMedio(Compagnia.from(nomeCompagnia: stat.company))
         let value = isInPL ? stat.averageUnder10kInPL : stat.averageUnder10kAll
         
         if value < target * 0.9 {
@@ -3502,7 +3506,7 @@ struct CompanyLiquidationCard: View {
     
     private func getNegativeColor(_ stat: LiquidationStats) -> Color {
         let value = stat.negativePercentage
-        let target = Compagnia.from(nomeCompagnia: stat.company).targetNegative
+        let target = CompagniaSettingsService.shared.effectiveTargetNegative(Compagnia.from(nomeCompagnia: stat.company))
         
         if value < target * 0.8 {
             return .red
@@ -3519,7 +3523,7 @@ struct CompanyLiquidationCard: View {
     
     private func getGestioneColor(_ stat: LiquidationStats) -> Color {
         let value = stat.averageGestioneDays
-        let target = Compagnia.from(nomeCompagnia: stat.company).targetTempoGestione
+        let target = CompagniaSettingsService.shared.effectiveTargetTempoGestione(Compagnia.from(nomeCompagnia: stat.company))
         
         // Verde: entro ±15% del target (target * 0.85 <= valore <= target * 1.15)
         if value >= target * 0.85 && value <= target * 1.15 {
@@ -3537,14 +3541,12 @@ struct CompanyLiquidationCard: View {
     
     private func getConcordateColor(_ stat: LiquidationStats) -> Color {
         let value = stat.concordatePercentage
-        // Per i gruppi uniti, prendiamo il target dal gruppo se esiste
         let compagnia = Compagnia.from(nomeCompagnia: stat.company)
         let target: Double
-        if stat.company.starts(with: "Gruppo") {
-            // È un gruppo unito, usa il target del gruppo
-            target = compagnia.gruppo.targetConcordate
+        if stat.company.starts(with: "Gruppo"), let prima = compagnia.gruppo.compagnie.first {
+            target = CompagniaSettingsService.shared.effectiveTargetConcordate(prima)
         } else {
-            target = compagnia.targetConcordate
+            target = CompagniaSettingsService.shared.effectiveTargetConcordate(compagnia)
         }
         
         // Verde: >= target (es. 85% o 90%)
@@ -3636,30 +3638,37 @@ struct CompactStatView: View {
             effectiveMin = nil
             effectiveMax = nil
         } else if let company = company {
-            // Calcola target/range in base al tipo di metrica
+            let settings = CompagniaSettingsService.shared
             let compagnia = Compagnia.from(nomeCompagnia: company)
             let gruppo = compagnia.gruppo
             
             if label.contains("Concordate") {
-                let t = company.starts(with: "Gruppo") ? gruppo.targetConcordate : compagnia.targetConcordate
+                let t: Double
+                if company.starts(with: "Gruppo"), let prima = gruppo.compagnie.first {
+                    t = settings.effectiveTargetConcordate(prima)
+                } else {
+                    t = settings.effectiveTargetConcordate(compagnia)
+                }
                 effectiveTarget = t
                 effectiveMin = nil
                 effectiveMax = nil
             } else if label.contains("Negativi") {
-                let t = company.starts(with: "Gruppo") ? gruppo.targetNegative : compagnia.targetNegative
+                let t: Double
+                if company.starts(with: "Gruppo"), let prima = gruppo.compagnie.first {
+                    t = settings.effectiveTargetNegative(prima)
+                } else {
+                    t = settings.effectiveTargetNegative(compagnia)
+                }
                 effectiveTarget = t
-                // Range per negativi: verde tra target e target*1.25 (più alto è meglio, ma non troppo)
                 effectiveMin = t
                 effectiveMax = t * 1.25
             } else if label.contains("Tempo") || isDays {
-                let t = compagnia.targetTempoGestione
+                let t = settings.effectiveTargetTempoGestione(compagnia)
                 effectiveTarget = t
-                // Range per tempo gestione: target*0.85 a target*1.15
                 effectiveMin = t * 0.85
                 effectiveMax = t * 1.15
             } else {
-                // Liquidato medio: più basso è meglio, ma ha un limite superiore accettabile
-                let t = compagnia.targetLiquidatoMedio
+                let t = settings.effectiveTargetLiquidatoMedio(compagnia)
                 effectiveTarget = t
                 // Verde sotto target*0.9, giallo tra 0.9 e 1.1, rosso sopra 1.1
                 // Quindi il "buono" è sotto 0.9, l'accettabile è sotto 1.1

@@ -164,7 +164,7 @@ struct CompensationSettingsView: View {
                             
                             ForEach(GruppoAssicurativo.allCases.filter { $0 != .unknown }, id: \.rawValue) { gruppo in
                                 Menu(gruppo.rawValue) {
-                                    Button("Tutto \(gruppo.shortLabel)") {
+                                    Button("Tutto \(CompagniaSettingsService.shared.effectiveShortLabel(gruppo))") {
                                         addNewDamageThreshold(compagnia: gruppo.rawValue)
                                     }
                                     
@@ -358,7 +358,7 @@ struct CompensationSettingsView: View {
         
         // Aggiungi tutti i gruppi assicurativi
         for gruppo in GruppoAssicurativo.allCases where gruppo != .unknown {
-            compagnie.append(gruppo.shortLabel)
+            compagnie.append(CompagniaSettingsService.shared.effectiveShortLabel(gruppo))
         }
         
         // Aggiungi tutte le compagnie
@@ -427,12 +427,12 @@ struct CompensationSettingsView: View {
                             VStack(alignment: .leading, spacing: GDS.Spacing.lg) {
                                 HStack(spacing: GDS.Spacing.md) {
                                     Image(systemName: gruppo.uiIconSystemName)
-                                        .foregroundColor(Color(red: gruppo.uiColor.red, green: gruppo.uiColor.green, blue: gruppo.uiColor.blue))
+                                        .foregroundColor(CompagniaSettingsService.shared.effectiveUiColor(gruppo))
                                         .font(.title3)
                                     VStack(alignment: .leading, spacing: GDS.Spacing.xxs) {
                                         Text(gruppo.rawValue)
                                             .font(GDS.Typography.subtitle)
-                                            .foregroundColor(Color(red: gruppo.uiColor.red, green: gruppo.uiColor.green, blue: gruppo.uiColor.blue))
+                                            .foregroundColor(CompagniaSettingsService.shared.effectiveUiColor(gruppo))
                                         Text("\(indiciGruppo.count) soglie configurate")
                                             .font(GDS.Typography.extraSmall)
                                             .foregroundColor(GDS.SystemColors.tertiaryLabel)
@@ -496,10 +496,10 @@ struct CompensationSettingsView: View {
                     VStack(alignment: .leading, spacing: GDS.Spacing.sm) {
                         HStack(spacing: GDS.Spacing.md) {
                             Image(systemName: gruppo.uiIconSystemName)
-                                .foregroundColor(Color(red: gruppo.uiColor.red, green: gruppo.uiColor.green, blue: gruppo.uiColor.blue))
+                                .foregroundColor(CompagniaSettingsService.shared.effectiveUiColor(gruppo))
                             Text(gruppo.rawValue)
                                 .font(GDS.Typography.subtitle)
-                                .foregroundColor(Color(red: gruppo.uiColor.red, green: gruppo.uiColor.green, blue: gruppo.uiColor.blue))
+                                .foregroundColor(CompagniaSettingsService.shared.effectiveUiColor(gruppo))
                         }
                         .padding(.top, GDS.Spacing.md)
                         

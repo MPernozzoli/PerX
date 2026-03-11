@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 /// Monitor per aggiornamenti in tempo reale delle directory
 class DirectoryMonitor: ObservableObject {

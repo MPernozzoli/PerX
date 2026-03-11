@@ -68,15 +68,15 @@ final class HubConfigService: ObservableObject {
     // MARK: - Init
     
     private init() {
-        // Carica configurazione salvata
-        let savedFileMode = UserDefaults.standard.string(forKey: "hub.fileManagementMode") ?? ManagementMode.local.rawValue
-        let savedEmailMode = UserDefaults.standard.string(forKey: "hub.emailManagementMode") ?? ManagementMode.local.rawValue
+        // Solo Hub: default cloud per file e email; impostazioni condivise
+        let savedFileMode = UserDefaults.standard.string(forKey: "hub.fileManagementMode") ?? ManagementMode.cloud.rawValue
+        let savedEmailMode = UserDefaults.standard.string(forKey: "hub.emailManagementMode") ?? ManagementMode.cloud.rawValue
         let savedWAMode = UserDefaults.standard.string(forKey: "hub.whatsappManagementMode") ?? ManagementMode.cloud.rawValue
         let savedURL = UserDefaults.standard.string(forKey: "hub.baseURL") ?? ""
         
-        self.fileManagementMode = ManagementMode(rawValue: savedFileMode) ?? .local
-        self.emailManagementMode = ManagementMode(rawValue: savedEmailMode) ?? .local
-        self.whatsappManagementMode = ManagementMode(rawValue: savedWAMode) ?? .local
+        self.fileManagementMode = ManagementMode(rawValue: savedFileMode) ?? .cloud
+        self.emailManagementMode = ManagementMode(rawValue: savedEmailMode) ?? .cloud
+        self.whatsappManagementMode = ManagementMode(rawValue: savedWAMode) ?? .cloud
         self.hubBaseURL = savedURL
         
         // Avvia health check e heartbeat periodici se URL configurato

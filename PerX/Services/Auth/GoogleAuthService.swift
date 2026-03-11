@@ -8,6 +8,7 @@ class GoogleAuthService: ObservableObject {
     @Published var isAuthenticated = false
     @Published var userEmail: String?
     @Published var errorMessage: String?
+    @Published var needsReAuthentication = false
     
     var hasValidToken: Bool {
         if let token = getTokenFromKeychain(forKey: "google_access_token") {
@@ -23,99 +24,89 @@ class GoogleAuthService: ObservableObject {
     private let scope = "email https://mail.google.com/ https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/userinfo.email openid"
     private let hostedDomain = "actsrl.it"
     
-    init() {
-        // Verifica lo stato di autenticazione all'avvio
-        // Usa Task.detached per evitare loop di pubblicazione durante il rendering
-        Task.detached { [weak self] in
-            // Piccolo delay per evitare modifiche durante la costruzione della view
-            try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
-            await self?.checkAuthenticationState()
-        }
+    /// Flag per evitare che il check venga rieseguito in loop
+    private var hasCompletedInitialCheck = false
+    /// Un solo check alla volta (evita race e risultati sbagliati)
+    private var checkInProgress = false
+    
+    /// Risultato del check auth: nessuna modifica a @Published durante il check
+    struct AuthCheckResult {
+        let authenticated: Bool
+        let email: String?
+        let needsReAuth: Bool
     }
     
-    private func checkAuthenticationState() async {
-        // Prima: verifica se abbiamo un token valido in locale
-        if let accessToken = loadFromKeychain(forKey: "google_access_token") {
-            // Verifica se il token è ancora valido
-            await fetchUserInfo(accessToken: accessToken)
-            
-            if userEmail != nil {
-                isAuthenticated = true
-                
-                // Assicurati che l'Hub abbia il token
-                if let refreshToken = loadFromKeychain(forKey: "google_refresh_token"),
-                   let email = userEmail {
-                    await registerTokenWithHub(email: email, refreshToken: refreshToken)
-                }
-                return
-            } else {
-                // Token non valido, prova a refresharlo
-                if let refreshToken = loadFromKeychain(forKey: "google_refresh_token") {
-                    do {
-                        let newToken = try await refreshAccessToken(refreshToken)
-                        saveToKeychain(token: newToken, forKey: "google_access_token")
-                        await fetchUserInfo(accessToken: newToken)
-                        isAuthenticated = true
-                        
-                        // Registra con Hub
-                        if let email = userEmail {
-                            await registerTokenWithHub(email: email, refreshToken: refreshToken)
-                        }
-                        return
-                    } catch {
-                        print("❌ Errore refresh token: \(error)")
-                        // Rimuovi i token non validi
-                        removeFromKeychain(forKey: "google_access_token")
-                        removeFromKeychain(forKey: "google_refresh_token")
-                        saveTokenExpiry(Date.distantPast) // Reset expiry
-                    }
-                }
-            }
+    /// Esegue il check senza toccare @Published. La view chiama poi applyAuthResult in modo differito.
+    func checkAuthenticationState() async -> AuthCheckResult {
+        if checkInProgress {
+            return AuthCheckResult(authenticated: isAuthenticated, email: userEmail, needsReAuth: needsReAuthentication)
+        }
+        if hasCompletedInitialCheck && !isAuthenticated {
+            return AuthCheckResult(authenticated: false, email: nil, needsReAuth: needsReAuthentication)
         }
         
-        // Fallback: verifica se l'Hub ha già un token valido per noi
-        // (utile se l'utente ha fatto login su un altro client)
-        await checkHubTokenStatus()
-    }
-    
-    /// Verifica se l'Hub ha già un token valido per l'utente corrente
-    private func checkHubTokenStatus() async {
-        // Prova a recuperare l'ultimo userId noto
-        guard let lastUserId = UserDefaults.standard.string(forKey: "last_google_user_id") else {
-            return
+        checkInProgress = true
+        defer { checkInProgress = false }
+        
+        // Solo token locale: niente Hub per mostrare dashboard senza token valido
+        guard let accessToken = loadFromKeychain(forKey: "google_access_token") else {
+            hasCompletedInitialCheck = true
+            return AuthCheckResult(authenticated: false, email: nil, needsReAuth: false)
+        }
+        
+        let email = await fetchUserEmail(accessToken: accessToken)
+        
+        if let email = email {
+            hasCompletedInitialCheck = true
+            // Registra con Hub in background (non tocca @Published)
+            if let refreshToken = loadFromKeychain(forKey: "google_refresh_token") {
+                Task { [weak self] in
+                    await self?.registerTokenWithHub(email: email, refreshToken: refreshToken)
+                }
+            }
+            return AuthCheckResult(authenticated: true, email: email, needsReAuth: false)
+        }
+        
+        // Token non valido (401): rimuovilo subito
+        removeFromKeychain(forKey: "google_access_token")
+        
+        guard let refreshToken = loadFromKeychain(forKey: "google_refresh_token") else {
+            saveTokenExpiry(Date.distantPast)
+            hasCompletedInitialCheck = true
+            return AuthCheckResult(authenticated: false, email: nil, needsReAuth: true)
         }
         
         do {
-            let hubClient = HubAPIClient.shared
+            let newToken = try await refreshAccessToken(refreshToken)
+            saveToKeychain(token: newToken, forKey: "google_access_token")
+            let refreshedEmail = await fetchUserEmail(accessToken: newToken)
             
-            struct TokenStatus: Decodable {
-                let userId: String
-                let email: String?
-                let isValid: Bool
-                let hasToken: Bool
-                
-                enum CodingKeys: String, CodingKey {
-                    case userId = "user_id"
-                    case email
-                    case isValid = "is_valid"
-                    case hasToken = "has_token"
+            if let refreshedEmail = refreshedEmail {
+                Task { [weak self] in
+                    await self?.registerTokenWithHub(email: refreshedEmail, refreshToken: refreshToken)
                 }
             }
-            
-            let status: TokenStatus = try await hubClient.get(endpoint: "/auth/status/\(lastUserId)")
-            
-            if status.isValid, let email = status.email {
-                print("[GoogleAuth] ✅ Hub ha token valido per: \(email)")
-                userEmail = email
-                isAuthenticated = true
-                
-                // Salva l'userId per riferimento futuro
-                UserDefaults.standard.set(lastUserId, forKey: "last_google_user_id")
-            }
-            
+            hasCompletedInitialCheck = true
+            return AuthCheckResult(authenticated: true, email: refreshedEmail, needsReAuth: false)
         } catch {
-            // Hub non raggiungibile o nessun token
-            print("[GoogleAuth] Hub token check: \(error.localizedDescription)")
+            print("❌ Errore refresh token: \(error)")
+            removeFromKeychain(forKey: "google_refresh_token")
+            saveTokenExpiry(Date.distantPast)
+            hasCompletedInitialCheck = true
+            return AuthCheckResult(authenticated: false, email: nil, needsReAuth: true)
+        }
+    }
+    
+    /// Applica il risultato del check dopo un breve delay, quando il ciclo di rendering è concluso
+    func applyAuthResult(_ result: AuthCheckResult) {
+        let email = result.email
+        let authenticated = result.authenticated
+        let needsReAuth = result.needsReAuth
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self else { return }
+            self.userEmail = email
+            self.isAuthenticated = authenticated
+            self.needsReAuthentication = needsReAuth
         }
     }
     
@@ -227,7 +218,8 @@ class GoogleAuthService: ObservableObject {
     /// Refresh automatico del token quando si riceve un 401
     func refreshTokenIfNeeded() async -> Bool {
         guard let refreshToken = loadFromKeychain(forKey: "google_refresh_token") else {
-            print("[GoogleAuth] ⚠️ Nessun refresh token disponibile")
+            print("[GoogleAuth] ⚠️ Nessun refresh token disponibile, richiesta riautenticazione")
+            requireReAuthentication()
             return false
         }
         
@@ -239,8 +231,31 @@ class GoogleAuthService: ObservableObject {
             print("[GoogleAuth] ✅ Token refreshato automaticamente dopo errore 401")
             return true
         } catch {
-            print("[GoogleAuth] ❌ Errore refresh token: \(error)")
+            print("[GoogleAuth] ❌ Errore refresh token: \(error) - richiesta riautenticazione")
+            requireReAuthentication()
             return false
+        }
+    }
+    
+    /// Forza la riautenticazione: pulisce i token e riporta alla SplashScreen
+    func requireReAuthentication() {
+        print("[GoogleAuth] 🔒 Sessione scaduta - richiesta riautenticazione all'utente")
+        
+        removeFromKeychain(forKey: "google_access_token")
+        removeFromKeychain(forKey: "google_refresh_token")
+        saveTokenExpiry(Date.distantPast)
+        hasCompletedInitialCheck = false
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self else { return }
+            self.needsReAuthentication = true
+            self.isAuthenticated = false
+            self.userEmail = nil
+            NotificationCenter.default.post(
+                name: .init("GoogleAuthStateChanged"),
+                object: nil,
+                userInfo: ["signedOut": true, "sessionExpired": true]
+            )
         }
     }
     
@@ -258,23 +273,23 @@ class GoogleAuthService: ObservableObject {
     }
     
     func signOut() {
-        // Elimina token dall'Hub
         if let email = userEmail {
             let userId = email.components(separatedBy: "@").first ?? email
-            Task {
-                await deleteTokenFromHub(userId: userId)
-            }
+            Task { await deleteTokenFromHub(userId: userId) }
         }
         
         removeFromKeychain(forKey: "google_access_token")
         removeFromKeychain(forKey: "google_refresh_token")
         UserDefaults.standard.removeObject(forKey: "google_token_expiry")
         UserDefaults.standard.removeObject(forKey: "last_google_user_id")
-        isAuthenticated = false
-        userEmail = nil
+        hasCompletedInitialCheck = false
         
-        // Notifica il cambio stato auth per pulire profilo utente e servizi dipendenti
-        NotificationCenter.default.post(name: .init("GoogleAuthStateChanged"), object: nil, userInfo: ["signedOut": true])
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self else { return }
+            self.isAuthenticated = false
+            self.userEmail = nil
+            NotificationCenter.default.post(name: .init("GoogleAuthStateChanged"), object: nil, userInfo: ["signedOut": true])
+        }
     }
     
     /// Elimina il token dall'Hub
@@ -325,23 +340,26 @@ class GoogleAuthService: ObservableObject {
                 saveToKeychain(token: refreshToken, forKey: "google_refresh_token")
             }
             
-            await fetchUserInfo(accessToken: tokenResponse.access_token)
-            isAuthenticated = true
+            let email = await fetchUserEmail(accessToken: tokenResponse.access_token)
             
-            // Salva userId per riferimento futuro
-            if let email = userEmail {
+            if let email = email {
                 let userId = email.components(separatedBy: "@").first ?? email
                 UserDefaults.standard.set(userId, forKey: "last_google_user_id")
             }
-            
-            // Invia il refresh_token all'Hub per il Mail Worker
-            if let refreshToken = tokenResponse.refresh_token,
-               let email = userEmail {
-                await registerTokenWithHub(email: email, refreshToken: refreshToken)
+            if let refreshToken = tokenResponse.refresh_token, let email = email {
+                Task { [weak self] in
+                    await self?.registerTokenWithHub(email: email, refreshToken: refreshToken)
+                }
             }
             
-            // Notifica login effettuato per aggiornare profilo utente
-            NotificationCenter.default.post(name: .init("GoogleAuthStateChanged"), object: nil, userInfo: ["signedOut": false])
+            let capturedEmail = email
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                guard let self else { return }
+                self.userEmail = capturedEmail
+                self.isAuthenticated = true
+                self.needsReAuthentication = false
+                NotificationCenter.default.post(name: .init("GoogleAuthStateChanged"), object: nil, userInfo: ["signedOut": false])
+            }
             
             LocalServer.shared.stop()
         } catch {
@@ -395,7 +413,8 @@ class GoogleAuthService: ObservableObject {
         return try JSONDecoder().decode(TokenResponse.self, from: data)
     }
     
-    private func fetchUserInfo(accessToken: String) async {
+    /// Recupera le info utente da Google e restituisce l'email (senza modificare @Published)
+    private func fetchUserEmail(accessToken: String) async -> String? {
         let userInfoEndpoint = "https://www.googleapis.com/oauth2/v2/userinfo"
         var request = URLRequest(url: URL(string: userInfoEndpoint)!)
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
@@ -408,20 +427,19 @@ class GoogleAuthService: ObservableObject {
                 guard httpResponse.statusCode == 200 else {
                     let errorBody = String(data: data, encoding: .utf8) ?? "Unknown"
                     print("❌ Errore recupero info utente - Status: \(httpResponse.statusCode), Body: \(errorBody)")
-                    userEmail = nil
-                    return
+                    return nil
                 }
             }
             
             let userInfo = try JSONDecoder().decode(UserInfo.self, from: data)
-            userEmail = userInfo.email
             
-            if userEmail == nil {
+            if userInfo.email == nil {
                 print("⚠️ Risposta userinfo valida ma senza email")
             }
+            return userInfo.email
         } catch {
             print("❌ Errore recupero info utente: \(error)")
-            userEmail = nil
+            return nil
         }
     }
     

@@ -116,6 +116,45 @@ class AIManager: ObservableObject {
         return taskResults[taskID]
     }
     
+    // MARK: - Daily Dashboard Summary
+    
+    /// Genera un breve riassunto testuale per la dashboard (cosa è previsto oggi, notizie studio, messaggio contestuale).
+    /// Preferisce Apple Intelligence. completion su main thread.
+    func generateDailySummary(
+        contextHint: String,
+        sinistriInGestione: Int,
+        assegnazioniRecenti: Int,
+        taskTitles: [String],
+        studioNewsTitles: [String],
+        completion: @escaping (Result<String, AIError>) -> Void
+    ) {
+        var prompt = """
+        Sei l'assistente di uno studio peritale. Scrivi un breve messaggio (2-4 frasi, tono professionale ma cordiale) per il riquadro \"In sintesi\" della dashboard dell'app. \
+        Contesto: \(contextHint). \
+        Dati di oggi: \(sinistriInGestione) sinistri in gestione, \(assegnazioniRecenti) nuove assegnazioni dall'ultimo accesso. \
+        Task in programma: \(taskTitles.isEmpty ? "nessuna" : taskTitles.prefix(8).joined(separator: "; ")). \
+        Notizie studio: \(studioNewsTitles.isEmpty ? "nessuna" : studioNewsTitles.prefix(5).joined(separator: "; ")).
+        """
+        prompt += " Rispondi SOLO con il testo del messaggio, senza titoli o prefissi."
+        
+        let task = AITask.dailyDashboardSummary(prompt: prompt)
+        enqueue(task) { aiResult in
+            Task { @MainActor in
+                if aiResult.success {
+                    let raw = (aiResult.result?.value as? String) ?? ""
+                    let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !text.isEmpty {
+                        completion(.success(text))
+                    } else {
+                        completion(.failure(aiResult.error ?? .modelUnavailable))
+                    }
+                } else {
+                    completion(.failure(aiResult.error ?? .modelUnavailable))
+                }
+            }
+        }
+    }
+    
     /// Cancella un task
     func cancelTask(_ taskID: UUID) {
         // Rimuovi dalla queue se non ancora eseguito

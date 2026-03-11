@@ -172,9 +172,8 @@ struct SinistriCollegatiSectionView: View {
             collegamenti2.insert(sinistro.riferimento ?? "")
             sinistroCollegato.collegamentiSet = collegamenti2
             
-            let now = Date()
-            sinistro.cloudKitLastModified = now
-            sinistroCollegato.cloudKitLastModified = now
+            sinistro.markAsLocallyModified()
+            sinistroCollegato.markAsLocallyModified()
             try? viewContext.save()
             caricaSinistriCollegati()
         }
@@ -192,9 +191,8 @@ struct SinistriCollegatiSectionView: View {
             collegamenti2.remove(sinistro.riferimento ?? "")
             sinistroCollegato.collegamentiSet = collegamenti2
             
-            let now = Date()
-            sinistro.cloudKitLastModified = now
-            sinistroCollegato.cloudKitLastModified = now
+            sinistro.markAsLocallyModified()
+            sinistroCollegato.markAsLocallyModified()
             try? viewContext.save()
             caricaSinistriCollegati()
         }
