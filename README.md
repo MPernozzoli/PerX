@@ -1,188 +1,103 @@
 # PerX
 
-**PerX** è una piattaforma software progettata per supportare studi peritali e strutture tecniche nella gestione operativa, documentale e valutativa delle pratiche, con particolare attenzione ai flussi assicurativi del ramo property.
+**PerX** è una piattaforma operativa per studi peritali e strutture tecniche che gestiscono sinistri property, con forte focus su gestione documentale, flussi operativi e supporto AI al lavoro del perito.
 
-L’obiettivo del progetto è ridurre la frammentazione degli strumenti utilizzati quotidianamente, centralizzare le informazioni di pratica e fornire un ambiente di lavoro più efficiente, strutturato e scalabile, integrando gestione documentale, supporto operativo e automazione intelligente.
-
----
-
-## Visione
-
-Nel settore peritale, molti processi sono ancora distribuiti tra cartelle locali, gestionali legacy, fogli di lavoro, e-mail, documenti destrutturati e passaggi manuali difficili da tracciare.
-
-**PerX** nasce per superare questo modello, offrendo una piattaforma capace di:
-
-- organizzare le pratiche in modo coerente e sinistro-centrico;
-- collegare documenti, note, attività e output peritali in un unico flusso;
-- supportare il lavoro del perito senza sostituirne il giudizio tecnico;
-- integrare automazioni e strumenti AI in modo controllato e verificabile;
-- rendere i processi interni più standardizzati, leggibili e scalabili.
-
-PerX non vuole essere semplicemente un altro gestionale: punta a diventare l’infrastruttura operativa del lavoro peritale moderno.
+Questa repo è strutturata come **monorepo** e contiene sia l’applicazione desktop/iPad (Swift), sia componenti di integrazione (hub, agent, estensioni) sia un backend cloud FastAPI.
 
 ---
 
-## Obiettivi del progetto
+## Panoramica della repo
 
-- Centralizzare la gestione delle pratiche e della relativa documentazione.
-- Ridurre tempi morti, duplicazioni e passaggi manuali.
-- Migliorare la qualità e la coerenza dell’istruttoria tecnica.
-- Rendere più semplice la collaborazione tra operatori, periti e staff amministrativo.
-- Abilitare automazioni progressive, mantenendo sempre il controllo umano nei punti decisionali critici.
-- Costruire una base tecnologica solida per l’evoluzione futura dello studio peritale.
+- **`PerX/`**: applicazione principale (macOS / iPad) per la gestione delle pratiche, basata su Swift/SwiftUI.
+- **`PerX per iPad/`**: viste e servizi specifici per l’esperienza iPad.
+- **`PerXCore/`**: moduli core riutilizzabili (modelli, logica condivisa).
+- **`PerXHub/`**: servizi di integrazione/sync verso fonti esterne (es. e‑mail, cloud).
+- **`PerXHubMonitor/`**: tool di monitoraggio e diagnostica per l’hub.
+- **`perx_sync_agent/`**: agent dedicato alla sincronizzazione/sorveglianza di directory e file locali.
+- **`perx_chrome_extension/`**: estensione browser per integrazioni lato web.
+- **`backend/`**: backend FastAPI per servizi cloud (API sinistri, autenticazione, ecc.).
+- **Altri moduli/tools**: cartelle ausiliarie per test, varianti “lite”, script e materiali di supporto.
 
----
-
-## Funzionalità previste
-
-Le funzionalità di PerX sono in continua evoluzione, ma il progetto ruota attorno ai seguenti pilastri:
-
-### 1. Gestione pratiche
-- Anagrafica sinistri
-- Stato pratica e avanzamento operativo
-- Collegamento tra pratica, documenti, note e attività
-- Storico delle operazioni
-
-### 2. Gestione documentale
-- Archiviazione strutturata dei file di pratica
-- Organizzazione per tipologia documentale
-- Supporto a sincronizzazione e monitoraggio cartelle
-- Ricerca contestuale dei contenuti
-
-### 3. Supporto operativo al perito
-- Ambiente di lavoro centrato sul singolo sinistro
-- Consultazione rapida di documentazione tecnica e storica
-- Supporto alla redazione di relazioni, note e output istruttori
-- Tracciabilità del percorso valutativo
-
-### 4. Automazione e AI assistiva
-- Analisi e classificazione documentale
-- Estrazione di informazioni rilevanti
-- Supporto alla compilazione di contenuti e campi strutturati
-- Assistenza contestuale basata sulla documentazione della pratica
-- Modello human-in-the-loop per validazione finale
-
-### 5. Multiutenza e scalabilità interna
-- Gestione utenti e ruoli
-- Strumenti pensati per studi in crescita
-- Flussi più standardizzati e monitorabili
-- Base predisposta per ambienti multi-tenant e deployment evoluti
+Ogni componente più complesso ha (o può avere) un proprio `README` locale con dettagli specifici.
 
 ---
 
-## Filosofia del prodotto
+## Applicazione PerX (macOS / iPad)
 
-PerX è progettato secondo alcuni principi chiave:
+- **Codice principale**: in `PerX/` e `PerX per iPad/`.
+- **Progetto Xcode**: `PerX.xcodeproj`.
 
-### Centralità della pratica
-Ogni attività parte dal sinistro e si sviluppa intorno ad esso: documenti, conversazioni, attività, riferimenti tecnici e output devono convergere in un unico contesto operativo.
+### Avvio rapido (locale)
 
-### AI come supporto, non come sostituzione
-L’intelligenza artificiale deve accelerare il lavoro, migliorare l’accesso alle informazioni e ridurre le attività ripetitive, ma non deve opacizzare il processo decisionale né sostituire la responsabilità tecnica del professionista.
+1. **Apri il progetto**  
+   Apri `PerX.xcodeproj` in Xcode.
 
-### Integrazione con il lavoro reale
-PerX non nasce in astratto: è progettato a partire dai problemi concreti vissuti ogni giorno da chi gestisce pratiche, documenti, stime, relazioni e comunicazioni istruttorie.
+2. **Seleziona il target**  
+   Scegli il target desiderato (es. app principale macOS, build per iPad, eventuali varianti “Lite”).
 
-### Evoluzione progressiva
-Il sistema è pensato per crescere per moduli, evitando complessità inutile nelle fasi iniziali e costruendo nel tempo una piattaforma robusta, estendibile e sostenibile.
+3. **Esegui**  
+   Lancia l’app direttamente da Xcode su simulatore o dispositivo configurato.
+
+La configurazione dettagliata di schemi, bundle id, profili di provisioning e ambienti è gestita internamente al progetto Xcode e nella configurazione di sviluppo dello studio.
+
+---
+
+## Backend cloud (`backend/`)
+
+Il backend è implementato in **FastAPI** e fornisce API per:
+
+- autenticazione e gestione utente;
+- gestione sinistri e loro stato;
+- eventi, timeline, servizi ausiliari.
+
+Per dettagli su setup, dipendenze, migrazioni e comandi:
+
+- **vedi `backend/README.md`**, che contiene:
+  - struttura del progetto;
+  - comandi `pip`, `uvicorn`, `alembic`;
+  - istruzioni per build e run Docker.
+
+---
+
+## Altri componenti
+
+- **`PerXHub/`**  
+  Componenti di integrazione (es. sincronizzazione e-mail, servizi cloud, comunicazioni) a supporto dell’ecosistema PerX.
+
+- **`PerXHubMonitor/`**  
+  Strumenti per monitorare e diagnosticare lo stato dell’hub, code di sync e job di integrazione.
+
+- **`perx_sync_agent/`**  
+  Agent per sincronizzazione locale di directory, monitoraggio file e instradamento verso PerX.
+
+- **`perx_chrome_extension/`**  
+  Estensione Chrome per catturare contenuti dal browser e collegarli alle pratiche PerX (dettagli nel relativo `README`).
 
 ---
 
 ## Stato del progetto
 
-PerX è attualmente in fase di sviluppo.
-
-Il progetto è in evoluzione continua e alcune funzionalità possono essere:
-- in progettazione,
-- in prototipazione,
-- in sviluppo attivo,
-- in validazione su casi d’uso reali.
-
-La roadmap viene aggiornata progressivamente in base alle priorità tecniche, operative e di prodotto.
-
----
-
-## Tech direction
-
-L’architettura di PerX è orientata a privilegiare:
-
-- affidabilità operativa;
-- esperienza desktop-first per attività ad alta intensità documentale;
-- sincronizzazione controllata dei dati;
-- modularità dei componenti;
-- possibilità di integrazione tra logica locale e servizi remoti;
-- adozione pragmatica di AI locale e/o cloud dove realmente utile.
-
-> Nota: stack, architettura e componenti effettivi possono variare durante l’evoluzione del progetto.
-
----
-
-## A chi si rivolge
-
-PerX è pensato per:
-
-- studi peritali;
-- team tecnici che gestiscono pratiche assicurative property;
-- strutture operative che necessitano di maggiore controllo documentale e procedurale;
-- realtà che vogliono introdurre automazione e AI nei propri flussi senza perdere governabilità.
-
----
-
-## Perché PerX
-
-PerX nasce da un’esigenza semplice:  
-**trasformare un insieme disordinato di strumenti, file e procedure in un sistema di lavoro coerente, leggibile e scalabile.**
-
-Dove oggi spesso esistono:
-- passaggi manuali non tracciati,
-- documenti dispersi,
-- conoscenza operativa non formalizzata,
-- duplicazioni di lavoro,
-- dipendenza da prassi informali,
-
-PerX punta a costruire:
-- ordine,
-- contesto,
-- continuità,
-- standardizzazione,
-- velocità operativa.
+PerX è in **sviluppo attivo** e in uso interno controllato.  
+Le funzionalità evolvono in modo iterativo (prototipazione, sviluppo, validazione su casi reali) e la struttura della repo può subire riorganizzazioni.
 
 ---
 
 ## Contributi
 
-Al momento il progetto è sviluppato in forma controllata e non accetta contributi pubblici aperti.
-
-Per collaborazioni tecniche, partnership o richieste di approfondimento, fare riferimento ai contatti del team responsabile del progetto.
+Il progetto non accetta contributi pubblici aperti.  
+Per collaborazioni tecniche, integrazioni o valutazioni progettuali, fare riferimento ai canali interni del team responsabile.
 
 ---
 
 ## Riservatezza e utilizzo
 
-Questo repository può contenere materiale, codice, documentazione e strutture concettuali riservate o proprietarie.
+Questo repository può contenere codice, documentazione, modelli dati e concetti proprietari.
 
 Salvo diversa indicazione esplicita:
-- il contenuto non è da considerarsi liberamente riutilizzabile;
+
+- il contenuto **non** è da considerarsi liberamente riutilizzabile;
 - non è autorizzata la redistribuzione non concordata;
 - parti del progetto possono essere soggette a revisione, riorganizzazione o migrazione.
-
----
-
-## Roadmap indicativa
-
-- Definizione del nucleo dati e dei modelli di pratica
-- Strutturazione del layer documentale
-- Workflow operativi e cronologia attività
-- Integrazione AI contestuale
-- Gestione utenti, ruoli e ambienti organizzativi
-- Estensioni e automazioni avanzate
-
----
-
-## Disclaimer
-
-PerX è un progetto in evoluzione.  
-Le informazioni contenute in questo repository possono cambiare senza preavviso in funzione dello sviluppo tecnico, delle esigenze operative e delle scelte di prodotto.
 
 ---
 
