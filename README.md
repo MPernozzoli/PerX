@@ -15,8 +15,8 @@ Questa repo è strutturata come **monorepo** e contiene sia l’applicazione des
 - **`PerXHubMonitor/`**: tool di monitoraggio e diagnostica per l’hub.
 - **`perx_sync_agent/`**: agent dedicato alla sincronizzazione/sorveglianza di directory e file locali.
 - **`perx_chrome_extension/`**: estensione browser per integrazioni lato web.
-- **`backend/`**: backend FastAPI per servizi cloud (API sinistri, autenticazione, ecc.).
-- **Altri moduli/tools**: cartelle ausiliarie per test, varianti “lite”, script e materiali di supporto.
+- **`backend/`**: backend FastAPI per servizi cloud (API sinistri, autenticazione, ecc.) -- attualmente non in uso e non in sviluppo.
+- **Altri moduli/tools**: cartelle ausiliarie per test, varianti “lite” (iPhone), script e materiali di supporto.
 
 Ogni componente più complesso ha (o può avere) un proprio `README` locale con dettagli specifici.
 
@@ -27,37 +27,11 @@ Ogni componente più complesso ha (o può avere) un proprio `README` locale con 
 - **Codice principale**: in `PerX/` e `PerX per iPad/`.
 - **Progetto Xcode**: `PerX.xcodeproj`.
 
-### Avvio rapido (locale)
-
-1. **Apri il progetto**  
-   Apri `PerX.xcodeproj` in Xcode.
-
-2. **Seleziona il target**  
-   Scegli il target desiderato (es. app principale macOS, build per iPad, eventuali varianti “Lite”).
-
-3. **Esegui**  
-   Lancia l’app direttamente da Xcode su simulatore o dispositivo configurato.
 
 La configurazione dettagliata di schemi, bundle id, profili di provisioning e ambienti è gestita internamente al progetto Xcode e nella configurazione di sviluppo dello studio.
 
 ---
 
-## Backend cloud (`backend/`)
-
-Il backend è implementato in **FastAPI** e fornisce API per:
-
-- autenticazione e gestione utente;
-- gestione sinistri e loro stato;
-- eventi, timeline, servizi ausiliari.
-
-Per dettagli su setup, dipendenze, migrazioni e comandi:
-
-- **vedi `backend/README.md`**, che contiene:
-  - struttura del progetto;
-  - comandi `pip`, `uvicorn`, `alembic`;
-  - istruzioni per build e run Docker.
-
----
 
 ## Altri componenti
 
@@ -72,6 +46,7 @@ Per dettagli su setup, dipendenze, migrazioni e comandi:
 
 - **`perx_chrome_extension/`**  
   Estensione Chrome per catturare contenuti dal browser e collegarli alle pratiche PerX (dettagli nel relativo `README`).
+  Pensata come bridge tra il gestionale legacy dello studio e la versione BETA di PerX.
 
 ---
 
