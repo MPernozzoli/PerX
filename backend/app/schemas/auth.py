@@ -26,7 +26,7 @@ class UserResponse(BaseModel):
     full_name: str
     is_active: bool
     tenant_id: str
+    is_platform_admin: bool
     
     class Config:
         from_attributes = True
-

@@ -330,9 +330,9 @@ class RuleManager: ObservableObject {
         case .assignment:
             return ActionRecommendation(
                 actionType: .autoStateChange,
-                targetState: .daScaricare,
+                targetState: .istruzione,
                 createTask: true,
-                taskTitle: "Scaricare e gestire nuovo sinistro",
+                taskTitle: "Prendere in carico il triage del nuovo sinistro",
                 priority: 0.8
             )
             
@@ -464,4 +464,3 @@ class RuleManager: ObservableObject {
         objectWillChange.send()
     }
 }
-

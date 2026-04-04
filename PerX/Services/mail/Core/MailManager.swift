@@ -69,8 +69,6 @@ class MailManager: ObservableObject {
         let registry = EmailHandlerRegistry.shared
         
         // Registra tutti gli handler
-        registry.register(AssignmentHandler())
-        registry.register(RevocationEmailHandler())
         registry.register(DocumentationHandler())
         registry.register(ReminderHandler())
         registry.register(SurveyHandler())
@@ -662,70 +660,14 @@ class MailManager: ObservableObject {
             }
         }
         
-        // Extra: recupera SEMPRE tutte le assegnazioni non lette (senza dipendere dai batch da 30)
-        // Questo evita che in etichette/caselle molto piene si resti "bloccati" sui soli ultimi N messaggi.
-        await syncUnreadAssignmentEmails(context: context)
     }
 
     /// Sincronizza tutte le email di assegnazione NON LETTE ("Assegnazione perito") presenti nell'account.
     /// - Nota: usa query Gmail + paginazione completa, poi salva l'email in TUTTE le labelIds del messaggio,
     ///   così appare correttamente anche nella casella/etichetta "Assegnate".
     private func syncUnreadAssignmentEmails(context: NSManagedObjectContext) async {
-        guard let accessToken = try? await authService.getAccessToken() else {
-            return
-        }
-        
-        // Query mirata: solo assegnazioni non lette
-        let query = #"is:unread subject:"Assegnazione perito" from:info@actsrl.it"#
-        
-        do {
-            let messageIds = try await fetchMessageIds(labelId: nil, accessToken: accessToken, query: query)
-            guard !messageIds.isEmpty else { return }
-            
-            // Scarichiamo solo quelle che non abbiamo in cache, o che sono incomplete (senza body)
-            let idsToFetch: [String] = await MainActor.run {
-                messageIds.filter { id in
-                    guard let cached = self.repository.getEmail(byId: id) else { return true }
-                    return cached.body == nil
-                }
-            }
-            
-            guard !idsToFetch.isEmpty else { return }
-            
-            print("[MailManager] 📌 Assegnazioni non lette: \(idsToFetch.count) da scaricare (su \(messageIds.count) trovate)")
-            
-            var downloadedEmails: [Email] = []
-            downloadedEmails.reserveCapacity(idsToFetch.count)
-            
-            for (index, messageId) in idsToFetch.enumerated() {
-                if index > 0 {
-                    try? await Task.sleep(nanoseconds: 300_000_000) // 300ms tra richieste
-                }
-                
-                do {
-                    let detail = try await gmailService.fetchEmailDetails(messageId: messageId)
-                    let email = self.convertToEmail(detail, mailboxId: "INBOX")
-                    downloadedEmails.append(email)
-                    
-                    // Salva l'email su tutte le labelIds del messaggio, così compare nella casella corretta
-                    let targetMailboxes = detail.labelIds.isEmpty ? ["INBOX"] : detail.labelIds
-                    await MainActor.run {
-                        for labelId in targetMailboxes {
-                            _ = self.repository.addOrUpdateEmail(email, forMailbox: labelId)
-                        }
-                    }
-                } catch {
-                    print("[MailManager] ❌ Errore scaricamento assegnazione \(messageId): \(error)")
-                }
-            }
-            
-            if !downloadedEmails.isEmpty {
-                print("[MailManager] ✅ Scaricate \(downloadedEmails.count) assegnazioni non lette, aggiunte in coda...")
-                await EmailQueueService.shared.enqueue(downloadedEmails, autoStart: true)
-            }
-        } catch {
-            print("[MailManager] ❌ Errore sync assegnazioni non lette: \(error)")
-        }
+        _ = context
+        return
     }
     
     // MARK: - Bulk Metadata Fetch (spostato da MailViewModel)
@@ -1676,9 +1618,12 @@ class MailManager: ObservableObject {
         if lowercased.contains("@cattolica.it") || 
            lowercased.contains("@generali.it") ||
            lowercased.contains("@zurich.it") ||
-           lowercased.contains("@unipolsai.it") ||
-           lowercased.contains("@actsrl.it") {
+           lowercased.contains("@unipolsai.it") {
             return .company
+        }
+
+        if TenantMailSettingsService.shared.isInternalEmail(lowercased) {
+            return .studio
         }
         
         if lowercased.contains("agenzia") || lowercased.contains("agent") {
@@ -1808,4 +1753,3 @@ class GenericCommunicationHandler: BaseEmailHandler {
         )
     }
 }
-

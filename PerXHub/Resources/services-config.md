@@ -48,7 +48,15 @@ PERX_AUTO_UPDATER_URL=http://localhost:8084
 PERX_SYNC_AGENT_URL=https://perx-sync-agent.tailca58be.ts.net
 PERX_REPO_PATH=/opt/perx-hub/repo
 PERX_SYNC_AGENT_PATH=C:\perx_sync_agent
+SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=replace-with-service-role-key
 ```
+
+## Supabase
+
+- Il database applicativo principale deve risiedere su Supabase/Postgres.
+- L'Hub usa Supabase come nodo server-side, non come client anonimo.
+- I file binari restano nel vault dell'Hub; su Supabase vanno metadata e stati di elaborazione.
 
 ## Installazione Servizi
 

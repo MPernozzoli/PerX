@@ -42,10 +42,10 @@ public actor DatabaseManager {
     
     public func saveVaultFile(_ file: VaultFile) throws {
         let db = try db()
-        let encoder = JSONEncoder()
         
         try db.run(DatabaseSchema.vaultFiles.insert(or: .replace,
             DatabaseSchema.VaultFilesColumns.id <- file.id,
+            DatabaseSchema.VaultFilesColumns.tenantSlug <- file.tenantSlug,
             DatabaseSchema.VaultFilesColumns.sinistroRef <- file.sinistroRef,
             DatabaseSchema.VaultFilesColumns.relativePath <- file.relativePath,
             DatabaseSchema.VaultFilesColumns.filename <- file.filename,
@@ -60,9 +60,11 @@ public actor DatabaseManager {
         ))
     }
     
-    public func getVaultFile(id: String) throws -> VaultFile? {
+    public func getVaultFile(id: String, tenantSlug: String = "default") throws -> VaultFile? {
         let db = try db()
-        let query = DatabaseSchema.vaultFiles.filter(DatabaseSchema.VaultFilesColumns.id == id)
+        let query = DatabaseSchema.vaultFiles
+            .filter(DatabaseSchema.VaultFilesColumns.tenantSlug == tenantSlug)
+            .filter(DatabaseSchema.VaultFilesColumns.id == id)
         
         guard let row = try db.pluck(query) else {
             return nil
@@ -71,24 +73,28 @@ public actor DatabaseManager {
         return vaultFileFromRow(row)
     }
     
-    public func listVaultFiles(sinistroRef: String) throws -> [VaultFile] {
+    public func listVaultFiles(sinistroRef: String, tenantSlug: String = "default") throws -> [VaultFile] {
         let db = try db()
         let query = DatabaseSchema.vaultFiles
+            .filter(DatabaseSchema.VaultFilesColumns.tenantSlug == tenantSlug)
             .filter(DatabaseSchema.VaultFilesColumns.sinistroRef == sinistroRef)
             .order(DatabaseSchema.VaultFilesColumns.folder, DatabaseSchema.VaultFilesColumns.filename)
         
         return try db.prepare(query).map { vaultFileFromRow($0) }
     }
     
-    public func deleteVaultFile(id: String) throws {
+    public func deleteVaultFile(id: String, tenantSlug: String = "default") throws {
         let db = try db()
-        let query = DatabaseSchema.vaultFiles.filter(DatabaseSchema.VaultFilesColumns.id == id)
+        let query = DatabaseSchema.vaultFiles
+            .filter(DatabaseSchema.VaultFilesColumns.tenantSlug == tenantSlug)
+            .filter(DatabaseSchema.VaultFilesColumns.id == id)
         try db.run(query.delete())
     }
     
     private func vaultFileFromRow(_ row: Row) -> VaultFile {
         VaultFile(
             id: row[DatabaseSchema.VaultFilesColumns.id],
+            tenantSlug: row[DatabaseSchema.VaultFilesColumns.tenantSlug],
             sinistroRef: row[DatabaseSchema.VaultFilesColumns.sinistroRef],
             relativePath: row[DatabaseSchema.VaultFilesColumns.relativePath],
             filename: row[DatabaseSchema.VaultFilesColumns.filename],
@@ -113,6 +119,7 @@ public actor DatabaseManager {
         
         try db.run(DatabaseSchema.jobs.insert(or: .replace,
             DatabaseSchema.JobsColumns.id <- job.id,
+            DatabaseSchema.JobsColumns.tenantSlug <- job.tenantSlug,
             DatabaseSchema.JobsColumns.type <- job.type.rawValue,
             DatabaseSchema.JobsColumns.status <- job.status.rawValue,
             DatabaseSchema.JobsColumns.priority <- job.priority,
@@ -125,9 +132,11 @@ public actor DatabaseManager {
         ))
     }
     
-    public func getJob(id: String) throws -> Job? {
+    public func getJob(id: String, tenantSlug: String = "default") throws -> Job? {
         let db = try db()
-        let query = DatabaseSchema.jobs.filter(DatabaseSchema.JobsColumns.id == id)
+        let query = DatabaseSchema.jobs
+            .filter(DatabaseSchema.JobsColumns.tenantSlug == tenantSlug)
+            .filter(DatabaseSchema.JobsColumns.id == id)
         
         guard let row = try db.pluck(query) else {
             return nil
@@ -136,9 +145,10 @@ public actor DatabaseManager {
         return try jobFromRow(row)
     }
     
-    public func getPendingJobs(limit: Int = 10) throws -> [Job] {
+    public func getPendingJobs(limit: Int = 10, tenantSlug: String = "default") throws -> [Job] {
         let db = try db()
         let query = DatabaseSchema.jobs
+            .filter(DatabaseSchema.JobsColumns.tenantSlug == tenantSlug)
             .filter(DatabaseSchema.JobsColumns.status == JobStatus.pending.rawValue)
             .order(DatabaseSchema.JobsColumns.priority.desc, DatabaseSchema.JobsColumns.createdAt.asc)
             .limit(limit)
@@ -146,9 +156,11 @@ public actor DatabaseManager {
         return try db.prepare(query).compactMap { try? jobFromRow($0) }
     }
     
-    public func updateJobStatus(id: String, status: JobStatus, errorMessage: String? = nil) throws {
+    public func updateJobStatus(id: String, status: JobStatus, errorMessage: String? = nil, tenantSlug: String = "default") throws {
         let db = try db()
-        let query = DatabaseSchema.jobs.filter(DatabaseSchema.JobsColumns.id == id)
+        let query = DatabaseSchema.jobs
+            .filter(DatabaseSchema.JobsColumns.tenantSlug == tenantSlug)
+            .filter(DatabaseSchema.JobsColumns.id == id)
         
         var updates: [Setter] = [
             DatabaseSchema.JobsColumns.status <- status.rawValue
@@ -178,6 +190,7 @@ public actor DatabaseManager {
         
         return Job(
             id: row[DatabaseSchema.JobsColumns.id],
+            tenantSlug: row[DatabaseSchema.JobsColumns.tenantSlug],
             type: JobType(rawValue: row[DatabaseSchema.JobsColumns.type]) ?? .scanLegacy,
             status: JobStatus(rawValue: row[DatabaseSchema.JobsColumns.status]) ?? .pending,
             priority: row[DatabaseSchema.JobsColumns.priority],
@@ -196,6 +209,7 @@ public actor DatabaseManager {
         let db = try db()
         
         try db.run(DatabaseSchema.sinistroFolders.insert(or: .replace,
+            DatabaseSchema.SinistroFoldersColumns.tenantSlug <- folder.tenantSlug,
             DatabaseSchema.SinistroFoldersColumns.sinistroRef <- folder.sinistroRef,
             DatabaseSchema.SinistroFoldersColumns.status <- folder.status.rawValue,
             DatabaseSchema.SinistroFoldersColumns.lastSyncAt <- folder.lastSyncAt?.timeIntervalSince1970,
@@ -205,15 +219,18 @@ public actor DatabaseManager {
         ))
     }
     
-    public func getSinistroFolder(sinistroRef: String) throws -> SinistroFolder? {
+    public func getSinistroFolder(sinistroRef: String, tenantSlug: String = "default") throws -> SinistroFolder? {
         let db = try db()
-        let query = DatabaseSchema.sinistroFolders.filter(DatabaseSchema.SinistroFoldersColumns.sinistroRef == sinistroRef)
+        let query = DatabaseSchema.sinistroFolders
+            .filter(DatabaseSchema.SinistroFoldersColumns.tenantSlug == tenantSlug)
+            .filter(DatabaseSchema.SinistroFoldersColumns.sinistroRef == sinistroRef)
         
         guard let row = try db.pluck(query) else {
             return nil
         }
         
         return SinistroFolder(
+            tenantSlug: row[DatabaseSchema.SinistroFoldersColumns.tenantSlug],
             sinistroRef: row[DatabaseSchema.SinistroFoldersColumns.sinistroRef],
             status: SinistroFolderStatus(rawValue: row[DatabaseSchema.SinistroFoldersColumns.status]) ?? .pending,
             lastSyncAt: row[DatabaseSchema.SinistroFoldersColumns.lastSyncAt].map { Date(timeIntervalSince1970: $0) },
@@ -223,9 +240,11 @@ public actor DatabaseManager {
         )
     }
     
-    public func updateSinistroFolderStatus(sinistroRef: String, status: SinistroFolderStatus, errorMessage: String? = nil) throws {
+    public func updateSinistroFolderStatus(sinistroRef: String, status: SinistroFolderStatus, errorMessage: String? = nil, tenantSlug: String = "default") throws {
         let db = try db()
-        let query = DatabaseSchema.sinistroFolders.filter(DatabaseSchema.SinistroFoldersColumns.sinistroRef == sinistroRef)
+        let query = DatabaseSchema.sinistroFolders
+            .filter(DatabaseSchema.SinistroFoldersColumns.tenantSlug == tenantSlug)
+            .filter(DatabaseSchema.SinistroFoldersColumns.sinistroRef == sinistroRef)
         
         var updates: [Setter] = [
             DatabaseSchema.SinistroFoldersColumns.status <- status.rawValue
@@ -240,6 +259,114 @@ public actor DatabaseManager {
         }
         
         try db.run(query.update(updates))
+    }
+
+    // MARK: - Assignment Planner
+
+    public func savePlannerSettings(_ settings: AssignmentPlannerSettingsDTO) throws {
+        let db = try db()
+        let payload = try JSONEncoder().encode(settings)
+        let payloadJSON = String(data: payload, encoding: .utf8) ?? "{}"
+
+        try db.run(DatabaseSchema.plannerSettings.insert(or: .replace,
+            DatabaseSchema.PlannerSettingsColumns.tenantSlug <- settings.tenantSlug,
+            DatabaseSchema.PlannerSettingsColumns.settingsJSON <- payloadJSON,
+            DatabaseSchema.PlannerSettingsColumns.updatedAt <- Date().timeIntervalSince1970
+        ))
+    }
+
+    public func getPlannerSettings(tenantSlug: String) throws -> AssignmentPlannerSettingsDTO? {
+        let db = try db()
+        let query = DatabaseSchema.plannerSettings.filter(DatabaseSchema.PlannerSettingsColumns.tenantSlug == tenantSlug)
+        guard let row = try db.pluck(query) else { return nil }
+        let payloadData = row[DatabaseSchema.PlannerSettingsColumns.settingsJSON].data(using: .utf8) ?? Data()
+        return try JSONDecoder().decode(AssignmentPlannerSettingsDTO.self, from: payloadData)
+    }
+
+    public func listPlannerMemberSettings(tenantSlug: String) throws -> [AssignmentMemberSettingsDTO] {
+        let db = try db()
+        let query = DatabaseSchema.plannerMemberSettings
+            .filter(DatabaseSchema.PlannerMemberSettingsColumns.tenantSlug == tenantSlug)
+            .order(DatabaseSchema.PlannerMemberSettingsColumns.email.asc)
+
+        let decoder = JSONDecoder()
+        return try db.prepare(query).compactMap { row in
+            let data = row[DatabaseSchema.PlannerMemberSettingsColumns.payloadJSON].data(using: .utf8) ?? Data()
+            return try? decoder.decode(AssignmentMemberSettingsDTO.self, from: data)
+        }
+    }
+
+    public func savePlannerMemberSetting(_ settings: AssignmentMemberSettingsDTO) throws {
+        let db = try db()
+        let payload = try JSONEncoder().encode(settings)
+        let payloadJSON = String(data: payload, encoding: .utf8) ?? "{}"
+
+        try db.run(DatabaseSchema.plannerMemberSettings.insert(or: .replace,
+            DatabaseSchema.PlannerMemberSettingsColumns.tenantSlug <- settings.tenantSlug,
+            DatabaseSchema.PlannerMemberSettingsColumns.email <- settings.email.lowercased(),
+            DatabaseSchema.PlannerMemberSettingsColumns.payloadJSON <- payloadJSON,
+            DatabaseSchema.PlannerMemberSettingsColumns.updatedAt <- Date().timeIntervalSince1970
+        ))
+    }
+
+    public func replacePlannerAssignments(_ plan: AssignmentPlanDTO) throws {
+        let db = try db()
+        let encoder = JSONEncoder()
+        try db.transaction {
+            let scoped = DatabaseSchema.plannerAssignments.filter(DatabaseSchema.PlannerAssignmentsColumns.tenantSlug == plan.tenantSlug)
+            try db.run(scoped.delete())
+            let planPayload = try encoder.encode(plan)
+            let planPayloadJSON = String(data: planPayload, encoding: .utf8) ?? "{}"
+            try db.run(DatabaseSchema.plannerAssignments.insert(
+                DatabaseSchema.PlannerAssignmentsColumns.tenantSlug <- plan.tenantSlug,
+                DatabaseSchema.PlannerAssignmentsColumns.claimReference <- "__meta__",
+                DatabaseSchema.PlannerAssignmentsColumns.payloadJSON <- planPayloadJSON,
+                DatabaseSchema.PlannerAssignmentsColumns.generatedAt <- plan.generatedAt.timeIntervalSince1970
+            ))
+            for assignment in plan.assignments {
+                let payload = try encoder.encode(assignment)
+                let payloadJSON = String(data: payload, encoding: .utf8) ?? "{}"
+                try db.run(DatabaseSchema.plannerAssignments.insert(
+                    DatabaseSchema.PlannerAssignmentsColumns.tenantSlug <- plan.tenantSlug,
+                    DatabaseSchema.PlannerAssignmentsColumns.claimReference <- assignment.claimReference,
+                    DatabaseSchema.PlannerAssignmentsColumns.payloadJSON <- payloadJSON,
+                    DatabaseSchema.PlannerAssignmentsColumns.generatedAt <- plan.generatedAt.timeIntervalSince1970
+                ))
+            }
+        }
+    }
+
+    public func getPlannerPlan(tenantSlug: String) throws -> AssignmentPlanDTO? {
+        let db = try db()
+        let metaQuery = DatabaseSchema.plannerAssignments
+            .filter(DatabaseSchema.PlannerAssignmentsColumns.tenantSlug == tenantSlug)
+            .filter(DatabaseSchema.PlannerAssignmentsColumns.claimReference == "__meta__")
+            .order(DatabaseSchema.PlannerAssignmentsColumns.generatedAt.desc)
+
+        if let row = try db.pluck(metaQuery) {
+            let payloadData = row[DatabaseSchema.PlannerAssignmentsColumns.payloadJSON].data(using: .utf8) ?? Data()
+            return try JSONDecoder().decode(AssignmentPlanDTO.self, from: payloadData)
+        }
+
+        let query = DatabaseSchema.plannerAssignments
+            .filter(DatabaseSchema.PlannerAssignmentsColumns.tenantSlug == tenantSlug)
+            .order(DatabaseSchema.PlannerAssignmentsColumns.generatedAt.desc)
+
+        let rows = Array(try db.prepare(query))
+        guard !rows.isEmpty else { return nil }
+        let decoder = JSONDecoder()
+        let assignments = rows.compactMap { row -> AssignmentPlanEntryDTO? in
+            guard row[DatabaseSchema.PlannerAssignmentsColumns.claimReference] != "__meta__" else { return nil }
+            let data = row[DatabaseSchema.PlannerAssignmentsColumns.payloadJSON].data(using: .utf8) ?? Data()
+            return try? decoder.decode(AssignmentPlanEntryDTO.self, from: data)
+        }
+        let generatedAt = Date(timeIntervalSince1970: rows.first?[DatabaseSchema.PlannerAssignmentsColumns.generatedAt] ?? Date().timeIntervalSince1970)
+        return AssignmentPlanDTO(
+            tenantSlug: tenantSlug,
+            generatedAt: generatedAt,
+            assignments: assignments,
+            unassignedClaimReferences: []
+        )
     }
 }
 

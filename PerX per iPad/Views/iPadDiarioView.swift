@@ -154,21 +154,25 @@ struct iPadDiarioView: View {
         newNoteText = ""
         isInputFocused = false
         
-        // Crea entry locale
-        let entry = DiarioEntryDTO(
-            id: UUID().uuidString,
-            timestamp: Date(),
-            tipo: "nota",
-            titolo: "Nota",
-            riassunto: text,
-            contenutoCompleto: text,
-            createdBy: session.currentUserEmail
-        )
-        
-        entries.append(entry)
-        
-        // TODO: Sync con CloudKit
-        
+        if let syncService = session.cloudKitSyncService {
+            do {
+                let entry = try await syncService.addDiarioEntry(riferimento: riferimento, testo: text, tipo: "nota")
+                entries.append(entry)
+            } catch {
+                let fallback = DiarioEntryDTO(
+                    id: UUID().uuidString,
+                    timestamp: Date(),
+                    tipo: "nota",
+                    titolo: "Nota",
+                    riassunto: text,
+                    contenutoCompleto: text,
+                    createdBy: session.currentUserEmail
+                )
+                entries.append(fallback)
+                print("[iPadDiarioView] sync nota fallita: \(error)")
+            }
+        }
+
         isSending = false
     }
     

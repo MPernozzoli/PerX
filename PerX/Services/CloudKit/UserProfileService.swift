@@ -16,7 +16,11 @@ final class UserProfileService: ObservableObject {
     /// True se l'utente corrente ha ruolo admin (CloudKit) o è l'admin hardcoded
     var isCurrentUserAdmin: Bool {
         guard let p = currentProfile else { return false }
-        return p.roles.contains(.admin) || p.isAdmin
+        return p.isAdmin
+    }
+
+    var canCurrentUserManageTenantSettings: Bool {
+        currentProfile?.canManageTenantSettings ?? false
     }
     
     private let container: CKContainer

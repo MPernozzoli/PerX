@@ -8,6 +8,7 @@
 
 import Foundation
 import Combine
+import Security
 
 /// Client HTTP per comunicare con l'Hub centralizzato
 @MainActor
@@ -20,6 +21,7 @@ class HubAPIClient: ObservableObject {
     private let session: URLSession
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
+    private let keychainService = "com.perx.ipad.cloudapi"
     
     // Hub URL - da configurare nelle impostazioni
     private var _hubBaseURL: String = ""
@@ -28,6 +30,24 @@ class HubAPIClient: ObservableObject {
         set { 
             _hubBaseURL = newValue
             UserDefaults.standard.set(newValue, forKey: "hubBaseURL")
+        }
+    }
+
+    private var _cloudAPIBaseURL: String = ""
+    var cloudAPIBaseURL: String {
+        get { _cloudAPIBaseURL }
+        set {
+            _cloudAPIBaseURL = newValue
+            UserDefaults.standard.set(newValue, forKey: "cloudAPIBaseURL")
+        }
+    }
+
+    private var _cloudAPIEmail: String = ""
+    var cloudAPIEmail: String {
+        get { _cloudAPIEmail }
+        set {
+            _cloudAPIEmail = newValue
+            UserDefaults.standard.set(newValue, forKey: "cloudAPIEmail")
         }
     }
     
@@ -42,6 +62,8 @@ class HubAPIClient: ObservableObject {
         
         // Carica URL salvato
         _hubBaseURL = UserDefaults.standard.string(forKey: "hubBaseURL") ?? ""
+        _cloudAPIBaseURL = UserDefaults.standard.string(forKey: "cloudAPIBaseURL") ?? ""
+        _cloudAPIEmail = UserDefaults.standard.string(forKey: "cloudAPIEmail") ?? ""
     }
     
     // MARK: - Configuration
@@ -67,6 +89,26 @@ class HubAPIClient: ObservableObject {
     private var authToken: String? {
         // Recupera token da GoogleAuthServiceiOS
         return GoogleAuthServiceiOS.shared.accessToken
+    }
+
+    var isCloudConfigured: Bool {
+        !cloudAPIBaseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !cloudAPIEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        loadFromKeychain(forKey: "cloud_api_password") != nil
+    }
+
+    func saveCloudPassword(_ password: String) {
+        let trimmed = password.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            removeFromKeychain(forKey: "cloud_api_password")
+        } else {
+            saveToKeychain(token: trimmed, forKey: "cloud_api_password")
+        }
+    }
+
+    func clearCloudSession() {
+        removeFromKeychain(forKey: "cloud_api_access_token")
+        removeFromKeychain(forKey: "cloud_api_refresh_token")
     }
     
     private func authorizedRequest(url: URL) -> URLRequest {
@@ -157,6 +199,11 @@ class HubAPIClient: ObservableObject {
         try validateResponse(response)
         return try decoder.decode([SinistroDTO].self, from: data)
     }
+
+    func getSinistriFromCloud() async throws -> [SinistroDTO] {
+        let response: CloudClaimListResponseDTO = try await cloudGet(endpoint: "/api/v1/claims")
+        return response.items.map { SinistroDTO(from: $0) }
+    }
     
     /// Recupera dettaglio sinistro
     func getSinistro(riferimento: String) async throws -> SinistroDTO {
@@ -167,6 +214,11 @@ class HubAPIClient: ObservableObject {
         let (data, response) = try await session.data(for: httpRequest)
         try validateResponse(response)
         return try decoder.decode(SinistroDTO.self, from: data)
+    }
+
+    func getSinistroFromCloud(riferimento: String) async throws -> SinistroDTO {
+        let response: CloudClaimDTO = try await cloudGet(endpoint: "/api/v1/claims/\(riferimento)")
+        return SinistroDTO(from: response)
     }
     
     // MARK: - Diario Operations
@@ -193,6 +245,28 @@ class HubAPIClient: ObservableObject {
         let (data, response) = try await session.data(for: httpRequest)
         try validateResponse(response)
         return try decoder.decode(DiarioEntryHubDTO.self, from: data)
+    }
+
+    func getDiarioEntriesFromCloud(riferimento: String) async throws -> [DiarioEntryDTO] {
+        let response: CloudDiaryEntryListResponseDTO = try await cloudGet(endpoint: "/api/v1/claims/\(riferimento)/diary")
+        return response.items.map { DiarioEntryDTO(from: $0) }
+    }
+
+    func addDiarioEntryToCloud(riferimento: String, entry: CreateDiarioEntryRequest) async throws -> DiarioEntryDTO {
+        let request = CloudDiaryEntryCreateRequestDTO(
+            entry_type: entry.tipo,
+            title: entry.titolo,
+            body_text: entry.testo,
+            visibility: "internal",
+            happened_at: nil
+        )
+        let response: CloudDiaryEntryDTO = try await cloudPost(endpoint: "/api/v1/claims/\(riferimento)/diary", body: request)
+        return DiarioEntryDTO(from: response)
+    }
+
+    func getProcessedEmailsFromCloud(riferimento: String) async throws -> [ProcessedEmailDTO] {
+        let response: CloudEmailListResponseDTO = try await cloudGet(endpoint: "/api/v1/emails?claim_id=\(riferimento)")
+        return response.items.map { ProcessedEmailDTO(from: $0, sinistroRiferimento: riferimento) }
     }
     
     // MARK: - Vault Operations
@@ -275,6 +349,105 @@ class HubAPIClient: ObservableObject {
         let (_, response) = try await session.data(for: httpRequest)
         try validateResponse(response)
     }
+
+    // MARK: - Cloud API
+
+    func cloudLogin(forceRefresh: Bool = false) async throws -> String {
+        if !forceRefresh,
+           let token = loadFromKeychain(forKey: "cloud_api_access_token"),
+           !token.isEmpty {
+            return token
+        }
+
+        let base = cloudAPIBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let email = cloudAPIEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !base.isEmpty, let password = loadFromKeychain(forKey: "cloud_api_password"), !password.isEmpty else {
+            throw HubAPIError.notConfigured
+        }
+
+        guard let url = URL(string: "\(base)/api/v1/auth/login") else {
+            throw HubAPIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(CloudLoginRequest(username: email, password: password))
+
+        let (data, response) = try await session.data(for: request)
+        try validateResponse(response)
+        let tokenResponse = try decoder.decode(CloudTokenResponse.self, from: data)
+        saveToKeychain(token: tokenResponse.access_token, forKey: "cloud_api_access_token")
+        saveToKeychain(token: tokenResponse.refresh_token, forKey: "cloud_api_refresh_token")
+        return tokenResponse.access_token
+    }
+
+    func cloudGet<T: Decodable>(endpoint: String) async throws -> T {
+        let base = cloudAPIBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: "\(base)\(endpoint)") else {
+            throw HubAPIError.invalidURL
+        }
+
+        var request = try await authorizedCloudRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw HubAPIError.invalidResponse
+        }
+        if httpResponse.statusCode == 401 {
+            _ = try await cloudLogin(forceRefresh: true)
+            var retry = try await authorizedCloudRequest(url: url)
+            retry.httpMethod = "GET"
+            retry.setValue("application/json", forHTTPHeaderField: "Accept")
+            let (retryData, retryResponse) = try await session.data(for: retry)
+            try validateResponse(retryResponse)
+            return try decoder.decode(T.self, from: retryData)
+        }
+
+        try validateResponse(response)
+        return try decoder.decode(T.self, from: data)
+    }
+
+    func cloudPost<B: Encodable, T: Decodable>(endpoint: String, body: B) async throws -> T {
+        let base = cloudAPIBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: "\(base)\(endpoint)") else {
+            throw HubAPIError.invalidURL
+        }
+
+        var request = try await authorizedCloudRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.httpBody = try encoder.encode(body)
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw HubAPIError.invalidResponse
+        }
+        if httpResponse.statusCode == 401 {
+            _ = try await cloudLogin(forceRefresh: true)
+            var retry = try await authorizedCloudRequest(url: url)
+            retry.httpMethod = "POST"
+            retry.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            retry.setValue("application/json", forHTTPHeaderField: "Accept")
+            retry.httpBody = try encoder.encode(body)
+            let (retryData, retryResponse) = try await session.data(for: retry)
+            try validateResponse(retryResponse)
+            return try decoder.decode(T.self, from: retryData)
+        }
+
+        try validateResponse(response)
+        return try decoder.decode(T.self, from: data)
+    }
+
+    private func authorizedCloudRequest(url: URL) async throws -> URLRequest {
+        let token = try await cloudLogin()
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        return request
+    }
     
     // MARK: - Helpers
     
@@ -299,6 +472,45 @@ class HubAPIClient: ObservableObject {
         default:
             throw HubAPIError.httpError(httpResponse.statusCode)
         }
+    }
+
+    private func saveToKeychain(token: String, forKey key: String) {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: key,
+            kSecValueData as String: Data(token.utf8)
+        ]
+
+        SecItemDelete(query as CFDictionary)
+        SecItemAdd(query as CFDictionary, nil)
+    }
+
+    private func loadFromKeychain(forKey key: String) -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: key,
+            kSecReturnData as String: true
+        ]
+
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        guard status == errSecSuccess,
+              let data = result as? Data,
+              let string = String(data: data, encoding: .utf8) else {
+            return nil
+        }
+        return string
+    }
+
+    private func removeFromKeychain(forKey key: String) {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: key
+        ]
+        SecItemDelete(query as CFDictionary)
     }
 }
 
@@ -408,6 +620,7 @@ struct ScheduleWhatsAppResponse: Decodable {
 struct SinistroDTO: Codable, Identifiable {
     let id: String
     let riferimento: String
+    let garanzia: String?
     let nomeAssicurato: String
     let nomeContraente: String?
     let nomeCompagnia: String
@@ -431,6 +644,31 @@ struct SinistroDTO: Codable, Identifiable {
     var isOpen: Bool {
         let closedStates = ["chiuso", "definito", "revocato", "annullato"]
         return !closedStates.contains(stato.lowercased())
+    }
+
+    init(from dto: CloudClaimDTO) {
+        self.id = dto.id
+        self.riferimento = dto.external_ref ?? dto.id
+        self.garanzia = dto.garanzia
+        self.nomeAssicurato = dto.nome_assicurato ?? ""
+        self.nomeContraente = nil
+        self.nomeCompagnia = dto.compagnia ?? ""
+        self.stato = dto.stato_corrente
+        self.statoDetail = nil
+        self.dataAssegnazione = dto.created_at
+        self.dataChiusura = dto.closed_at
+        self.dataSinistro = dto.data_sinistro
+        self.luogoSinistro = nil
+        self.numeroPolizza = dto.numero_polizza
+        self.tipoPolizza = dto.tipo_polizza
+        self.stimaDanno = nil
+        self.liquidato = dto.liquidato
+        self.telefonoContraente = nil
+        self.emailContraente = nil
+        self.telefonoAssicurato = nil
+        self.emailAssicurato = nil
+        self.assignedToUserEmail = nil
+        self.ownerEmail = nil
     }
 }
 
@@ -484,6 +722,91 @@ struct HealthResponse: Codable {
     let version: String
     let uptime: TimeInterval?
     let timestamp: Date?
+}
+
+struct CloudLoginRequest: Encodable {
+    let username: String
+    let password: String
+}
+
+struct CloudTokenResponse: Decodable {
+    let access_token: String
+    let refresh_token: String
+    let token_type: String
+}
+
+struct CloudClaimListResponseDTO: Decodable {
+    let items: [CloudClaimDTO]
+    let total: Int
+    let page: Int
+    let page_size: Int
+}
+
+struct CloudClaimDTO: Decodable {
+    let id: String
+    let external_ref: String?
+    let numero_sinistro: String?
+    let compagnia: String?
+    let stato_corrente: String
+    let garanzia: String?
+    let agenzia: String?
+    let nome_assicurato: String?
+    let data_sinistro: Date?
+    let numero_polizza: String?
+    let tipo_polizza: String?
+    let richiesta: Double?
+    let liquidato: Double?
+    let closed_at: Date?
+    let created_at: Date
+}
+
+struct CloudDiaryEntryListResponseDTO: Decodable {
+    let items: [CloudDiaryEntryDTO]
+    let total: Int
+}
+
+struct CloudDiaryEntryDTO: Decodable {
+    let id: String
+    let tenant_id: String
+    let claim_id: String
+    let entry_type: String
+    let title: String?
+    let body_text: String?
+    let visibility: String
+    let happened_at: Date
+    let created_at: Date
+    let created_by_user_id: String?
+}
+
+struct CloudDiaryEntryCreateRequestDTO: Encodable {
+    let entry_type: String
+    let title: String?
+    let body_text: String?
+    let visibility: String
+    let happened_at: Date?
+}
+
+struct CloudEmailListResponseDTO: Decodable {
+    let items: [CloudEmailDTO]
+    let total: Int
+}
+
+struct CloudEmailDTO: Decodable {
+    let id: String
+    let tenant_id: String
+    let message_id: String
+    let thread_id: String?
+    let from_address: String
+    let to_addresses: String?
+    let cc_addresses: String?
+    let subject: String?
+    let body_text: String?
+    let body_html: String?
+    let received_at: Date
+    let ingested_at: Date
+    let status: String
+    let mailbox_id: String?
+    let provider_id: String?
 }
 
 // MARK: - Programmazione DTOs (usati localmente, sincronizzati via CloudKit KV Store)

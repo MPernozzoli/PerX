@@ -161,6 +161,18 @@ struct PerXApp: App {
                     }
                     Task {
                         await CPUThrottler.shared.runAtStartup {
+                            _ = AutomaticClaimAssignmentService.shared
+                        }
+                    }
+                    Task {
+                        await CPUThrottler.shared.runAtStartup {
+                            await UserProfileService.shared.refreshCurrentProfile()
+                            await UserProfileService.shared.refreshAllProfiles()
+                            await AutomaticClaimAssignmentService.shared.runNow(reason: "startup")
+                        }
+                    }
+                    Task {
+                        await CPUThrottler.shared.runAtStartup {
                             ClaimAssignmentBackfillService.shared.runIfNeeded(
                                 context: persistenceController.container.viewContext,
                                 currentUserEmail: GoogleAuthService.shared.userEmail

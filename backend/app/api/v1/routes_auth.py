@@ -6,7 +6,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.core.database import get_db
-from app.core.security import verify_password, get_password_hash, create_access_token, get_current_active_user
+from app.core.security import (
+    verify_password,
+    create_access_token,
+    get_current_active_user,
+    is_supabase_auth_enabled,
+    supabase_password_login,
+)
 from app.models.user import User
 from app.schemas.auth import LoginRequest, Token, UserResponse
 
@@ -19,6 +25,30 @@ async def login(
     db: AsyncSession = Depends(get_db)
 ):
     """Login with username/password, returns JWT tokens"""
+    if is_supabase_auth_enabled():
+        token_response = await supabase_password_login(login_data.username, login_data.password)
+
+        result = await db.execute(
+            select(User).where(User.email == login_data.username.lower())
+        )
+        user = result.scalar_one_or_none()
+
+        if not user or not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User exists in Supabase but is not provisioned in PerX"
+            )
+
+        from datetime import datetime
+        user.last_login_at = datetime.utcnow()
+        await db.commit()
+
+        return {
+            "access_token": token_response["access_token"],
+            "refresh_token": token_response.get("refresh_token", ""),
+            "token_type": token_response.get("token_type", "bearer"),
+        }
+
     # Find user by email
     result = await db.execute(
         select(User).where(User.email == login_data.username)
@@ -44,7 +74,13 @@ async def login(
     await db.commit()
     
     # Create tokens
-    access_token = create_access_token(data={"sub": user.id, "tenant_id": user.tenant_id})
+    access_token = create_access_token(
+        data={
+            "sub": user.id,
+            "tenant_id": user.tenant_id,
+            "is_platform_admin": user.is_platform_admin
+        }
+    )
     refresh_token = create_access_token(data={"sub": user.id, "type": "refresh"}, expires_delta=None)
     
     return {
@@ -64,6 +100,6 @@ async def get_current_user_info(
         email=current_user.email,
         full_name=current_user.full_name,
         is_active=current_user.is_active,
-        tenant_id=current_user.tenant_id
+        tenant_id=current_user.tenant_id,
+        is_platform_admin=current_user.is_platform_admin
     )
-

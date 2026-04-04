@@ -48,6 +48,7 @@
         <attribute name="emailDanneggiato" optional="YES" attributeType="String"/>
         <attribute name="emailSignature" optional="YES" attributeType="Transformable" valueTransformerName="NSAttributedStringTransformer" customClassName="NSAttributedString"/>
         <attribute name="foto" optional="YES" attributeType="Boolean" defaultValueString="NO"/>
+        <attribute name="garanzia" optional="YES" attributeType="String"/>
         <attribute name="fulminazione" optional="YES" attributeType="String"/>
         <attribute name="giustificativi" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
         <attribute name="iban" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>

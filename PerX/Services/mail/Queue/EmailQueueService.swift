@@ -6,7 +6,7 @@ import Combine
 /// Caratteristiche:
 /// - Coda persistente in Core Data (sopravvive al restart)
 /// - Throttling aggressivo per non sovraccaricare CPU
-/// - Prioritizzazione (assegnazioni > revoche > atti > resto)
+/// - Prioritizzazione (atti > resto)
 /// - Retry con backoff esponenziale
 /// - Rate limiting configurabile
 /// - Processamento in background a bassa priorità
@@ -70,8 +70,8 @@ class EmailQueueService: ObservableObject {
     // MARK: - Priority Levels
     
     enum Priority: Int16, Comparable {
-        case critical = 100    // Revoche
-        case high = 80         // Assegnazioni
+        case critical = 100    // Urgenze operative
+        case high = 80         // Alta priorita'
         case medium = 60       // Atti, documentazione
         case normal = 40       // Solleciti, sopralluoghi
         case low = 20          // Comunicazioni generiche
@@ -1094,17 +1094,6 @@ class EmailQueueService: ObservableObject {
     
     private func quickClassifyPriority(for email: Email) -> Priority {
         let subject = email.subject.lowercased()
-        let sender = email.sender.email.lowercased()
-        
-        // Revoche
-        if subject.contains("revoca") {
-            return .critical
-        }
-        
-        // Assegnazioni (da ACT)
-        if sender == "info@actsrl.it" && subject.contains("assegnazione") {
-            return .high
-        }
         
         // Atti
         if subject.contains("atto") || subject.contains("firma") || subject.contains("quietanza") {

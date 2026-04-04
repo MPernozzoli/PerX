@@ -1,8 +1,12 @@
 """
 Configuration management using Pydantic Settings
 """
+from pathlib import Path
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import List, Optional
+
+
+ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 
 
 class Settings(BaseSettings):
@@ -13,11 +17,23 @@ class Settings(BaseSettings):
     
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/perx_cloud"
+
+    # Supabase
+    SUPABASE_URL: Optional[str] = None
+    SUPABASE_ANON_KEY: Optional[str] = None
+    SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None
     
     # Security
     SECRET_KEY: str = "change-me-in-production"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
+
+    # Platform admin / multi-tenant bootstrap
+    APP_ADMIN_EMAIL: str = "info@pynkstudio.it"
+    APP_ADMIN_FULL_NAME: str = "Pynk Studio Admin"
+    APP_ADMIN_DEFAULT_PASSWORD: str = "change-me-now"
+    PLATFORM_TENANT_NAME: str = "Pynk Studio"
+    PLATFORM_TENANT_SLUG: str = "pynkstudio"
     
     # CORS
     CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:8080"]
@@ -46,9 +62,8 @@ class Settings(BaseSettings):
     FF_AUTOMATIONS_ENABLED: bool = False
     
     class Config:
-        env_file = ".env"
+        env_file = str(ENV_FILE)
         case_sensitive = True
 
 
 settings = Settings()
-

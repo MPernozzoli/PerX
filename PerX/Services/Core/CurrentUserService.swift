@@ -36,6 +36,22 @@ final class CurrentUserService: ObservableObject {
         guard isAuthenticated else { return nil }
         return GoogleAuthService.shared.userEmail?.lowercased()
     }
+
+    var currentRoles: [UserRole] {
+        UserProfileService.shared.currentProfile?.roles ?? []
+    }
+
+    var isPlatformAdmin: Bool {
+        UserProfileService.shared.currentProfile?.isPlatformAdmin ?? false
+    }
+
+    var isTenantAdmin: Bool {
+        UserProfileService.shared.currentProfile?.isTenantAdmin ?? false
+    }
+
+    var canManageTenantSettings: Bool {
+        UserProfileService.shared.currentProfile?.canManageTenantSettings ?? false
+    }
     
     /// Username o fallback se non autenticato
     func currentUsernameOrDefault(_ fallback: String = "unknown") -> String {

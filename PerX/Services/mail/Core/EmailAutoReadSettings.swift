@@ -31,8 +31,7 @@ class EmailAutoReadSettings {
                let categories = try? JSONDecoder().decode([String].self, from: data) {
                 return Set(categories.compactMap { EmailCategory(rawValue: $0) })
             }
-            // Default: solo assegnazioni
-            return [.assignment]
+            return []
         }
         set {
             let categories = newValue.map { $0.rawValue }

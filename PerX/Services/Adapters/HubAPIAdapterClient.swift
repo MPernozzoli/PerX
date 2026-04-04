@@ -1,4 +1,5 @@
 import Foundation
+import Security
 
 // ============================================================================
 // MARK: - HubAPIAdapterClient
@@ -12,9 +13,18 @@ final class HubAPIAdapterClient {
     private let session: URLSession
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
+    private let keychainService = "com.perx.cloudapi"
     
     private var baseURL: String {
         HubModeService.shared.hubURL
+    }
+
+    private var cloudBaseURL: String {
+        HubConfigService.shared.cloudAPIBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var cloudEmail: String {
+        HubConfigService.shared.cloudAPIEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
     
     private init() {
@@ -27,6 +37,28 @@ final class HubAPIAdapterClient {
         self.decoder = JSONDecoder()
         encoder.dateEncodingStrategy = .iso8601
         decoder.dateDecodingStrategy = .iso8601
+    }
+
+    var isCloudConfigured: Bool {
+        !cloudBaseURL.isEmpty && !cloudEmail.isEmpty && loadFromKeychain(forKey: "cloud_api_password") != nil
+    }
+
+    func saveCloudPassword(_ password: String) {
+        let trimmed = password.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            removeFromKeychain(forKey: "cloud_api_password")
+        } else {
+            saveToKeychain(token: trimmed, forKey: "cloud_api_password")
+        }
+    }
+
+    func hasStoredCloudPassword() -> Bool {
+        loadFromKeychain(forKey: "cloud_api_password") != nil
+    }
+
+    func clearCloudSession() {
+        removeFromKeychain(forKey: "cloud_api_access_token")
+        removeFromKeychain(forKey: "cloud_api_refresh_token")
     }
     
     // MARK: - Generic Requests
@@ -94,6 +126,126 @@ final class HubAPIAdapterClient {
         let (_, response) = try await session.data(for: request)
         
         try validateResponse(response)
+    }
+
+    // MARK: - Cloud API Requests
+
+    func cloudGet<T: Decodable>(_ path: String) async throws -> T {
+        guard let url = URL(string: "\(cloudBaseURL)\(path)") else {
+            throw HubClientError.invalidURL
+        }
+
+        var request = try await authorizedCloudRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw HubClientError.invalidResponse
+        }
+
+        if httpResponse.statusCode == 401 {
+            try await loginToCloud(forceRefresh: true)
+            var retry = try await authorizedCloudRequest(url: url)
+            retry.httpMethod = "GET"
+            retry.setValue("application/json", forHTTPHeaderField: "Accept")
+            let (retryData, retryResponse) = try await session.data(for: retry)
+            try validateResponse(retryResponse)
+            return try decoder.decode(T.self, from: retryData)
+        }
+
+        try validateResponse(response)
+        return try decoder.decode(T.self, from: data)
+    }
+
+    func cloudPost<T: Decodable, B: Encodable>(_ path: String, body: B) async throws -> T {
+        try await performCloudRequest(path: path, method: "POST", body: body)
+    }
+
+    func cloudPut<T: Decodable, B: Encodable>(_ path: String, body: B) async throws -> T {
+        try await performCloudRequest(path: path, method: "PUT", body: body)
+    }
+
+    private func performCloudRequest<T: Decodable, B: Encodable>(
+        path: String,
+        method: String,
+        body: B?
+    ) async throws -> T {
+        guard let url = URL(string: "\(cloudBaseURL)\(path)") else {
+            throw HubClientError.invalidURL
+        }
+
+        var request = try await authorizedCloudRequest(url: url)
+        request.httpMethod = method
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        if let body {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try encoder.encode(body)
+        }
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw HubClientError.invalidResponse
+        }
+
+        if httpResponse.statusCode == 401 {
+            try await loginToCloud(forceRefresh: true)
+            var retry = try await authorizedCloudRequest(url: url)
+            retry.httpMethod = method
+            retry.setValue("application/json", forHTTPHeaderField: "Accept")
+            if let body {
+                retry.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                retry.httpBody = try encoder.encode(body)
+            }
+            let (retryData, retryResponse) = try await session.data(for: retry)
+            try validateResponse(retryResponse)
+            return try decoder.decode(T.self, from: retryData)
+        }
+
+        try validateResponse(response)
+        return try decoder.decode(T.self, from: data)
+    }
+
+    private func authorizedCloudRequest(url: URL) async throws -> URLRequest {
+        let token = try await loginToCloud(forceRefresh: false)
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        return request
+    }
+
+    @discardableResult
+    func loginToCloud(forceRefresh: Bool = false) async throws -> String {
+        if !forceRefresh, let token = loadFromKeychain(forKey: "cloud_api_access_token"), !token.isEmpty {
+            return token
+        }
+
+        guard !cloudBaseURL.isEmpty else {
+            throw HubClientError.invalidURL
+        }
+        guard !cloudEmail.isEmpty else {
+            throw HubClientError.unauthorized
+        }
+        guard let password = loadFromKeychain(forKey: "cloud_api_password"), !password.isEmpty else {
+            throw HubClientError.unauthorized
+        }
+
+        guard let url = URL(string: "\(cloudBaseURL)/api/v1/auth/login") else {
+            throw HubClientError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.httpBody = try encoder.encode(CloudAPILoginRequest(username: cloudEmail, password: password))
+
+        let (data, response) = try await session.data(for: request)
+        try validateResponse(response)
+        let tokenResponse = try decoder.decode(CloudAPITokenResponse.self, from: data)
+        saveToKeychain(token: tokenResponse.access_token, forKey: "cloud_api_access_token")
+        saveToKeychain(token: tokenResponse.refresh_token, forKey: "cloud_api_refresh_token")
+        return tokenResponse.access_token
     }
     
     // MARK: - Specific Methods
@@ -183,6 +335,45 @@ final class HubAPIAdapterClient {
         default:
             throw HubClientError.httpError(httpResponse.statusCode)
         }
+    }
+
+    private func saveToKeychain(token: String, forKey key: String) {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: key,
+            kSecValueData as String: Data(token.utf8)
+        ]
+
+        SecItemDelete(query as CFDictionary)
+        SecItemAdd(query as CFDictionary, nil)
+    }
+
+    private func loadFromKeychain(forKey key: String) -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: key,
+            kSecReturnData as String: true
+        ]
+
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        guard status == errSecSuccess,
+              let data = result as? Data,
+              let string = String(data: data, encoding: .utf8) else {
+            return nil
+        }
+        return string
+    }
+
+    private func removeFromKeychain(forKey key: String) {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: key
+        ]
+        SecItemDelete(query as CFDictionary)
     }
 }
 

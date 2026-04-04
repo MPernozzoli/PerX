@@ -8,6 +8,7 @@ enum UserRole: String, Codable, CaseIterable, Identifiable {
     case admin = "admin"
     case director = "direttore"
     case teamLeader = "capoTeam"
+    case manager = "gestore"
     case expert = "perito"
     case secretary = "segreteria"
     
@@ -18,6 +19,7 @@ enum UserRole: String, Codable, CaseIterable, Identifiable {
         case .admin: return "Amministratore"
         case .director: return "Direttore"
         case .teamLeader: return "Capo Team"
+        case .manager: return "Gestore"
         case .expert: return "Perito"
         case .secretary: return "Segreteria"
         }
@@ -28,6 +30,7 @@ enum UserRole: String, Codable, CaseIterable, Identifiable {
         case .admin: return "shield.checkered"
         case .director: return "crown"
         case .teamLeader: return "person.3"
+        case .manager: return "tray.full"
         case .expert: return "briefcase"
         case .secretary: return "doc.text"
         }
@@ -145,8 +148,20 @@ struct UserProfile: Codable, Equatable, Identifiable {
         return fullName.isEmpty ? username : fullName
     }
     
+    var isPlatformAdmin: Bool {
+        email.lowercased() == "info@pynkstudio.it"
+    }
+
     var isAdmin: Bool {
-        email.lowercased() == "massimo.pernozzoli@actsrl.it"
+        isPlatformAdmin || roles.contains(.admin)
+    }
+
+    var isTenantAdmin: Bool {
+        roles.contains(.admin)
+    }
+
+    var canManageTenantSettings: Bool {
+        isPlatformAdmin || isTenantAdmin
     }
     
     var canSeeAdminRole: Bool {
@@ -229,4 +244,3 @@ struct UserProfile: Codable, Equatable, Identifiable {
         }
     }
 }
-

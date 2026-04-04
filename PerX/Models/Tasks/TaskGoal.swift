@@ -228,13 +228,25 @@ extension StatoManager.StatoSinistro {
         switch self {
         // Ingresso (0-9)
         case .daScaricare: return 0
-        case .inAttesaDocumentale: return 1
-        case .inAttesaDaAssicurato: return 2
-        case .inAttesaDaAgenzia: return 3
+        case .istruzione: return 1
+        case .primoContatto: return 2
+        case .secondoContatto: return 3
+        case .inAttesaAssegnazione: return 4
         case .periziaDaEseguire: return 5
         case .periziaDaEseguireNoResidui: return 5
         case .periziaDaEseguireDocumentale: return 5
         case .videoperiziaDaFissare: return 5
+        case .sopralluogoAssegnato: return 6
+        case .videoperiziaDaEseguire: return 6
+        case .daGestireVideoperizia: return 7
+        case .daGestireTradizionale: return 7
+        case .daGestireDocumentale: return 7
+        case .daGestireNoResidui: return 7
+        case .inAttesaDocumentale: return 8
+        case .inAttesaDaAssicurato: return 9
+        case .inAttesaDaAgenzia: return 9
+        case .inAttesaDaTerzi: return 9
+        case .attesaPassiva: return 9
         
         // Avanzamento (10-29)
         case .sopralluogoFissato: return 10
@@ -253,14 +265,17 @@ extension StatoManager.StatoSinistro {
         case .attoRicevutoSottoscritto: return 45
         
         // Controllo (50-59)
+        case .daControllare: return 50
         case .inControllo: return 50
         case .controllata: return 51
         case .richiestaAutorizzazione: return 52
         case .supervisioneNonConcordata: return 53
         
         // Chiusura (90+)
+        case .daChiudereASistema: return 89
         case .chiusa: return 90
         case .richiestaRevisione: return 91
+        case .daRevisionare: return 92
         case .revocata: return 95
         case .annullata: return 96
         }

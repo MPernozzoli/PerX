@@ -36,6 +36,22 @@ struct ContentView: View {
                     ) {
                         Label("Comunicazioni", systemImage: "envelope")
                     }
+
+                    NavigationLink(
+                        destination: LazyView(TeamMonitorView()),
+                        tag: "team",
+                        selection: $selection
+                    ) {
+                        Label("Team", systemImage: "person.3")
+                    }
+
+                    NavigationLink(
+                        destination: LazyView(StudioMonitorView()),
+                        tag: "studio",
+                        selection: $selection
+                    ) {
+                        Label("Studio", systemImage: "building.2")
+                    }
                     
                     NavigationLink(
                         destination: LazyView(

@@ -8,7 +8,21 @@ from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.core.database import engine, Base
 from app.core.logging import setup_logging
-from app.api.v1 import routes_auth, routes_claims, routes_tasks, routes_emails, routes_attachments
+from app.api.v1 import (
+    routes_admin,
+    routes_attachments,
+    routes_auth,
+    routes_claims,
+    routes_diary,
+    routes_documents,
+    routes_emails,
+    routes_internal_chat,
+    routes_ai_chat,
+    routes_planning,
+    routes_tasks,
+    routes_tenants,
+    routes_whatsapp,
+)
 
 
 @asynccontextmanager
@@ -43,8 +57,16 @@ app.add_middleware(
 app.include_router(routes_auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(routes_claims.router, prefix="/api/v1/claims", tags=["claims"])
 app.include_router(routes_tasks.router, prefix="/api/v1", tags=["tasks"])
+app.include_router(routes_documents.router, prefix="/api/v1", tags=["documents"])
+app.include_router(routes_diary.router, prefix="/api/v1", tags=["diary"])
 app.include_router(routes_emails.router, prefix="/api/v1/emails", tags=["emails"])
 app.include_router(routes_attachments.router, prefix="/api/v1/attachments", tags=["attachments"])
+app.include_router(routes_whatsapp.router, prefix="/api/v1/whatsapp", tags=["whatsapp"])
+app.include_router(routes_internal_chat.router, prefix="/api/v1/internal-chat", tags=["internal-chat"])
+app.include_router(routes_ai_chat.router, prefix="/api/v1/ai-chat", tags=["ai-chat"])
+app.include_router(routes_planning.router, prefix="/api/v1", tags=["planning"])
+app.include_router(routes_admin.router, prefix="/api/v1/admin", tags=["admin"])
+app.include_router(routes_tenants.router, prefix="/api/v1/tenants", tags=["tenants"])
 
 
 @app.get("/")
@@ -55,4 +77,3 @@ async def root():
 @app.get("/health")
 async def health():
     return {"status": "healthy"}
-

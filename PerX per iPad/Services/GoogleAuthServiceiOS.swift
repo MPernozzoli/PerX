@@ -173,8 +173,7 @@ final class GoogleAuthServiceiOS: NSObject, ObservableObject {
             URLQueryItem(name: "response_type", value: "code"),
             URLQueryItem(name: "scope", value: scope),
             URLQueryItem(name: "access_type", value: "offline"),
-            URLQueryItem(name: "prompt", value: "consent"),
-            URLQueryItem(name: "hd", value: "actsrl.it") // Hosted domain
+            URLQueryItem(name: "prompt", value: "consent")
         ]
         return components.url!
     }

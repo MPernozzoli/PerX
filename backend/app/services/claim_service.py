@@ -3,10 +3,11 @@ Claim service - business logic for claims
 """
 from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func
 from datetime import datetime
 
 from app.models.claim import Claim
+from app.models.claim_assignment import ClaimAssignment
 from app.models.claim_event import ClaimEvent
 from app.schemas.claim import ClaimCreate, ClaimUpdate
 
@@ -29,6 +30,7 @@ class ClaimService:
             numero_sinistro=claim_data.numero_sinistro,
             compagnia=claim_data.compagnia,
             stato_corrente=claim_data.stato_corrente,
+            garanzia=claim_data.garanzia or "Fenomeno Elettrico",
             nome_assicurato=claim_data.nome_assicurato,
             email_assicurato=claim_data.email_assicurato,
             telefono_assicurato=claim_data.telefono_assicurato,
@@ -57,21 +59,22 @@ class ClaimService:
     @staticmethod
     async def get_claim(
         db: AsyncSession,
-        tenant_id: str,
-        claim_id: str
+        tenant_id: Optional[str],
+        claim_identifier: str
     ) -> Optional[Claim]:
-        """Get a claim by ID"""
-        result = await db.execute(
-            select(Claim).where(
-                and_(Claim.id == claim_id, Claim.tenant_id == tenant_id)
-            )
+        """Get a claim by ID or external reference"""
+        query = select(Claim).where(
+            (Claim.id == claim_identifier) | (Claim.external_ref == claim_identifier)
         )
+        if tenant_id:
+            query = query.where(Claim.tenant_id == tenant_id)
+        result = await db.execute(query)
         return result.scalar_one_or_none()
     
     @staticmethod
     async def list_claims(
         db: AsyncSession,
-        tenant_id: str,
+        tenant_id: Optional[str],
         skip: int = 0,
         limit: int = 50,
         stato: Optional[str] = None,
@@ -79,11 +82,22 @@ class ClaimService:
         search: Optional[str] = None
     ) -> tuple[List[Claim], int]:
         """List claims with filters and pagination"""
-        query = select(Claim).where(Claim.tenant_id == tenant_id)
+        query = select(Claim)
+        if tenant_id:
+            query = query.where(Claim.tenant_id == tenant_id)
         
         if stato:
             query = query.where(Claim.stato_corrente == stato)
         
+        if assignee_id:
+            query = query.join(
+                ClaimAssignment,
+                ClaimAssignment.claim_id == Claim.id
+            ).where(
+                ClaimAssignment.assignee_user_id == assignee_id,
+                ClaimAssignment.unassigned_at.is_(None)
+            )
+
         if search:
             query = query.where(
                 (Claim.external_ref.ilike(f"%{search}%")) |
@@ -133,6 +147,8 @@ class ClaimService:
             claim.numero_sinistro = claim_data.numero_sinistro
         if claim_data.compagnia is not None:
             claim.compagnia = claim_data.compagnia
+        if claim_data.garanzia is not None:
+            claim.garanzia = claim_data.garanzia or "Fenomeno Elettrico"
         if claim_data.nome_assicurato is not None:
             claim.nome_assicurato = claim_data.nome_assicurato
         # ... update other fields as needed
@@ -172,4 +188,3 @@ class ClaimService:
         )
         db.add(event)
         await db.commit()
-

@@ -16,6 +16,6 @@ class User(Base):
     password_hash = Column(String, nullable=True)  # Nullable for OAuth users
     idp_subject = Column(String, nullable=True)  # For external IdP
     is_active = Column(Boolean, default=True, nullable=False)
+    is_platform_admin = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_login_at = Column(DateTime(timezone=True), nullable=True)
-

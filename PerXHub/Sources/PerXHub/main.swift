@@ -16,6 +16,15 @@ struct HubConfiguration {
     static var dataPath: String { "\(basePath)/data" }
     static var logsPath: String { "\(basePath)/logs" }
     static var dbPath: String { "\(dataPath)/vault.sqlite" }
+    static var hubID: String {
+        ProcessInfo.processInfo.environment["PERX_HUB_ID"] ?? Host.current().localizedName ?? "perx-hub"
+    }
+    static var defaultTenantSlug: String {
+        ProcessInfo.processInfo.environment["PERX_DEFAULT_TENANT"] ?? "default"
+    }
+    static var dedicatedTenantSlug: String {
+        ProcessInfo.processInfo.environment["PERX_DEDICATED_TENANT"] ?? defaultTenantSlug
+    }
     
     // Server
     static var hostname: String {
@@ -59,6 +68,15 @@ struct HubConfiguration {
     static var autoUpdaterURL: String {
         ProcessInfo.processInfo.environment["PERX_AUTO_UPDATER_URL"] ?? "http://localhost:8084"
     }
+
+    // Supabase server-side configuration.
+    static var supabaseURL: String? {
+        ProcessInfo.processInfo.environment["SUPABASE_URL"]
+    }
+
+    static var supabaseServiceRoleKey: String? {
+        ProcessInfo.processInfo.environment["SUPABASE_SERVICE_ROLE_KEY"]
+    }
 }
 
 // MARK: - Application Startup
@@ -75,6 +93,9 @@ print("""
 print("[Hub] Starting at \(Date())")
 print("[Hub] Base path: \(HubConfiguration.basePath)")
 print("[Hub] Vault path: \(HubConfiguration.vaultPath)")
+print("[Hub] Hub ID: \(HubConfiguration.hubID)")
+print("[Hub] Default tenant: \(HubConfiguration.defaultTenantSlug)")
+print("[Hub] Supabase configured: \(HubConfiguration.supabaseURL != nil && HubConfiguration.supabaseServiceRoleKey != nil ? "yes" : "no")")
 
 // Create directories if needed
 do {
@@ -82,7 +103,7 @@ do {
     try fm.createDirectory(atPath: HubConfiguration.vaultPath, withIntermediateDirectories: true)
     try fm.createDirectory(atPath: HubConfiguration.dataPath, withIntermediateDirectories: true)
     try fm.createDirectory(atPath: HubConfiguration.logsPath, withIntermediateDirectories: true)
-    try fm.createDirectory(atPath: "\(HubConfiguration.vaultPath)/sinistri", withIntermediateDirectories: true)
+    try fm.createDirectory(atPath: "\(HubConfiguration.vaultPath)/tenants/\(HubConfiguration.defaultTenantSlug)/sinistri", withIntermediateDirectories: true)
     print("[Hub] Directories created/verified")
 } catch {
     print("[Hub] ERROR creating directories: \(error)")

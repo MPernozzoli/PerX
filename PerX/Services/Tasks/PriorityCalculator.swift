@@ -523,7 +523,8 @@ class PriorityCalculator {
         // Il decremento è massimo all'inizio e sfuma col tempo
         let impedingStates: Set<StatoManager.StatoSinistro> = [
             .attoInviato, .inAttesaDocumentale, .inAttesaDaAssicurato, .inAttesaDaAgenzia,
-            .richiestaAutorizzazione, .supervisioneNonConcordata, .inControllo, .videoperiziaDaFissare
+            .inAttesaDaTerzi, .attesaPassiva, .richiestaAutorizzazione, .supervisioneNonConcordata,
+            .inControllo, .videoperiziaDaFissare
         ]
         
         if impedingStates.contains(stato) {
@@ -534,7 +535,7 @@ class PriorityCalculator {
             case .attoInviato:
                 referenceDate = sinistro.dataInvioAtto ?? sinistro.dataAssegnazione ?? sinistro.dataIncarico ?? now
                 minWaitDays = 4 // Almeno 4 giorni lavorativi di "calma"
-            case .inAttesaDocumentale, .inAttesaDaAssicurato, .inAttesaDaAgenzia:
+            case .inAttesaDocumentale, .inAttesaDaAssicurato, .inAttesaDaAgenzia, .inAttesaDaTerzi, .attesaPassiva:
                 referenceDate = sinistro.dataAssegnazione ?? sinistro.dataIncarico ?? now
                 minWaitDays = 5
             case .richiestaAutorizzazione, .supervisioneNonConcordata, .inControllo:
@@ -566,6 +567,13 @@ class PriorityCalculator {
             .inGestione: 0.25,
             .inGestioneDocumentale: 0.2,
             .periziaDaEseguire: 0.15,
+            .daGestireVideoperizia: 0.15,
+            .daGestireTradizionale: 0.15,
+            .daGestireDocumentale: 0.15,
+            .daGestireNoResidui: 0.15,
+            .primoContatto: 0.12,
+            .secondoContatto: 0.12,
+            .istruzione: 0.1,
             .daScaricare: 0.1
         ]
         

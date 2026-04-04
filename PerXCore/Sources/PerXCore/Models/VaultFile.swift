@@ -3,6 +3,7 @@ import Foundation
 /// Rappresenta un file nel Vault dell'Hub
 public struct VaultFile: Codable, Identifiable, Sendable {
     public let id: String
+    public let tenantSlug: String
     public let sinistroRef: String
     public let relativePath: String
     public let filename: String
@@ -17,6 +18,7 @@ public struct VaultFile: Codable, Identifiable, Sendable {
     
     public init(
         id: String = UUID().uuidString,
+        tenantSlug: String = "default",
         sinistroRef: String,
         relativePath: String,
         filename: String,
@@ -30,6 +32,7 @@ public struct VaultFile: Codable, Identifiable, Sendable {
         modifiedAt: Date? = nil
     ) {
         self.id = id
+        self.tenantSlug = tenantSlug
         self.sinistroRef = sinistroRef
         self.relativePath = relativePath
         self.filename = filename
@@ -65,6 +68,7 @@ public enum SinistroFolderStatus: String, Codable, Sendable {
 
 /// Metadati della cartella sinistro nel Vault
 public struct SinistroFolder: Codable, Sendable {
+    public let tenantSlug: String
     public let sinistroRef: String
     public var status: SinistroFolderStatus
     public var lastSyncAt: Date?
@@ -73,6 +77,7 @@ public struct SinistroFolder: Codable, Sendable {
     public var errorMessage: String?
     
     public init(
+        tenantSlug: String = "default",
         sinistroRef: String,
         status: SinistroFolderStatus = .pending,
         lastSyncAt: Date? = nil,
@@ -80,6 +85,7 @@ public struct SinistroFolder: Codable, Sendable {
         totalSize: Int64 = 0,
         errorMessage: String? = nil
     ) {
+        self.tenantSlug = tenantSlug
         self.sinistroRef = sinistroRef
         self.status = status
         self.lastSyncAt = lastSyncAt

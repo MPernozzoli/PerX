@@ -6,6 +6,12 @@ import Combine
 @MainActor
 final class HubConfigService: ObservableObject {
     static let shared = HubConfigService()
+
+    struct TenantHubOverride: Codable, Equatable, Identifiable {
+        var id: String { tenantSlug }
+        var tenantSlug: String
+        var baseURL: String
+    }
     
     // MARK: - Published Properties
     
@@ -49,6 +55,22 @@ final class HubConfigService: ObservableObject {
             }
         }
     }
+
+    @Published private(set) var tenantHubOverrides: [String: TenantHubOverride] = [:]
+
+    /// URL base del backend cloud (es. https://api.example.com)
+    @Published var cloudAPIBaseURL: String {
+        didSet {
+            UserDefaults.standard.set(cloudAPIBaseURL, forKey: "cloud.api.baseURL")
+        }
+    }
+
+    /// Email usata per autenticarsi al backend cloud
+    @Published var cloudAPIEmail: String {
+        didSet {
+            UserDefaults.standard.set(cloudAPIEmail, forKey: "cloud.api.email")
+        }
+    }
     
     /// Stato connessione Hub
     @Published private(set) var isHubReachable: Bool = false
@@ -64,6 +86,7 @@ final class HubConfigService: ObservableObject {
     private var healthCheckTimer: Timer?
     private var heartbeatTimer: Timer?
     private var cancellables = Set<AnyCancellable>()
+    private let tenantHubOverridesKey = "hub.tenantOverrides"
     
     // MARK: - Init
     
@@ -73,11 +96,20 @@ final class HubConfigService: ObservableObject {
         let savedEmailMode = UserDefaults.standard.string(forKey: "hub.emailManagementMode") ?? ManagementMode.cloud.rawValue
         let savedWAMode = UserDefaults.standard.string(forKey: "hub.whatsappManagementMode") ?? ManagementMode.cloud.rawValue
         let savedURL = UserDefaults.standard.string(forKey: "hub.baseURL") ?? ""
+        let savedCloudURL = UserDefaults.standard.string(forKey: "cloud.api.baseURL") ?? ""
+        let savedCloudEmail = UserDefaults.standard.string(forKey: "cloud.api.email") ?? ""
+        let savedOverrides = UserDefaults.standard.data(forKey: tenantHubOverridesKey)
         
         self.fileManagementMode = ManagementMode(rawValue: savedFileMode) ?? .cloud
         self.emailManagementMode = ManagementMode(rawValue: savedEmailMode) ?? .cloud
         self.whatsappManagementMode = ManagementMode(rawValue: savedWAMode) ?? .cloud
         self.hubBaseURL = savedURL
+        self.cloudAPIBaseURL = savedCloudURL
+        self.cloudAPIEmail = savedCloudEmail
+        if let savedOverrides,
+           let decoded = try? JSONDecoder().decode([String: TenantHubOverride].self, from: savedOverrides) {
+            self.tenantHubOverrides = decoded
+        }
         
         // Avvia health check e heartbeat periodici se URL configurato
         if !hubBaseURL.isEmpty {
@@ -90,13 +122,14 @@ final class HubConfigService: ObservableObject {
     
     /// Verifica connessione all'Hub
     func checkHubHealth() async {
-        guard !hubBaseURL.isEmpty else {
+        let resolvedURL = resolvedHubBaseURL()
+        guard !resolvedURL.isEmpty else {
             isHubReachable = false
             lastHealthCheckError = "URL Hub non configurato"
             return
         }
         
-        guard let url = URL(string: "\(hubBaseURL)/health") else {
+        guard let url = URL(string: "\(resolvedURL)/health") else {
             isHubReachable = false
             lastHealthCheckError = "URL non valido"
             return
@@ -173,7 +206,7 @@ final class HubConfigService: ObservableObject {
     
     /// Invia heartbeat all'Hub
     func sendHeartbeat() async {
-        guard !hubBaseURL.isEmpty, isHubReachable else { return }
+        guard !resolvedHubBaseURL().isEmpty, isHubReachable else { return }
         
         guard let userId = CurrentUserService.shared.currentUsername, !userId.isEmpty else { return }
         
@@ -206,12 +239,12 @@ final class HubConfigService: ObservableObject {
     
     /// Verifica se l'Hub è configurato e raggiungibile
     var isHubReady: Bool {
-        !hubBaseURL.isEmpty && isHubReachable
+        !resolvedHubBaseURL().isEmpty && isHubReachable
     }
     
     /// Descrizione stato Hub per UI
     var hubStatusDescription: String {
-        if hubBaseURL.isEmpty {
+        if resolvedHubBaseURL().isEmpty {
             return "Non configurato"
         } else if isHubReachable {
             return "Online"
@@ -220,6 +253,44 @@ final class HubConfigService: ObservableObject {
         } else {
             return "Verifica in corso..."
         }
+    }
+
+    var isCloudAPIConfigured: Bool {
+        !cloudAPIBaseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !cloudAPIEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var currentTenantSlug: String {
+        let slug = TenantMailSettingsService.shared.settings.tenantSlug.trimmingCharacters(in: .whitespacesAndNewlines)
+        return slug.isEmpty ? "default" : slug
+    }
+
+    func resolvedHubBaseURL(for tenantSlug: String? = nil) -> String {
+        let slug = (tenantSlug ?? currentTenantSlug).trimmingCharacters(in: .whitespacesAndNewlines)
+        if let override = tenantHubOverrides[slug], !override.baseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return override.baseURL
+        }
+        return hubBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    func tenantOverride(for tenantSlug: String? = nil) -> TenantHubOverride? {
+        tenantHubOverrides[(tenantSlug ?? currentTenantSlug).trimmingCharacters(in: .whitespacesAndNewlines)]
+    }
+
+    func setTenantOverride(baseURL: String, for tenantSlug: String? = nil) {
+        let slug = (tenantSlug ?? currentTenantSlug).trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedURL = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedURL.isEmpty {
+            tenantHubOverrides.removeValue(forKey: slug)
+        } else {
+            tenantHubOverrides[slug] = TenantHubOverride(tenantSlug: slug, baseURL: trimmedURL)
+        }
+        persistTenantOverrides()
+    }
+
+    private func persistTenantOverrides() {
+        guard let data = try? JSONEncoder().encode(tenantHubOverrides) else { return }
+        UserDefaults.standard.set(data, forKey: tenantHubOverridesKey)
     }
 }
 

@@ -3,6 +3,7 @@ import Foundation
 /// Job per Windows Agent (import/export/delete/rename)
 public struct Job: Codable, Identifiable, Sendable {
     public let id: String
+    public let tenantSlug: String
     public let type: JobType
     public var status: JobStatus
     public let priority: Int
@@ -15,6 +16,7 @@ public struct Job: Codable, Identifiable, Sendable {
     
     public init(
         id: String = UUID().uuidString,
+        tenantSlug: String = "default",
         type: JobType,
         status: JobStatus = .pending,
         priority: Int = 0,
@@ -26,6 +28,7 @@ public struct Job: Codable, Identifiable, Sendable {
         retryCount: Int = 0
     ) {
         self.id = id
+        self.tenantSlug = tenantSlug
         self.type = type
         self.status = status
         self.priority = priority

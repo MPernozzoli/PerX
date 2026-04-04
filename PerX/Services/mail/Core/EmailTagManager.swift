@@ -543,17 +543,14 @@ class EmailTagManager: ObservableObject {
     }
     
     private func determineDirection(for email: Email) -> EmailDirection {
-        let studioDomains = ["manivaperizie.it", "studioperizie.it"]
-        let senderDomain = email.sender.email.lowercased().components(separatedBy: "@").last ?? ""
-        
-        return studioDomains.contains(senderDomain) ? .outbound : .inbound
+        TenantMailSettingsService.shared.isInternalEmail(email.sender.email) ? .outbound : .inbound
     }
     
     private func determineSenderType(for email: Email) -> EmailSenderType {
         let senderEmail = email.sender.email.lowercased()
         
-        if senderEmail.contains("@actsrl.it") {
-            return .company
+        if TenantMailSettingsService.shared.isInternalEmail(senderEmail) {
+            return .studio
         } else if senderEmail.contains("agenzia") {
             return .agency
         } else if senderEmail.contains("liquidator") {

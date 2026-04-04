@@ -281,11 +281,7 @@ class StudioCommunicationHandler: BaseEmailHandler {
     private func determineSenderType(email: Email) -> SenderType {
         let senderEmail = email.sender.email.lowercased()
         
-        if senderEmail.contains("@actsrl.it") || senderEmail.contains("@allconsulting.org") {
-            return .companyGeneric
-        }
-        
-        if senderEmail.contains("@manivaperizie.it") || senderEmail.contains("@studioperizie.it") {
+        if TenantMailSettingsService.shared.isInternalEmail(senderEmail) {
             return .colleague
         }
         

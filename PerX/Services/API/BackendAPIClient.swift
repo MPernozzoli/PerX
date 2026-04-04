@@ -1,0 +1,146 @@
+import Foundation
+import Security
+
+@MainActor
+final class BackendAPIClient {
+    static let shared = BackendAPIClient()
+
+    private let session: URLSession
+    private let decoder = JSONDecoder()
+    private let encoder = JSONEncoder()
+    private let tokenService = "com.perx.backend.auth"
+    private let tokenKey = "perx_backend_access_token"
+
+    private init() {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 30
+        config.timeoutIntervalForResource = 60
+        self.session = URLSession(configuration: config)
+    }
+
+    var isConfigured: Bool {
+        !resolvedBaseURLString.isEmpty
+    }
+
+    var hasAccessToken: Bool {
+        backendAccessToken != nil
+    }
+
+    func get<T: Decodable>(_ path: String, queryItems: [URLQueryItem] = []) async throws -> T {
+        var request = try makeRequest(path: path, method: "GET", queryItems: queryItems)
+        let (data, response) = try await session.data(for: request)
+        try validate(response: response, data: data)
+        return try decoder.decode(T.self, from: data)
+    }
+
+    func put<B: Encodable, T: Decodable>(_ path: String, body: B, queryItems: [URLQueryItem] = []) async throws -> T {
+        var request = try makeRequest(path: path, method: "PUT", queryItems: queryItems)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(body)
+
+        let (data, response) = try await session.data(for: request)
+        try validate(response: response, data: data)
+        return try decoder.decode(T.self, from: data)
+    }
+
+    private func makeRequest(path: String, method: String, queryItems: [URLQueryItem]) throws -> URLRequest {
+        guard !resolvedBaseURLString.isEmpty else {
+            throw BackendAPIError.notConfigured
+        }
+
+        var base = resolvedBaseURLString
+        if !base.hasSuffix("/") {
+            base += "/"
+        }
+
+        let normalizedPath = path.hasPrefix("/") ? String(path.dropFirst()) : path
+        guard var components = URLComponents(string: base + normalizedPath) else {
+            throw BackendAPIError.invalidURL
+        }
+        if !queryItems.isEmpty {
+            components.queryItems = queryItems
+        }
+        guard let url = components.url else {
+            throw BackendAPIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        if let token = backendAccessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        return request
+    }
+
+    private func validate(response: URLResponse, data: Data) throws {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw BackendAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200...299:
+            return
+        case 401, 403:
+            throw BackendAPIError.unauthorized
+        case 404:
+            throw BackendAPIError.notFound
+        default:
+            let body = String(data: data, encoding: .utf8)
+            throw BackendAPIError.server(body ?? "HTTP \(httpResponse.statusCode)")
+        }
+    }
+
+    private var resolvedBaseURLString: String {
+        let raw = HubConfigService.shared.resolvedHubBaseURL().trimmingCharacters(in: .whitespacesAndNewlines)
+        if raw.isEmpty { return "" }
+        if raw.contains("/api/") {
+            return raw
+        }
+        return raw + "/api/v1"
+    }
+
+    private var backendAccessToken: String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: tokenService,
+            kSecAttrAccount as String: tokenKey,
+            kSecReturnData as String: true
+        ]
+
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        guard status == errSecSuccess,
+              let data = result as? Data,
+              let token = String(data: data, encoding: .utf8),
+              !token.isEmpty else {
+            return nil
+        }
+        return token
+    }
+}
+
+enum BackendAPIError: LocalizedError {
+    case notConfigured
+    case invalidURL
+    case invalidResponse
+    case unauthorized
+    case notFound
+    case server(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .notConfigured:
+            return "Backend FastAPI non configurato"
+        case .invalidURL:
+            return "URL backend non valido"
+        case .invalidResponse:
+            return "Risposta backend non valida"
+        case .unauthorized:
+            return "Autenticazione backend richiesta"
+        case .notFound:
+            return "Risorsa backend non trovata"
+        case .server(let message):
+            return message
+        }
+    }
+}

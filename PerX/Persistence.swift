@@ -16,7 +16,7 @@ final class PersistenceController {
         
         let sinistro = Sinistro(context: viewContext)
         sinistro.riferimento = "2405747"
-        sinistro.stato = StatoManager.StatoSinistro.daScaricare.descrizione
+        sinistro.stato = StatoManager.StatoSinistro.istruzione.descrizione
         sinistro.dataAperturaGestione = Date()
         
         try? viewContext.save()
@@ -77,4 +77,3 @@ final class PersistenceController {
         }
     }
 }
-
