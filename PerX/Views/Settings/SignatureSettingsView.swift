@@ -55,7 +55,7 @@ struct SignatureSettingsView: View {
                                 .buttonStyle(.bordered)
                             }
                             
-                            Text("Firma personale salvata localmente")
+                            Text("Firma personale sincronizzata via backend quando configurato")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }

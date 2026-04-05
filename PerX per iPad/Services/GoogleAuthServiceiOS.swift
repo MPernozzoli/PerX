@@ -2,331 +2,259 @@
 //  GoogleAuthServiceiOS.swift
 //  PerX per iPad
 //
-//  Autenticazione Google per iOS usando ASWebAuthenticationSession.
-//  Non usa server locale, ma redirect scheme custom.
+//  Servizio di autenticazione iPad backend-first.
+//  Mantiene lo stesso entrypoint usato dal resto dell'app.
 //
 
 import Foundation
-import AuthenticationServices
 import Security
 import Combine
 
 @MainActor
-final class GoogleAuthServiceiOS: NSObject, ObservableObject {
+final class GoogleAuthServiceiOS: ObservableObject {
     static let shared = GoogleAuthServiceiOS()
-    
-    // MARK: - Published State
-    
+
     @Published private(set) var isAuthenticated = false
     @Published private(set) var userEmail: String?
     @Published private(set) var userName: String?
     @Published var errorMessage: String?
-    
-    // MARK: - OAuth Config
-    
-    // iOS Client ID da Google Cloud Console
-    private let clientId = "150443834793-vn4s39ofgbgr695vq3h5k2agf2asomcu.apps.googleusercontent.com"
-    private let redirectScheme = "com.googleusercontent.apps.150443834793-vn4s39ofgbgr695vq3h5k2agf2asomcu"
-    private let redirectUri: String
-    
-    // Scope: solo identity (NO gmail.readonly/modify su iPad - usa CK)
-    private let scope = "email profile openid"
-    
-    private let service = "com.perx.googleauth.ipad"
-    
-    // MARK: - Web Auth Session
-    
-    private var webAuthSession: ASWebAuthenticationSession?
-    private var presentationAnchor: ASPresentationAnchor?
-    
-    // MARK: - Init
-    
-    private override init() {
-        self.redirectUri = "\(redirectScheme):/oauth2callback"
-        super.init()
+
+    private let service = "com.perx.ipad.auth"
+    private let session: URLSession
+    private let hubClient = HubAPIClient.shared
+
+    private init() {
+        let configuration = URLSessionConfiguration.default
+        configuration.timeoutIntervalForRequest = 30
+        configuration.timeoutIntervalForResource = 120
+        session = URLSession(configuration: configuration)
     }
-    
-    // MARK: - Sync Token Access
-    
-    /// Token corrente (senza refresh, per uso sync)
+
     var accessToken: String? {
         loadFromKeychain(forKey: "access_token")
     }
-    
-    // MARK: - Public API
-    
+
     func checkAuthenticationState() async {
-        guard let accessToken = loadFromKeychain(forKey: "access_token") else {
+        guard let baseURL = normalizedBaseURL() else {
             isAuthenticated = false
             return
         }
-        
-        // Verifica token con userinfo
-        if await fetchUserInfo(accessToken: accessToken) {
+
+        if let token = loadFromKeychain(forKey: "access_token"),
+           await fetchUserInfo(accessToken: token, baseURL: baseURL) {
             isAuthenticated = true
-        } else {
-            // Prova refresh
-            if let refreshToken = loadFromKeychain(forKey: "refresh_token") {
-                do {
-                    let newToken = try await refreshAccessToken(refreshToken)
-                    saveToKeychain(token: newToken, forKey: "access_token")
-                    if await fetchUserInfo(accessToken: newToken) {
-                        isAuthenticated = true
-                        return
-                    }
-                } catch {
-                    print("[GoogleAuthiOS] ❌ Refresh token fallito: \(error)")
-                }
-            }
-            
-            // Token non valido
-            signOut()
+            return
         }
+
+        if let email = loadFromKeychain(forKey: "active_email"),
+           let password = AccountManager.shared.getPassword(for: email),
+           !password.isEmpty {
+            do {
+                try await signIn(
+                    email: email,
+                    password: password,
+                    baseURL: baseURL,
+                    persistAccount: false
+                )
+                return
+            } catch {
+                print("[iPadAuth] ❌ Ripristino sessione fallito: \(error)")
+            }
+        }
+
+        signOut()
     }
-    
+
     func signIn() async throws {
-        let authURL = buildAuthURL()
-        
-        return try await withCheckedThrowingContinuation { continuation in
-            let session = ASWebAuthenticationSession(
-                url: authURL,
-                callbackURLScheme: redirectScheme
-            ) { [weak self] callbackURL, error in
-                guard let self else {
-                    continuation.resume(throwing: AuthError.unknown)
-                    return
-                }
-                
-                if let error = error as? ASWebAuthenticationSessionError {
-                    if error.code == .canceledLogin {
-                        continuation.resume(throwing: AuthError.cancelled)
-                    } else {
-                        continuation.resume(throwing: error)
-                    }
-                    return
-                }
-                
-                guard let callbackURL,
-                      let code = self.extractCode(from: callbackURL) else {
-                    continuation.resume(throwing: AuthError.noCode)
-                    return
-                }
-                
-                Task { @MainActor in
-                    do {
-                        try await self.handleAuthCode(code)
-                        continuation.resume()
-                    } catch {
-                        continuation.resume(throwing: error)
-                    }
-                }
-            }
-            
-            session.presentationContextProvider = self
-            session.prefersEphemeralWebBrowserSession = false
-            
-            self.webAuthSession = session
-            
-            if !session.start() {
-                continuation.resume(throwing: AuthError.sessionFailed)
-            }
-        }
+        throw AuthError.missingCredentials
     }
-    
+
+    func signIn(email: String, password: String, baseURL: String? = nil) async throws {
+        try await signIn(email: email, password: password, baseURL: baseURL, persistAccount: true)
+    }
+
+    func signInWithStoredCredentials(email: String, baseURL: String? = nil) async throws {
+        let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard let password = AccountManager.shared.getPassword(for: normalizedEmail),
+              !password.isEmpty else {
+            throw AuthError.missingSavedCredentials
+        }
+
+        try await signIn(email: normalizedEmail, password: password, baseURL: baseURL, persistAccount: true)
+    }
+
     func signOut() {
         removeFromKeychain(forKey: "access_token")
         removeFromKeychain(forKey: "refresh_token")
-        UserDefaults.standard.removeObject(forKey: "google_token_expiry_ipad")
-        
+        removeFromKeychain(forKey: "active_email")
+        hubClient.clearCloudSession()
+
         isAuthenticated = false
         userEmail = nil
         userName = nil
-        
-        print("[GoogleAuthiOS] 🔓 Logout completato")
+
+        print("[iPadAuth] 🔓 Logout completato")
     }
-    
+
     func getAccessToken() async throws -> String {
-        // Verifica scadenza
-        if let expiry = loadTokenExpiry(), expiry.timeIntervalSinceNow < 300 {
-            // Refresh preventivo
-            if let refreshToken = loadFromKeychain(forKey: "refresh_token") {
-                let newToken = try await refreshAccessToken(refreshToken)
-                saveToKeychain(token: newToken, forKey: "access_token")
-                return newToken
-            }
+        guard let token = accessToken else {
+            throw AuthError.noAccessToken
         }
-        
-        if let token = loadFromKeychain(forKey: "access_token") {
-            return token
+        return token
+    }
+
+    private func signIn(
+        email: String,
+        password: String,
+        baseURL: String?,
+        persistAccount: Bool
+    ) async throws {
+        let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let normalizedPassword = password.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !normalizedEmail.isEmpty, !normalizedPassword.isEmpty else {
+            throw AuthError.missingCredentials
         }
-        
-        throw AuthError.noAccessToken
-    }
-    
-    // MARK: - Private
-    
-    private func buildAuthURL() -> URL {
-        var components = URLComponents(string: "https://accounts.google.com/o/oauth2/v2/auth")!
-        components.queryItems = [
-            URLQueryItem(name: "client_id", value: clientId),
-            URLQueryItem(name: "redirect_uri", value: redirectUri),
-            URLQueryItem(name: "response_type", value: "code"),
-            URLQueryItem(name: "scope", value: scope),
-            URLQueryItem(name: "access_type", value: "offline"),
-            URLQueryItem(name: "prompt", value: "consent")
-        ]
-        return components.url!
-    }
-    
-    private func extractCode(from url: URL) -> String? {
-        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
-        return components?.queryItems?.first(where: { $0.name == "code" })?.value
-    }
-    
-    private func handleAuthCode(_ code: String) async throws {
-        let tokenResponse = try await exchangeCodeForToken(code: code)
-        
-        saveToKeychain(token: tokenResponse.accessToken, forKey: "access_token")
-        if let refreshToken = tokenResponse.refreshToken {
-            saveToKeychain(token: refreshToken, forKey: "refresh_token")
+
+        guard let normalizedBaseURL = normalizedBaseURL(override: baseURL) else {
+            throw AuthError.missingBackendURL
         }
-        
-        let expiry = Date().addingTimeInterval(TimeInterval(tokenResponse.expiresIn))
-        saveTokenExpiry(expiry)
-        
-        guard await fetchUserInfo(accessToken: tokenResponse.accessToken) else {
+
+        let tokenResponse = try await requestToken(
+            email: normalizedEmail,
+            password: normalizedPassword,
+            baseURL: normalizedBaseURL
+        )
+
+        saveToKeychain(token: tokenResponse.access_token, forKey: "access_token")
+        saveToKeychain(token: tokenResponse.refresh_token, forKey: "refresh_token")
+        saveToKeychain(token: normalizedEmail, forKey: "active_email")
+
+        hubClient.cloudAPIBaseURL = normalizedBaseURL
+        hubClient.storeCloudSession(
+            accessToken: tokenResponse.access_token,
+            refreshToken: tokenResponse.refresh_token,
+            email: normalizedEmail,
+            password: normalizedPassword
+        )
+
+        guard await fetchUserInfo(accessToken: tokenResponse.access_token, baseURL: normalizedBaseURL) else {
+            signOut()
             throw AuthError.userInfoFailed
         }
-        
-        // Salva account per login futuro
-        await AccountManager.shared.saveAccount(
-            email: userEmail ?? "",
-            displayName: userName ?? userEmail ?? "",
-            refreshToken: tokenResponse.refreshToken
-        )
-        
+
+        if persistAccount {
+            AccountManager.shared.saveAccount(
+                email: normalizedEmail,
+                displayName: userName ?? userEmail ?? normalizedEmail,
+                password: normalizedPassword
+            )
+        }
+
         isAuthenticated = true
-        print("[GoogleAuthiOS] ✅ Login completato per: \(userEmail ?? "?")")
+        print("[iPadAuth] ✅ Login completato per: \(normalizedEmail)")
     }
-    
-    /// Login con refresh token salvato (per account già registrati)
-    func signInWithRefreshToken(_ refreshToken: String) async throws {
-        let newToken = try await refreshAccessToken(refreshToken)
-        saveToKeychain(token: newToken, forKey: "access_token")
-        
-        guard await fetchUserInfo(accessToken: newToken) else {
-            throw AuthError.userInfoFailed
+
+    private func requestToken(email: String, password: String, baseURL: String) async throws -> TokenResponseJSON {
+        guard let url = URL(string: "\(baseURL)/api/v1/auth/login") else {
+            throw AuthError.invalidBackendURL
         }
-        
-        // Aggiorna account
-        await AccountManager.shared.saveAccount(
-            email: userEmail ?? "",
-            displayName: userName ?? userEmail ?? "",
-            refreshToken: refreshToken
-        )
-        
-        isAuthenticated = true
-        print("[GoogleAuthiOS] ✅ Login con refresh token per: \(userEmail ?? "?")")
-    }
-    
-    private func exchangeCodeForToken(code: String) async throws -> TokenResponse {
-        var request = URLRequest(url: URL(string: "https://oauth2.googleapis.com/token")!)
+
+        var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        
-        let params = [
-            "client_id": clientId,
-            "code": code,
-            "grant_type": "authorization_code",
-            "redirect_uri": redirectUri
-            // Nota: su iOS non serve client_secret per app native
-        ]
-        
-        request.httpBody = params
-            .map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")" }
-            .joined(separator: "&")
-            .data(using: .utf8)
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            let body = String(data: data, encoding: .utf8) ?? ""
-            print("[GoogleAuthiOS] ❌ Token exchange failed: \(body)")
-            throw AuthError.tokenExchangeFailed
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.httpBody = try JSONEncoder().encode(LoginRequest(username: email, password: password))
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AuthError.invalidResponse
         }
-        
-        let json = try JSONDecoder().decode(TokenResponseJSON.self, from: data)
-        return TokenResponse(
-            accessToken: json.access_token,
-            refreshToken: json.refresh_token,
-            expiresIn: json.expires_in ?? 3600
-        )
-    }
-    
-    private func refreshAccessToken(_ refreshToken: String) async throws -> String {
-        var request = URLRequest(url: URL(string: "https://oauth2.googleapis.com/token")!)
-        request.httpMethod = "POST"
-        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        
-        let params = [
-            "client_id": clientId,
-            "refresh_token": refreshToken,
-            "grant_type": "refresh_token"
-        ]
-        
-        request.httpBody = params
-            .map { "\($0.key)=\($0.value)" }
-            .joined(separator: "&")
-            .data(using: .utf8)
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw AuthError.refreshFailed
+
+        guard 200...299 ~= httpResponse.statusCode else {
+            throw AuthError.loginFailed(errorMessage(from: data, statusCode: httpResponse.statusCode))
         }
-        
-        let json = try JSONDecoder().decode(TokenResponseJSON.self, from: data)
-        let expiry = Date().addingTimeInterval(TimeInterval(json.expires_in ?? 3600))
-        saveTokenExpiry(expiry)
-        
-        return json.access_token
+
+        return try JSONDecoder().decode(TokenResponseJSON.self, from: data)
     }
-    
+
     @discardableResult
-    private func fetchUserInfo(accessToken: String) async -> Bool {
-        var request = URLRequest(url: URL(string: "https://www.googleapis.com/oauth2/v2/userinfo")!)
+    private func fetchUserInfo(accessToken: String, baseURL: String) async -> Bool {
+        guard let url = URL(string: "\(baseURL)/api/v1/auth/me") else {
+            return false
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            let (data, response) = try await session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse,
+                  200...299 ~= httpResponse.statusCode else {
                 return false
             }
-            
-            let json = try JSONDecoder().decode(UserInfoResponse.self, from: data)
-            self.userEmail = json.email
-            self.userName = json.name ?? json.email.components(separatedBy: "@").first
+
+            let user = try JSONDecoder().decode(UserInfoResponse.self, from: data)
+            userEmail = user.email.lowercased()
+
+            let preferredName = user.full_name.trimmingCharacters(in: .whitespacesAndNewlines)
+            userName = preferredName.isEmpty
+            ? user.email.components(separatedBy: "@").first
+            : preferredName
+
             return true
         } catch {
-            print("[GoogleAuthiOS] ❌ Fetch userinfo failed: \(error)")
+            print("[iPadAuth] ❌ Fetch utente fallito: \(error)")
             return false
         }
     }
-    
-    // MARK: - Keychain
-    
+
+    private func normalizedBaseURL(override: String? = nil) -> String? {
+        let candidate = (override ?? hubClient.cloudAPIBaseURL)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if !candidate.isEmpty {
+            return candidate.hasSuffix("/") ? String(candidate.dropLast()) : candidate
+        }
+
+        #if targetEnvironment(simulator)
+        return "http://127.0.0.1:8000"
+        #else
+        return nil
+        #endif
+    }
+
+    private func errorMessage(from data: Data, statusCode: Int) -> String {
+        if let backendError = try? JSONDecoder().decode(BackendErrorResponse.self, from: data),
+           let detail = backendError.detail?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !detail.isEmpty {
+            return detail
+        }
+
+        switch statusCode {
+        case 401:
+            return "Credenziali non valide."
+        case 404:
+            return "Backend non trovato."
+        default:
+            return "Errore backend (\(statusCode))."
+        }
+    }
+
     private func saveToKeychain(token: String, forKey key: String) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: key,
-            kSecValueData as String: token.data(using: .utf8)!
+            kSecValueData as String: token.data(using: .utf8) ?? Data()
         ]
-        
+
         SecItemDelete(query as CFDictionary)
         SecItemAdd(query as CFDictionary, nil)
     }
-    
+
     private func loadFromKeychain(forKey key: String) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -334,18 +262,19 @@ final class GoogleAuthServiceiOS: NSObject, ObservableObject {
             kSecAttrAccount as String: key,
             kSecReturnData as String: true
         ]
-        
+
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
-        
-        if status == errSecSuccess,
-           let data = result as? Data,
-           let token = String(data: data, encoding: .utf8) {
-            return token
+
+        guard status == errSecSuccess,
+              let data = result as? Data,
+              let value = String(data: data, encoding: .utf8) else {
+            return nil
         }
-        return nil
+
+        return value
     }
-    
+
     private func removeFromKeychain(forKey key: String) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -354,69 +283,56 @@ final class GoogleAuthServiceiOS: NSObject, ObservableObject {
         ]
         SecItemDelete(query as CFDictionary)
     }
-    
-    private func saveTokenExpiry(_ date: Date) {
-        UserDefaults.standard.set(date.timeIntervalSince1970, forKey: "google_token_expiry_ipad")
-    }
-    
-    private func loadTokenExpiry() -> Date? {
-        let timestamp = UserDefaults.standard.double(forKey: "google_token_expiry_ipad")
-        return timestamp > 0 ? Date(timeIntervalSince1970: timestamp) : nil
-    }
-    
-    // MARK: - Types
-    
+
     enum AuthError: LocalizedError {
-        case cancelled
-        case noCode
-        case sessionFailed
-        case tokenExchangeFailed
-        case refreshFailed
+        case missingCredentials
+        case missingSavedCredentials
+        case missingBackendURL
+        case invalidBackendURL
+        case invalidResponse
+        case loginFailed(String)
         case userInfoFailed
         case noAccessToken
-        case unknown
-        
+
         var errorDescription: String? {
             switch self {
-            case .cancelled: return "Login annullato"
-            case .noCode: return "Codice autorizzazione mancante"
-            case .sessionFailed: return "Impossibile avviare la sessione di autenticazione"
-            case .tokenExchangeFailed: return "Errore scambio token"
-            case .refreshFailed: return "Impossibile rinnovare il token"
-            case .userInfoFailed: return "Impossibile ottenere informazioni utente"
-            case .noAccessToken: return "Nessun token di accesso disponibile"
-            case .unknown: return "Errore sconosciuto"
+            case .missingCredentials:
+                return "Inserisci email e password."
+            case .missingSavedCredentials:
+                return "Credenziali salvate mancanti per questo account."
+            case .missingBackendURL:
+                return "Configura l'URL del backend prima di accedere."
+            case .invalidBackendURL:
+                return "URL backend non valido."
+            case .invalidResponse:
+                return "Risposta backend non valida."
+            case .loginFailed(let message):
+                return message
+            case .userInfoFailed:
+                return "Login riuscito ma profilo utente non disponibile."
+            case .noAccessToken:
+                return "Nessun token di accesso disponibile."
             }
         }
     }
-    
-    struct TokenResponse {
-        let accessToken: String
-        let refreshToken: String?
-        let expiresIn: Int
+
+    private struct LoginRequest: Encodable {
+        let username: String
+        let password: String
     }
-    
+
     private struct TokenResponseJSON: Decodable {
         let access_token: String
-        let refresh_token: String?
-        let expires_in: Int?
+        let refresh_token: String
+        let token_type: String
     }
-    
+
     private struct UserInfoResponse: Decodable {
         let email: String
-        let name: String?
+        let full_name: String
     }
-}
 
-// MARK: - ASWebAuthenticationPresentationContextProviding
-
-extension GoogleAuthServiceiOS: ASWebAuthenticationPresentationContextProviding {
-    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        // Su iOS, restituisce la prima window della scena attiva
-        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let window = scene.windows.first else {
-            return UIWindow()
-        }
-        return window
+    private struct BackendErrorResponse: Decodable {
+        let detail: String?
     }
 }

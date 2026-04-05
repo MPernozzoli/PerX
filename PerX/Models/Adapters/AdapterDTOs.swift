@@ -279,7 +279,7 @@ struct CloudDocumentResponse: Codable, Identifiable {
     let file_name: String
     let original_file_name: String?
     let mime_type: String?
-    let extension: String?
+    let `extension`: String?
     let size_bytes: Int
     let storage_provider: String
     let storage_bucket: String?

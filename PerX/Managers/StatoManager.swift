@@ -1021,11 +1021,13 @@ class StatoManager: ObservableObject {
         return nil
     }
 
+    @MainActor
     func canCurrentUserAccess(state: StatoSinistro) -> Bool {
         let roles = CurrentUserService.shared.currentRoles
         return state.isAccessible(to: roles)
     }
 
+    @MainActor
     func canCurrentUserAccess(stateInfo: StatoInfo) -> Bool {
         if let state = StatoSinistro(rawValue: stateInfo.id) {
             return canCurrentUserAccess(state: state)

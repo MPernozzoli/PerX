@@ -6,6 +6,56 @@ struct TenantSummaryDTO: Decodable, Identifiable, Hashable {
     let slug: String
 }
 
+struct TenantCATPlannerSettingsDTO: Codable {
+    let route_generation_hour: Int
+    let route_review_window_minutes: Int
+    let availability_slot_minutes: Int
+    let availability_tolerance_percent: Int
+    let max_outside_zone_kilometers: Int
+}
+
+struct TenantCATPOIDTO: Codable, Identifiable, Hashable {
+    let id: String
+    let display_name: String
+    let email: String
+    let latitude: Double
+    let longitude: Double
+    let comune: String
+    let provincia: String
+    let regione: String
+    let assigned_municipalities: [String]
+    let note: String
+}
+
+struct TenantCATMunicipalityDTO: Codable, Identifiable, Hashable {
+    let id: String
+    let comune: String
+    let provincia: String
+    let regione: String
+    let latitude: Double
+    let longitude: Double
+    let assigned_cat_emails: [String]
+    let priority: Int
+}
+
+struct TenantCATSettingsDTO: Codable {
+    let enabled: Bool
+    let planner: TenantCATPlannerSettingsDTO
+    let technicians: [TenantCATPOIDTO]
+    let municipalities: [TenantCATMunicipalityDTO]
+}
+
+struct TenantInspectionProviderSettingsDTO: Codable {
+    let map_provider: String
+    let maps_api_key: String
+    let routing_provider: String
+    let routing_api_key: String
+    let geocoding_provider: String
+    let geocoding_api_key: String
+    let messaging_provider: String
+    let messaging_api_key: String
+}
+
 struct TenantSettingsDTO: Codable {
     let tenant_id: String
     let tenant_name: String
@@ -16,6 +66,8 @@ struct TenantSettingsDTO: Codable {
     let secretariat_emails: [String]
     let claim_garanzie: [String]
     let default_claim_garanzia: String
+    let cat_settings: TenantCATSettingsDTO
+    let provider_settings: TenantInspectionProviderSettingsDTO?
 }
 
 struct TenantSettingsPayloadDTO: Encodable {
@@ -27,6 +79,8 @@ struct TenantSettingsPayloadDTO: Encodable {
     let secretariat_emails: [String]
     let claim_garanzie: [String]
     let default_claim_garanzia: String
+    let cat_settings: TenantCATSettingsDTO
+    let provider_settings: TenantInspectionProviderSettingsDTO?
 }
 
 @MainActor
@@ -69,7 +123,9 @@ final class TenantSettingsAPIService: ObservableObject {
             system_emails: settings.systemEmails,
             secretariat_emails: settings.secretariatEmails,
             claim_garanzie: settings.claimGaranzie,
-            default_claim_garanzia: settings.defaultClaimGaranzia
+            default_claim_garanzia: settings.defaultClaimGaranzia,
+            cat_settings: map(settings.catSettings),
+            provider_settings: settings.providerSettings.map(map)
         )
 
         TenantMailSettingsService.shared.settings = settings
@@ -124,7 +180,113 @@ final class TenantSettingsAPIService: ObservableObject {
             systemEmails: dto.system_emails,
             secretariatEmails: dto.secretariat_emails,
             claimGaranzie: dto.claim_garanzie,
-            defaultClaimGaranzia: dto.default_claim_garanzia
+            defaultClaimGaranzia: dto.default_claim_garanzia,
+            catSettings: map(dto.cat_settings),
+            providerSettings: dto.provider_settings.map(map)
+        )
+    }
+
+    private func map(_ dto: TenantCATSettingsDTO) -> TenantCATSettings {
+        TenantCATSettings(
+            enabled: dto.enabled,
+            planner: TenantCATPlannerSettings(
+                routeGenerationHour: dto.planner.route_generation_hour,
+                routeReviewWindowMinutes: dto.planner.route_review_window_minutes,
+                availabilitySlotMinutes: dto.planner.availability_slot_minutes,
+                availabilityTolerancePercent: dto.planner.availability_tolerance_percent,
+                maxOutsideZoneKilometers: dto.planner.max_outside_zone_kilometers
+            ),
+            technicians: dto.technicians.map { item in
+                TenantCATPOI(
+                    id: item.id,
+                    displayName: item.display_name,
+                    email: item.email,
+                    latitude: item.latitude,
+                    longitude: item.longitude,
+                    comune: item.comune,
+                    provincia: item.provincia,
+                    regione: item.regione,
+                    assignedMunicipalities: item.assigned_municipalities,
+                    note: item.note
+                )
+            },
+            municipalities: dto.municipalities.map { item in
+                TenantCATMunicipality(
+                    id: item.id,
+                    comune: item.comune,
+                    provincia: item.provincia,
+                    regione: item.regione,
+                    latitude: item.latitude,
+                    longitude: item.longitude,
+                    assignedCATEmails: item.assigned_cat_emails,
+                    priority: item.priority
+                )
+            }
+        )
+    }
+
+    private func map(_ dto: TenantInspectionProviderSettingsDTO) -> TenantInspectionProviderSettings {
+        TenantInspectionProviderSettings(
+            mapProvider: dto.map_provider,
+            mapsAPIKey: dto.maps_api_key,
+            routingProvider: dto.routing_provider,
+            routingAPIKey: dto.routing_api_key,
+            geocodingProvider: dto.geocoding_provider,
+            geocodingAPIKey: dto.geocoding_api_key,
+            messagingProvider: dto.messaging_provider,
+            messagingAPIKey: dto.messaging_api_key
+        )
+    }
+
+    private func map(_ value: TenantCATSettings) -> TenantCATSettingsDTO {
+        TenantCATSettingsDTO(
+            enabled: value.enabled,
+            planner: TenantCATPlannerSettingsDTO(
+                route_generation_hour: value.planner.routeGenerationHour,
+                route_review_window_minutes: value.planner.routeReviewWindowMinutes,
+                availability_slot_minutes: value.planner.availabilitySlotMinutes,
+                availability_tolerance_percent: value.planner.availabilityTolerancePercent,
+                max_outside_zone_kilometers: value.planner.maxOutsideZoneKilometers
+            ),
+            technicians: value.technicians.map { item in
+                TenantCATPOIDTO(
+                    id: item.id,
+                    display_name: item.displayName,
+                    email: item.email,
+                    latitude: item.latitude,
+                    longitude: item.longitude,
+                    comune: item.comune,
+                    provincia: item.provincia,
+                    regione: item.regione,
+                    assigned_municipalities: item.assignedMunicipalities,
+                    note: item.note
+                )
+            },
+            municipalities: value.municipalities.map { item in
+                TenantCATMunicipalityDTO(
+                    id: item.id,
+                    comune: item.comune,
+                    provincia: item.provincia,
+                    regione: item.regione,
+                    latitude: item.latitude,
+                    longitude: item.longitude,
+                    assigned_cat_emails: item.assignedCATEmails,
+                    priority: item.priority
+                )
+            }
+        )
+    }
+
+    private func map(_ value: TenantInspectionProviderSettings) -> TenantInspectionProviderSettingsDTO {
+        TenantInspectionProviderSettingsDTO(
+            map_provider: value.mapProvider,
+            maps_api_key: value.mapsAPIKey,
+            routing_provider: value.routingProvider,
+            routing_api_key: value.routingAPIKey,
+            geocoding_provider: value.geocodingProvider,
+            geocoding_api_key: value.geocodingAPIKey,
+            messaging_provider: value.messagingProvider,
+            messaging_api_key: value.messagingAPIKey
         )
     }
 }

@@ -825,30 +825,6 @@ struct HTMLContentView: UIViewRepresentable {
     }
 }
 
-// MARK: - Compose Email View (Placeholder)
-
-struct ComposeEmailView: View {
-    @Environment(\.dismiss) private var dismiss
-    
-    var body: some View {
-        NavigationStack {
-            VStack {
-                Text("Componi Email")
-                    .font(.title)
-                Text("In sviluppo...")
-                    .foregroundColor(.secondary)
-            }
-            .navigationTitle("Nuova Email")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Annulla") { dismiss() }
-                }
-            }
-        }
-    }
-}
-
 // MARK: - iPadCloudKitSyncService Extension
 
 extension iPadCloudKitSyncService {

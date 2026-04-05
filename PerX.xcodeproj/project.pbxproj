@@ -513,9 +513,6 @@
 			);
 			mainGroup = 7803954C2CE509530093FAB4;
 			minimizedProjectReferenceProxies = 1;
-			packageReferences = (
-				78137BDC2CF10D57008FB369 /* XCRemoteSwiftPackageReference "GCDWebServer" */,
-			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 780395562CE509530093FAB4 /* Products */;
 			projectDirPath = "";
@@ -1446,17 +1443,6 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
-
-/* Begin XCRemoteSwiftPackageReference section */
-		78137BDC2CF10D57008FB369 /* XCRemoteSwiftPackageReference "GCDWebServer" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/swisspol/GCDWebServer";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 3.5.4;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
 	};
 	rootObject = 7803954D2CE509530093FAB4 /* Project object */;
 }

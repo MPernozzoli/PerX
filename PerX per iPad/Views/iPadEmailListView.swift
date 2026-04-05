@@ -125,10 +125,12 @@ struct EmailListRow: View {
                     .lineLimit(1)
                 
                 Spacer()
-                
-                Text(email.date, style: .date)
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
+
+                if let date = email.date {
+                    Text(date, style: .date)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
             }
             
             Text(email.subject)
@@ -187,10 +189,12 @@ struct EmailDetailContentView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Da: \(email.from)")
                                 .font(.subheadline)
-                            
-                            Text(email.date, format: .dateTime.day().month().year().hour().minute())
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+
+                            if let date = email.date {
+                                Text(date, format: .dateTime.day().month().year().hour().minute())
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
                         }
                         
                         Spacer()

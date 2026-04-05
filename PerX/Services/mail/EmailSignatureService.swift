@@ -11,12 +11,26 @@ class EmailSignatureService {
     
     /// Ottiene la firma email salvata
     func getSignature() -> String {
+        if let profileSignature = currentProfileSignature() {
+            userDefaults.set(profileSignature, forKey: signatureKey)
+            return profileSignature
+        }
         return userDefaults.string(forKey: signatureKey) ?? ""
     }
     
     /// Salva la firma email
     func saveSignature(_ signature: String) {
         userDefaults.set(signature, forKey: signatureKey)
+        Task { @MainActor in
+            do {
+                try await UserProfileService.shared.updateProfile { profile in
+                    profile.emailSignatureHTML = signature
+                    profile.emailSignatureText = signature
+                }
+            } catch {
+                print("[EmailSignatureService] ⚠️ Sync firma backend fallito: \(error)")
+            }
+        }
     }
     
     /// Ottiene la firma di default (se non è stata impostata una personalizzata)
@@ -42,6 +56,21 @@ class EmailSignatureService {
     func hasSignature() -> Bool {
         return !getSignature().isEmpty
     }
+
+    private func currentProfileSignature() -> String? {
+        guard Thread.isMainThread else { return nil }
+        return MainActor.assumeIsolated {
+            if let profile = UserProfileService.shared.currentProfile {
+                if let html = profile.emailSignatureHTML, !html.isEmpty {
+                    return html
+                }
+                if let text = profile.emailSignatureText, !text.isEmpty {
+                    return text
+                }
+            }
+            return nil
+        }
+    }
 }
 
 // MARK: - Read Receipt Settings
@@ -63,4 +92,3 @@ class ReadReceiptSettings: ObservableObject {
         }
     }
 }
-

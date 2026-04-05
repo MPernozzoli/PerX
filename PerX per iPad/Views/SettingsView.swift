@@ -48,6 +48,22 @@ struct SettingsView: View {
                         }
                     }
                     .padding(.vertical, 4)
+
+                    if hubClient.isCloudConfigured {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Label("Profilo utente sincronizzato tramite backend cloud", systemImage: "person.crop.circle.badge.checkmark")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            if let profile = session.currentCloudProfile {
+                                Text("Ruoli: \(profile.roles.joined(separator: ", "))")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                                Text("Firma email: \((profile.email_signature_html?.isEmpty == false || profile.email_signature_text?.isEmpty == false) ? "configurata" : "non configurata")")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
                     
                     Button(role: .destructive) {
                         showingLogoutConfirm = true
@@ -118,6 +134,17 @@ struct SettingsView: View {
                     HStack {
                         Button("Salva credenziali") {
                             hubClient.saveCloudPassword(cloudAPIPassword)
+                            let normalizedEmail = cloudAPIEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                            if !normalizedEmail.isEmpty {
+                                accountManager.savePassword(cloudAPIPassword, for: normalizedEmail)
+                                if session.currentUserEmail == normalizedEmail {
+                                    accountManager.saveAccount(
+                                        email: normalizedEmail,
+                                        displayName: session.currentUserName ?? normalizedEmail,
+                                        password: cloudAPIPassword
+                                    )
+                                }
+                            }
                             cloudCheckResult = "Credenziali backend salvate"
                         }
                         .disabled(cloudAPIPassword.isEmpty)

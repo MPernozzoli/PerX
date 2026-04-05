@@ -196,10 +196,12 @@ struct EmailListView: View {
                             }
                             
                             Spacer()
-                            
-                            Text(email.date, style: .date)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+
+                            if let date = email.date {
+                                Text(date, style: .date)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
                         }
                     }
                     .padding(.vertical, 4)
@@ -266,14 +268,23 @@ struct WhatsAppListView: View {
 // MARK: - Compose Email View
 
 struct ComposeEmailView: View {
+    let prefilledRiferimento: String?
+
     @EnvironmentObject var session: SessionCoordinator
     @Environment(\.dismiss) private var dismiss
     
-    @State private var toRecipients = ""
-    @State private var subject = ""
-    @State private var bodyText = ""
+    @State private var toRecipients: String
+    @State private var subject: String
+    @State private var bodyText: String
     @State private var isSending = false
     @State private var errorMessage: String?
+
+    init(prefilledRiferimento: String? = nil) {
+        self.prefilledRiferimento = prefilledRiferimento
+        _toRecipients = State(initialValue: "")
+        _subject = State(initialValue: prefilledRiferimento.map { "Rif. \($0) - " } ?? "")
+        _bodyText = State(initialValue: "")
+    }
     
     var body: some View {
         NavigationStack {
@@ -322,13 +333,17 @@ struct ComposeEmailView: View {
         isSending = true
         errorMessage = nil
         
-        let recipients = toRecipients.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        let recipients = toRecipients
+            .components(separatedBy: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
         
         do {
             _ = try await HubOutboxService.shared.sendEmail(
                 to: recipients,
                 subject: subject,
-                body: bodyText
+                body: bodyText,
+                sinistroRiferimento: prefilledRiferimento
             )
             dismiss()
         } catch {
@@ -342,13 +357,21 @@ struct ComposeEmailView: View {
 // MARK: - Compose WhatsApp View
 
 struct ComposeWhatsAppView: View {
+    let prefilledRiferimento: String?
+
     @EnvironmentObject var session: SessionCoordinator
     @Environment(\.dismiss) private var dismiss
     
-    @State private var phoneNumber = ""
-    @State private var message = ""
+    @State private var phoneNumber: String
+    @State private var message: String
     @State private var isSending = false
     @State private var errorMessage: String?
+
+    init(prefilledRiferimento: String? = nil) {
+        self.prefilledRiferimento = prefilledRiferimento
+        _phoneNumber = State(initialValue: "")
+        _message = State(initialValue: prefilledRiferimento.map { "Rif. \($0)\n" } ?? "")
+    }
     
     var body: some View {
         NavigationStack {
@@ -397,7 +420,8 @@ struct ComposeWhatsAppView: View {
         do {
             _ = try await HubOutboxService.shared.sendWhatsApp(
                 phoneNumber: phoneNumber,
-                message: message
+                message: message,
+                sinistroRiferimento: prefilledRiferimento
             )
             dismiss()
         } catch {

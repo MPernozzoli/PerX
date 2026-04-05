@@ -105,6 +105,7 @@ async def seed_tenant_and_users(pool: asyncpg.Pool):
         # Crea ruoli
         admin_role_id = str(uuid.uuid4())
         perito_role_id = str(uuid.uuid4())
+        cat_role_id = str(uuid.uuid4())
         
         await conn.execute("""
             INSERT INTO roles (id, tenant_id, name, description)
@@ -118,6 +119,12 @@ async def seed_tenant_and_users(pool: asyncpg.Pool):
             ON CONFLICT DO NOTHING
         """, perito_role_id, tenant_id, "perito", "Perito")
 
+        await conn.execute("""
+            INSERT INTO roles (id, tenant_id, name, description)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT DO NOTHING
+        """, cat_role_id, tenant_id, "cat", "Tecnico CAT")
+
         existing_admin_role_id = await conn.fetchval("""
             SELECT id FROM roles WHERE tenant_id = $1 AND name = $2 LIMIT 1
         """, tenant_id, "admin_tenant")
@@ -129,13 +136,21 @@ async def seed_tenant_and_users(pool: asyncpg.Pool):
         """, tenant_id, "perito")
         if existing_perito_role_id:
             perito_role_id = existing_perito_role_id
+
+        existing_cat_role_id = await conn.fetchval("""
+            SELECT id FROM roles WHERE tenant_id = $1 AND name = $2 LIMIT 1
+        """, tenant_id, "cat")
+        if existing_cat_role_id:
+            cat_role_id = existing_cat_role_id
         
         # Crea utenti
         admin_user_id = str(uuid.uuid4())
         perito_user_id = str(uuid.uuid4())
+        cat_user_id = str(uuid.uuid4())
         
         admin_password_hash = get_password_hash("admin123")
         perito_password_hash = get_password_hash("perito123")
+        cat_password_hash = get_password_hash("cat123")
         
         await conn.execute("""
             INSERT INTO users (id, tenant_id, email, full_name, password_hash, is_active, is_platform_admin, created_at)
@@ -159,6 +174,17 @@ async def seed_tenant_and_users(pool: asyncpg.Pool):
                 is_platform_admin = EXCLUDED.is_platform_admin
         """, perito_user_id, tenant_id, "perito@demo.com", "Perito Demo", perito_password_hash, True, False, datetime.utcnow())
 
+        await conn.execute("""
+            INSERT INTO users (id, tenant_id, email, full_name, password_hash, is_active, is_platform_admin, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT (email) DO UPDATE
+            SET tenant_id = EXCLUDED.tenant_id,
+                full_name = EXCLUDED.full_name,
+                password_hash = EXCLUDED.password_hash,
+                is_active = EXCLUDED.is_active,
+                is_platform_admin = EXCLUDED.is_platform_admin
+        """, cat_user_id, tenant_id, "cat@demo.com", "CAT Demo", cat_password_hash, True, False, datetime.utcnow())
+
         existing_admin_user_id = await conn.fetchval("""
             SELECT id FROM users WHERE email = $1
         """, "admin@demo.com")
@@ -170,6 +196,12 @@ async def seed_tenant_and_users(pool: asyncpg.Pool):
         """, "perito@demo.com")
         if existing_perito_user_id:
             perito_user_id = existing_perito_user_id
+
+        existing_cat_user_id = await conn.fetchval("""
+            SELECT id FROM users WHERE email = $1
+        """, "cat@demo.com")
+        if existing_cat_user_id:
+            cat_user_id = existing_cat_user_id
         
         # Assegna ruoli
         await conn.execute("""
@@ -183,11 +215,18 @@ async def seed_tenant_and_users(pool: asyncpg.Pool):
             VALUES ($1, $2)
             ON CONFLICT DO NOTHING
         """, perito_user_id, perito_role_id)
+
+        await conn.execute("""
+            INSERT INTO user_roles (user_id, role_id)
+            VALUES ($1, $2)
+            ON CONFLICT DO NOTHING
+        """, cat_user_id, cat_role_id)
         
         print(f"✅ Creato/aggiornato admin piattaforma: {settings.APP_ADMIN_EMAIL} / {settings.APP_ADMIN_DEFAULT_PASSWORD}")
         print(f"✅ Creato tenant: {tenant_id}")
         print(f"   Admin: admin@demo.com / admin123")
         print(f"   Perito: perito@demo.com / perito123")
+        print(f"   CAT: cat@demo.com / cat123")
 
         await ensure_supabase_auth_user(
             settings.APP_ADMIN_EMAIL,
@@ -196,6 +235,7 @@ async def seed_tenant_and_users(pool: asyncpg.Pool):
         )
         await ensure_supabase_auth_user("admin@demo.com", "admin123", "Admin Demo")
         await ensure_supabase_auth_user("perito@demo.com", "perito123", "Perito Demo")
+        await ensure_supabase_auth_user("cat@demo.com", "cat123", "CAT Demo")
         
         return tenant_id, admin_user_id, perito_user_id
 

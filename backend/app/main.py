@@ -19,6 +19,7 @@ from app.api.v1 import (
     routes_internal_chat,
     routes_ai_chat,
     routes_planning,
+    routes_profiles,
     routes_tasks,
     routes_tenants,
     routes_whatsapp,
@@ -55,6 +56,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(routes_auth.router, prefix="/api/v1/auth", tags=["auth"])
+app.include_router(routes_profiles.router, prefix="/api/v1/profiles", tags=["profiles"])
 app.include_router(routes_claims.router, prefix="/api/v1/claims", tags=["claims"])
 app.include_router(routes_tasks.router, prefix="/api/v1", tags=["tasks"])
 app.include_router(routes_documents.router, prefix="/api/v1", tags=["documents"])

@@ -116,6 +116,7 @@ private enum OperationsMetricsBuilder {
         return owner == email.lowercased()
     }
 
+    @MainActor
     static func currentPriority(for sinistro: Sinistro) -> Double {
         PriorityCalculator.shared.calculateDynamicPriority(
             for: sinistro,
@@ -422,6 +423,9 @@ struct TeamMonitorView: View {
     private func openDirectChat(with userEmail: String, displayName: String) async {
         guard !isOpeningChat else { return }
         guard let currentUserEmail = CurrentUserService.shared.currentEmail else { return }
+        let currentUserName = UserProfileService.shared.currentProfile?.displayName
+            ?? CurrentUserService.shared.currentUsername
+            ?? currentUserEmail
 
         isOpeningChat = true
         defer { isOpeningChat = false }
@@ -433,7 +437,11 @@ struct TeamMonitorView: View {
             )
 
             await MainActor.run {
-                let chatView = ChatDetailView(roomId: room.id, currentUserEmail: currentUserEmail)
+                let chatView = ChatDetailView(
+                    roomId: room.id,
+                    currentUserEmail: currentUserEmail,
+                    currentUserName: currentUserName
+                )
                 WindowManager.shared.openWindow(
                     identifier: "team-chat-\(room.id)",
                     content: chatView,

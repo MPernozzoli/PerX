@@ -19,9 +19,11 @@ class AccountManager: ObservableObject {
     
     private let accountsKey = "perx_saved_accounts"
     private let keychainService = "com.perx.accounts"
+    private let didSeedDemoAccountsKey = "perx_demo_accounts_seeded_v1"
     
     private init() {
         loadAccounts()
+        seedDemoAccountsIfNeeded()
     }
     
     // MARK: - Account Model
@@ -58,47 +60,63 @@ class AccountManager: ObservableObject {
             lhs.email == rhs.email
         }
     }
+
+    private struct DemoAccountDefinition {
+        let email: String
+        let displayName: String
+        let password: String
+    }
+
+    private static let demoAccounts: [DemoAccountDefinition] = [
+        DemoAccountDefinition(email: "cat@demo.com", displayName: "CAT Demo", password: "cat123"),
+        DemoAccountDefinition(email: "admin@demo.com", displayName: "Admin Demo", password: "admin123"),
+        DemoAccountDefinition(email: "perito@demo.com", displayName: "Perito Demo", password: "perito123"),
+        DemoAccountDefinition(email: "info@pynkstudio.it", displayName: "Pynk Studio Admin", password: "change-me-now")
+    ]
     
     // MARK: - Account Management
     
     /// Salva o aggiorna un account dopo login
+    func saveAccount(email: String, displayName: String, password: String?) {
+        upsertAccount(email: email, displayName: displayName)
+
+        if let password, !password.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            savePassword(password, for: email)
+        }
+    }
+
     func saveAccount(email: String, displayName: String, refreshToken: String?) {
-        var account = SavedAccount(email: email, displayName: displayName)
-        
-        // Se esiste già, mantieni le impostazioni
-        if let existing = savedAccounts.first(where: { $0.email == email.lowercased() }) {
-            account.hasPasscode = existing.hasPasscode
-            account.colorIndex = existing.colorIndex
-        }
-        
-        // Aggiorna last login
-        account.lastLoginDate = Date()
-        
-        // Rimuovi vecchia entry se esiste
-        savedAccounts.removeAll { $0.email == email.lowercased() }
-        
-        // Aggiungi in cima (più recente)
-        savedAccounts.insert(account, at: 0)
-        
-        // Salva refresh token se disponibile
-        if let token = refreshToken {
-            saveRefreshToken(token, for: email)
-        }
-        
+        saveAccount(email: email, displayName: displayName, password: refreshToken)
+    }
+
+    func updateDisplayName(_ displayName: String, for email: String) {
+        guard let index = savedAccounts.firstIndex(where: { $0.email == email.lowercased() }) else { return }
+        var account = savedAccounts[index]
+        account = SavedAccount(email: account.email, displayName: displayName)
+        account.lastLoginDate = savedAccounts[index].lastLoginDate
+        account.hasPasscode = savedAccounts[index].hasPasscode
+        account.colorIndex = savedAccounts[index].colorIndex
+        savedAccounts[index] = account
         persistAccounts()
     }
     
     /// Rimuove un account salvato
     func removeAccount(_ account: SavedAccount) {
         savedAccounts.removeAll { $0.email == account.email }
-        deleteRefreshToken(for: account.email)
         deletePasscode(for: account.email)
+        deletePassword(for: account.email)
         persistAccounts()
     }
     
-    /// Recupera il refresh token per un account
-    func getRefreshToken(for email: String) -> String? {
+    /// Recupera la password backend per un account
+    func getPassword(for email: String) -> String? {
+        loadFromKeychain(key: "password_\(email.lowercased())") ??
         loadFromKeychain(key: "refresh_\(email.lowercased())")
+    }
+
+    /// Legacy accessor per i vecchi flussi iPad
+    func getRefreshToken(for email: String) -> String? {
+        getPassword(for: email)
     }
     
     /// Imposta passcode per un account
@@ -144,12 +162,16 @@ class AccountManager: ObservableObject {
     
     // MARK: - Keychain
     
-    private func saveRefreshToken(_ token: String, for email: String) {
-        saveToKeychain(value: token, key: "refresh_\(email.lowercased())")
+    func savePassword(_ password: String, for email: String) {
+        let normalizedEmail = email.lowercased()
+        saveToKeychain(value: password, key: "password_\(normalizedEmail)")
+        deleteFromKeychain(key: "refresh_\(normalizedEmail)")
     }
     
-    private func deleteRefreshToken(for email: String) {
-        deleteFromKeychain(key: "refresh_\(email.lowercased())")
+    private func deletePassword(for email: String) {
+        let normalizedEmail = email.lowercased()
+        deleteFromKeychain(key: "password_\(normalizedEmail)")
+        deleteFromKeychain(key: "refresh_\(normalizedEmail)")
     }
     
     private func deletePasscode(for email: String) {
@@ -194,5 +216,38 @@ class AccountManager: ObservableObject {
             kSecAttrAccount as String: key
         ]
         SecItemDelete(query as CFDictionary)
+    }
+
+    private func upsertAccount(email: String, displayName: String) {
+        let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let resolvedDisplayName = displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        ? normalizedEmail
+        : displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        var account = SavedAccount(email: normalizedEmail, displayName: resolvedDisplayName)
+
+        if let existing = savedAccounts.first(where: { $0.email == normalizedEmail }) {
+            account.hasPasscode = existing.hasPasscode
+            account.colorIndex = existing.colorIndex
+        }
+
+        account.lastLoginDate = Date()
+        savedAccounts.removeAll { $0.email == normalizedEmail }
+        savedAccounts.insert(account, at: 0)
+        persistAccounts()
+    }
+
+    private func seedDemoAccountsIfNeeded() {
+        guard !UserDefaults.standard.bool(forKey: didSeedDemoAccountsKey) else { return }
+
+        for account in Self.demoAccounts.reversed() {
+            saveAccount(
+                email: account.email,
+                displayName: account.displayName,
+                password: account.password
+            )
+        }
+
+        UserDefaults.standard.set(true, forKey: didSeedDemoAccountsKey)
     }
 }

@@ -119,6 +119,8 @@ struct UserProfile: Codable, Equatable, Identifiable {
     // Dati personali
     var firstName: String
     var lastName: String
+    var jobTitle: String?
+    var phoneNumber: String?
     var birthDate: Date?
     var birthdayVisibility: BirthdayVisibility
     var notifyBirthday: Bool
@@ -126,8 +128,10 @@ struct UserProfile: Codable, Equatable, Identifiable {
     // Avatar
     var avatarType: AvatarType
     var avatarPhotoData: Data?
+    var avatarAssetURL: String?
     var generatedAvatar: GeneratedAvatar
     var avatarGifURL: String?
+    var signatureImageURL: String?
     
     // Lavoro
     var contractType: ContractType?
@@ -136,6 +140,8 @@ struct UserProfile: Codable, Equatable, Identifiable {
     // Preferenze
     var enableBadges: Bool
     var sendReadReceipts: Bool
+    var emailSignatureHTML: String?
+    var emailSignatureText: String?
     
     // Metadata
     var createdAt: Date
@@ -190,17 +196,23 @@ struct UserProfile: Codable, Equatable, Identifiable {
         self.username = Self.generateUsername(from: email)
         self.firstName = ""
         self.lastName = ""
+        self.jobTitle = nil
+        self.phoneNumber = nil
         self.birthDate = nil
         self.birthdayVisibility = .everyone
         self.notifyBirthday = true
         self.avatarType = .generated
         self.avatarPhotoData = nil
+        self.avatarAssetURL = nil
         self.generatedAvatar = .default
         self.avatarGifURL = nil
+        self.signatureImageURL = nil
         self.contractType = nil
         self.roles = []
         self.enableBadges = false
         self.sendReadReceipts = true
+        self.emailSignatureHTML = nil
+        self.emailSignatureText = nil
         self.createdAt = Date()
         self.updatedAt = Date()
     }

@@ -477,7 +477,7 @@ final class AutomaticClaimAssignmentService: ObservableObject {
             penalty += settings.offlinePenalty
         case .recent:
             penalty += settings.offlinePenalty / 2
-        case .online, .none:
+        case .online:
             break
         }
         return penalty
@@ -564,7 +564,7 @@ final class AutomaticClaimAssignmentService: ObservableObject {
     }
 
     private func claimGuarantee(for claim: Sinistro) -> String {
-        let guarantee = claim.garanzia ?? claim.fulminazione
+        let guarantee = claim.fulminazione
         let normalized = normalizeText(guarantee)
         return normalized.isEmpty
             ? TenantMailSettingsService.shared.settings.defaultClaimGaranzia

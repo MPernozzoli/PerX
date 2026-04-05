@@ -87,8 +87,7 @@ class HubAPIClient: ObservableObject {
     // MARK: - Auth Token
     
     private var authToken: String? {
-        // Recupera token da GoogleAuthServiceiOS
-        return GoogleAuthServiceiOS.shared.accessToken
+        loadFromKeychain(forKey: "cloud_api_access_token") ?? GoogleAuthServiceiOS.shared.accessToken
     }
 
     var isCloudConfigured: Bool {
@@ -109,6 +108,17 @@ class HubAPIClient: ObservableObject {
     func clearCloudSession() {
         removeFromKeychain(forKey: "cloud_api_access_token")
         removeFromKeychain(forKey: "cloud_api_refresh_token")
+    }
+
+    func storeCloudSession(accessToken: String, refreshToken: String?, email: String, password: String) {
+        cloudAPIEmail = email.lowercased()
+        saveCloudPassword(password)
+        saveToKeychain(token: accessToken, forKey: "cloud_api_access_token")
+        if let refreshToken, !refreshToken.isEmpty {
+            saveToKeychain(token: refreshToken, forKey: "cloud_api_refresh_token")
+        } else {
+            removeFromKeychain(forKey: "cloud_api_refresh_token")
+        }
     }
     
     private func authorizedRequest(url: URL) -> URLRequest {
@@ -442,6 +452,97 @@ class HubAPIClient: ObservableObject {
         return try decoder.decode(T.self, from: data)
     }
 
+    func cloudPut<B: Encodable, T: Decodable>(endpoint: String, body: B) async throws -> T {
+        let base = cloudAPIBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: "\(base)\(endpoint)") else {
+            throw HubAPIError.invalidURL
+        }
+
+        var request = try await authorizedCloudRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.httpBody = try encoder.encode(body)
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw HubAPIError.invalidResponse
+        }
+        if httpResponse.statusCode == 401 {
+            _ = try await cloudLogin(forceRefresh: true)
+            var retry = try await authorizedCloudRequest(url: url)
+            retry.httpMethod = "PUT"
+            retry.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            retry.setValue("application/json", forHTTPHeaderField: "Accept")
+            retry.httpBody = try encoder.encode(body)
+            let (retryData, retryResponse) = try await session.data(for: retry)
+            try validateResponse(retryResponse)
+            return try decoder.decode(T.self, from: retryData)
+        }
+
+        try validateResponse(response)
+        return try decoder.decode(T.self, from: data)
+    }
+
+    func cloudDownload(endpoint: String) async throws -> Data {
+        let base = cloudAPIBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: "\(base)\(endpoint)") else {
+            throw HubAPIError.invalidURL
+        }
+
+        var request = try await authorizedCloudRequest(url: url)
+        request.httpMethod = "GET"
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw HubAPIError.invalidResponse
+        }
+        if httpResponse.statusCode == 401 {
+            _ = try await cloudLogin(forceRefresh: true)
+            var retry = try await authorizedCloudRequest(url: url)
+            retry.httpMethod = "GET"
+            let (retryData, retryResponse) = try await session.data(for: retry)
+            try validateResponse(retryResponse)
+            return retryData
+        }
+
+        try validateResponse(response)
+        return data
+    }
+
+    func cloudUpload(endpoint: String, data: Data, fileName: String, mimeType: String) async throws -> CloudProfileAssetDTO {
+        let base = cloudAPIBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: "\(base)\(endpoint)") else {
+            throw HubAPIError.invalidURL
+        }
+
+        let boundary = "Boundary-\(UUID().uuidString)"
+        var request = try await authorizedCloudRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.httpBody = makeMultipartBody(data: data, fileName: fileName, mimeType: mimeType, boundary: boundary)
+
+        let (responseData, response) = try await session.data(for: request)
+        try validateResponse(response)
+        return try decoder.decode(CloudProfileAssetDTO.self, from: responseData)
+    }
+
+    func getCurrentProfileFromCloud() async throws -> CloudProfileDTO {
+        try await cloudGet(endpoint: "/api/v1/profiles/me")
+    }
+
+    func getProfilesFromCloud() async throws -> [CloudProfileDTO] {
+        try await cloudGet(endpoint: "/api/v1/profiles")
+    }
+
+    func updateCurrentProfileOnCloud(_ profile: CloudProfileUpdateRequestDTO) async throws -> CloudProfileDTO {
+        try await cloudPut(endpoint: "/api/v1/profiles/me", body: profile)
+    }
+
+    func getProfileAssetFromCloud(userID: String, assetType: String) async throws -> Data {
+        try await cloudDownload(endpoint: "/api/v1/profiles/\(userID)/assets/\(assetType)")
+    }
+
     private func authorizedCloudRequest(url: URL) async throws -> URLRequest {
         let token = try await cloudLogin()
         var request = URLRequest(url: url)
@@ -511,6 +612,16 @@ class HubAPIClient: ObservableObject {
             kSecAttrAccount as String: key
         ]
         SecItemDelete(query as CFDictionary)
+    }
+
+    private func makeMultipartBody(data: Data, fileName: String, mimeType: String, boundary: String) -> Data {
+        var body = Data()
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(fileName)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
+        body.append(data)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        return body
     }
 }
 
@@ -614,6 +725,57 @@ struct ScheduleWhatsAppRequest: Encodable {
 struct ScheduleWhatsAppResponse: Decodable {
     let scheduleId: String
     let scheduledFor: Date
+}
+
+struct CloudProfileDTO: Codable {
+    let id: String
+    let email: String
+    let full_name: String
+    let first_name: String
+    let last_name: String
+    let roles: [String]
+    let avatar_type: String
+    let avatar_asset_url: String?
+    let avatar_gif_url: String?
+    let signature_image_url: String?
+    let enable_badges: Bool
+    let send_read_receipts: Bool
+    let email_signature_html: String?
+    let email_signature_text: String?
+
+    var displayName: String {
+        let name = "\(first_name) \(last_name)".trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? full_name : name
+    }
+}
+
+struct CloudProfileUpdateRequestDTO: Encodable {
+    let first_name: String
+    let last_name: String
+    let job_title: String?
+    let phone_number: String?
+    let birth_date: Date?
+    let birthday_visibility: String
+    let notify_birthday: Bool
+    let contract_type: String?
+    let roles: [String]
+    let avatar_type: String
+    let avatar_photo_base64: String?
+    let generated_avatar_color: String?
+    let generated_avatar_icon: String?
+    let avatar_gif_url: String?
+    let enable_badges: Bool
+    let send_read_receipts: Bool
+    let email_signature_html: String?
+    let email_signature_text: String?
+}
+
+struct CloudProfileAssetDTO: Decodable {
+    let asset_type: String
+    let file_name: String
+    let mime_type: String?
+    let size_bytes: Int
+    let asset_url: String
 }
 
 // Sinistri

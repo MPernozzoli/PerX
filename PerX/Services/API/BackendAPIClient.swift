@@ -43,6 +43,35 @@ final class BackendAPIClient {
         return try decoder.decode(T.self, from: data)
     }
 
+    func delete(_ path: String, queryItems: [URLQueryItem] = []) async throws {
+        let request = try makeRequest(path: path, method: "DELETE", queryItems: queryItems)
+        let (data, response) = try await session.data(for: request)
+        try validate(response: response, data: data)
+    }
+
+    func download(_ path: String, queryItems: [URLQueryItem] = []) async throws -> Data {
+        let request = try makeRequest(path: path, method: "GET", queryItems: queryItems)
+        let (data, response) = try await session.data(for: request)
+        try validate(response: response, data: data)
+        return data
+    }
+
+    func upload<T: Decodable>(_ path: String, data: Data, fileName: String, mimeType: String) async throws -> T {
+        var request = try makeRequest(path: path, method: "PUT", queryItems: [])
+        let boundary = "Boundary-\(UUID().uuidString)"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.httpBody = makeMultipartBody(
+            data: data,
+            fileName: fileName,
+            mimeType: mimeType,
+            boundary: boundary
+        )
+
+        let (responseData, response) = try await session.data(for: request)
+        try validate(response: response, data: responseData)
+        return try decoder.decode(T.self, from: responseData)
+    }
+
     private func makeRequest(path: String, method: String, queryItems: [URLQueryItem]) throws -> URLRequest {
         guard !resolvedBaseURLString.isEmpty else {
             throw BackendAPIError.notConfigured
@@ -88,6 +117,16 @@ final class BackendAPIClient {
             let body = String(data: data, encoding: .utf8)
             throw BackendAPIError.server(body ?? "HTTP \(httpResponse.statusCode)")
         }
+    }
+
+    private func makeMultipartBody(data: Data, fileName: String, mimeType: String, boundary: String) -> Data {
+        var body = Data()
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(fileName)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
+        body.append(data)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        return body
     }
 
     private var resolvedBaseURLString: String {

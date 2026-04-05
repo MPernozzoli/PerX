@@ -20,6 +20,7 @@ final class SessionCoordinator: ObservableObject {
     @Published private(set) var isAuthenticated = false
     @Published private(set) var currentUserEmail: String?
     @Published private(set) var currentUserName: String?
+    @Published private(set) var currentCloudProfile: CloudProfileDTO?
     @Published private(set) var isLoading = false
     
     // MARK: - Core Data (per-utente)
@@ -78,6 +79,13 @@ final class SessionCoordinator: ObservableObject {
         
         try await authService.signIn()
     }
+
+    func signIn(email: String, password: String, baseURL: String? = nil) async throws {
+        isLoading = true
+        defer { isLoading = false }
+
+        try await authService.signIn(email: email, password: password, baseURL: baseURL)
+    }
     
     func signOut() async {
         await tearDownSession()
@@ -123,6 +131,19 @@ final class SessionCoordinator: ObservableObject {
         currentUserEmail = normalizedEmail
         currentUserName = name
         isAuthenticated = true
+
+        if hubClient.isCloudConfigured {
+            do {
+                let profile = try await hubClient.getCurrentProfileFromCloud()
+                currentCloudProfile = profile
+                if !profile.displayName.isEmpty {
+                    currentUserName = profile.displayName
+                    accountManagerUpdateNameIfNeeded(email: normalizedEmail, displayName: profile.displayName)
+                }
+            } catch {
+                print("[SessionCoordinator] ⚠️ Profilo cloud non disponibile: \(error)")
+            }
+        }
         
         print("[SessionCoordinator] ✅ Sessione attiva per: \(normalizedEmail)")
     }
@@ -148,6 +169,7 @@ final class SessionCoordinator: ObservableObject {
         // 4. Reset stato
         currentUserEmail = nil
         currentUserName = nil
+        currentCloudProfile = nil
         isAuthenticated = false
         
         print("[SessionCoordinator] ✅ Sessione terminata")
@@ -169,5 +191,9 @@ final class SessionCoordinator: ObservableObject {
         let userDir = cachesDir.appendingPathComponent("User_\(abs(hash))", isDirectory: true)
         try? FileManager.default.createDirectory(at: userDir, withIntermediateDirectories: true)
         return userDir
+    }
+
+    private func accountManagerUpdateNameIfNeeded(email: String, displayName: String) {
+        AccountManager.shared.updateDisplayName(displayName, for: email)
     }
 }
