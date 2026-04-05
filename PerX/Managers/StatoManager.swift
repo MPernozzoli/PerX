@@ -105,6 +105,24 @@ enum StatoDetailCategory: String, CaseIterable {
     case none = ""
 }
 
+enum CATInspectionWorkflowStage: String, Codable, CaseIterable {
+    case automaticSchedulingInProgress = "automatic_scheduling_in_progress"
+    case manualSchedulingRequired = "manual_scheduling_required"
+    case scheduledAwaitingVisit = "scheduled_awaiting_visit"
+    case replanningRequired = "replanning_required"
+    case expertAssignmentPending = "expert_assignment_pending"
+
+    var substateValue: String {
+        "inspection:\(rawValue)"
+    }
+
+    init?(substateValue: String?) {
+        guard let substateValue,
+              substateValue.hasPrefix("inspection:") else { return nil }
+        self.init(rawValue: String(substateValue.dropFirst("inspection:".count)))
+    }
+}
+
 class StatoManager: ObservableObject {
     static let shared = StatoManager()
     
@@ -150,6 +168,8 @@ class StatoManager: ObservableObject {
         case daChiudereASistema = "SV045"
         case sopralluogoFissato = "SV050"
         case sopralluogoRestituito = "SV051"
+        case sopralluogoDaFissare = "SV052"
+        case sopralluogoDaConcordare = "SV053"
 
         // Stati di chiusura
         case chiusa = "SV090"
@@ -214,6 +234,8 @@ class StatoManager: ObservableObject {
             case .daChiudereASistema: return "Da chiudere a sistema"
             case .sopralluogoFissato: return "Sopralluogo fissato"
             case .sopralluogoRestituito: return "Sopralluogo restituito"
+            case .sopralluogoDaFissare: return "Sopralluogo da fissare"
+            case .sopralluogoDaConcordare: return "Sopralluogo da concordare"
             case .chiusa: return "Chiusa"
             case .richiestaRevisione: return "Richiesta revisione"
             case .daRevisionare: return "Da revisionare"
@@ -229,6 +251,8 @@ class StatoManager: ObservableObject {
                  .daGestireDocumentale, .daGestireNoResidui, .attesaPassiva, .inAttesaDocumentale,
                  .periziaDaEseguire, .videoperiziaDaFissare, .periziaDaEseguireNoResidui:
                 return .ingresso
+            case .sopralluogoDaFissare, .sopralluogoDaConcordare, .sopralluogoFissato, .sopralluogoRestituito:
+                return .avanzamento
             case .chiusa, .richiestaRevisione, .daRevisionare, .daChiudereASistema:
                 return .chiusura
             case .revocata, .annullata:
@@ -248,7 +272,7 @@ class StatoManager: ObservableObject {
             case .esitoDaComunicare, .attoDaInviare: return 4
             case .videoperiziaFissata, .sopralluogoRestituito, .inGestione, .inGestioneVideoperizia, .inGestioneDocumentale: return 5
             case .periziaDaEseguireDocumentale, .periziaDaEseguire, .periziaDaEseguireNoResidui, .sopralluogoFissato: return 6
-            case .inAttesaDocumentale, .inAttesaDaAssicurato, .inAttesaDaAgenzia, .inAttesaDaTerzi, .videoperiziaDaFissare, .attesaPassiva: return 7
+            case .inAttesaDocumentale, .inAttesaDaAssicurato, .inAttesaDaAgenzia, .inAttesaDaTerzi, .videoperiziaDaFissare, .attesaPassiva, .sopralluogoDaFissare, .sopralluogoDaConcordare: return 7
             case .daGestireVideoperizia, .daGestireTradizionale, .daGestireDocumentale, .daGestireNoResidui: return 8
             case .videoperiziaDaEseguire, .sopralluogoAssegnato, .inAttesaAssegnazione: return 9
             case .secondoContatto: return 10
@@ -271,17 +295,28 @@ class StatoManager: ObservableObject {
             case .istruzione, .primoContatto, .secondoContatto, .inAttesaAssegnazione, .sopralluogoAssegnato,
                  .videoperiziaDaEseguire, .daGestireVideoperizia, .daGestireTradizionale,
                  .daGestireDocumentale, .daGestireNoResidui, .attesaPassiva, .inAttesaDaTerzi,
-                 .daControllare, .daChiudereASistema, .daRevisionare:
+                 .daControllare, .daChiudereASistema, .daRevisionare, .sopralluogoDaFissare,
+                 .sopralluogoDaConcordare, .sopralluogoFissato, .sopralluogoRestituito:
                 return .manager
             default:
                 return .expert
             }
         }
 
+        var additionalAllowedRoles: [UserRole] {
+            switch self {
+            case .sopralluogoDaFissare, .sopralluogoDaConcordare, .sopralluogoFissato, .sopralluogoRestituito:
+                return [.cat]
+            default:
+                return []
+            }
+        }
+
         func isAccessible(to roles: [UserRole]) -> Bool {
             guard !isSystem else { return true }
             if roles.contains(.admin) { return true }
-            return roles.contains(requiredRole)
+            if roles.contains(requiredRole) { return true }
+            return roles.contains { additionalAllowedRoles.contains($0) }
         }
         
         // MARK: - Raggruppamento Stati
@@ -307,7 +342,7 @@ class StatoManager: ObservableObject {
                 return .esito
             case .inControllo, .controllata, .richiestaAutorizzazione, .supervisioneNonConcordata, .daControllare:
                 return .controllo
-            case .sopralluogoFissato, .sopralluogoRestituito:
+            case .sopralluogoDaFissare, .sopralluogoDaConcordare, .sopralluogoFissato, .sopralluogoRestituito:
                 return .sopralluogo
             case .chiusa, .richiestaRevisione, .daChiudereASistema, .daRevisionare:
                 return .chiusura
@@ -370,7 +405,7 @@ class StatoManager: ObservableObject {
         /// Questi stati NON devono essere disponibili per sinistri documentali
         var isTradizionaleOnly: Bool {
             switch self {
-            case .sopralluogoFissato, .sopralluogoRestituito:
+            case .sopralluogoDaFissare, .sopralluogoDaConcordare, .sopralluogoFissato, .sopralluogoRestituito:
                 return true
             default:
                 return false
@@ -413,7 +448,7 @@ class StatoManager: ObservableObject {
             } else {
                 // Da tradizionale a documentale
                 switch self {
-                case .sopralluogoFissato, .sopralluogoRestituito:
+                case .sopralluogoDaFissare, .sopralluogoDaConcordare, .sopralluogoFissato, .sopralluogoRestituito:
                     return .periziaDaEseguireDocumentale // Nessun equivalente, torna a perizia documentale
                 case .periziaDaEseguire:
                     return .periziaDaEseguireDocumentale
@@ -423,6 +458,25 @@ class StatoManager: ObservableObject {
                     return nil
                 }
             }
+        }
+
+        var catInspectionWorkflowStage: CATInspectionWorkflowStage? {
+            switch self {
+            case .sopralluogoDaFissare:
+                return .automaticSchedulingInProgress
+            case .sopralluogoDaConcordare:
+                return .manualSchedulingRequired
+            case .sopralluogoFissato:
+                return .scheduledAwaitingVisit
+            case .sopralluogoRestituito:
+                return .replanningRequired
+            default:
+                return nil
+            }
+        }
+
+        var isCATInspectionWorkflowState: Bool {
+            catInspectionWorkflowStage != nil
         }
         
         var color: Color {
@@ -439,6 +493,8 @@ class StatoManager: ObservableObject {
             case .periziaDaEseguire, .periziaDaEseguireDocumentale, .periziaDaEseguireNoResidui: return .cyan
             case .inGestione, .inGestioneDocumentale, .inGestioneVideoperizia: return .blue
             case .videoperiziaDaFissare, .videoperiziaFissata: return .orange.opacity(0.8)
+            case .sopralluogoDaFissare: return .pink.opacity(0.8)
+            case .sopralluogoDaConcordare: return .orange
             case .sopralluogoFissato, .sopralluogoRestituito: return .pink
             case .attoDaInviare: return .indigo
             case .esitoDaComunicare, .esitoComunicato: return .mint
@@ -494,6 +550,8 @@ class StatoManager: ObservableObject {
             case .supervisioneNonConcordata: return "exclamationmark.triangle"
             case .daControllare: return "checklist.unchecked"
             case .daChiudereASistema: return "externaldrive.badge.checkmark"
+            case .sopralluogoDaFissare: return "calendar.badge.clock"
+            case .sopralluogoDaConcordare: return "calendar.badge.exclamationmark"
             case .sopralluogoFissato: return "mappin.and.ellipse"
             case .sopralluogoRestituito: return "mappin.circle.fill"
             case .chiusa: return "lock.circle"
@@ -507,19 +565,19 @@ class StatoManager: ObservableObject {
         var validTransitions: [StatoSinistro] {
             switch self {
             case .daScaricare:
-                return [.istruzione]
+                return [.istruzione, .inAttesaDocumentale, .videoperiziaDaFissare, .periziaDaEseguireNoResidui, .sopralluogoDaFissare]
 
             case .istruzione:
-                return [.primoContatto]
+                return [.primoContatto, .sopralluogoDaFissare]
 
             case .primoContatto:
-                return [.secondoContatto, .inAttesaAssegnazione, .videoperiziaDaEseguire, .daGestireTradizionale, .daGestireDocumentale, .daGestireNoResidui]
+                return [.secondoContatto, .inAttesaAssegnazione, .sopralluogoDaFissare, .videoperiziaDaEseguire, .daGestireTradizionale, .daGestireDocumentale, .daGestireNoResidui]
 
             case .secondoContatto:
-                return [.inAttesaAssegnazione, .videoperiziaDaEseguire, .daGestireTradizionale, .daGestireDocumentale, .daGestireNoResidui]
+                return [.inAttesaAssegnazione, .sopralluogoDaFissare, .videoperiziaDaEseguire, .daGestireTradizionale, .daGestireDocumentale, .daGestireNoResidui]
 
             case .inAttesaAssegnazione:
-                return [.sopralluogoAssegnato, .videoperiziaDaEseguire, .daGestireDocumentale, .daGestireNoResidui]
+                return [.sopralluogoAssegnato, .sopralluogoDaFissare, .videoperiziaDaEseguire, .daGestireDocumentale, .daGestireNoResidui]
 
             case .sopralluogoAssegnato:
                 return [.daGestireTradizionale]
@@ -606,11 +664,17 @@ class StatoManager: ObservableObject {
                 return [.chiusa, .controllata, .inGestione, .daChiudereASistema]
             
             case .sopralluogoFissato:
-                return [.sopralluogoRestituito, .inGestione]
+                return [.sopralluogoRestituito, .sopralluogoDaConcordare, .periziaDaEseguire]
             
             case .sopralluogoRestituito:
-                return [.inGestione, .periziaDaEseguire, .attoDaInviare, .esitoDaComunicare]
-            
+                return [.sopralluogoDaFissare, .sopralluogoDaConcordare, .sopralluogoFissato]
+
+            case .sopralluogoDaFissare:
+                return [.sopralluogoFissato, .sopralluogoDaConcordare]
+
+            case .sopralluogoDaConcordare:
+                return [.sopralluogoDaFissare, .sopralluogoFissato]
+
             case .chiusa:
                 return [.richiestaRevisione, .daRevisionare]
             
@@ -1265,6 +1329,78 @@ class StatoManager: ObservableObject {
     func statesInGroup(_ group: StateGroup) -> [StatoSinistro] {
         group.members
     }
+
+    func currentCATInspectionWorkflowStage(for sinistro: Sinistro) -> CATInspectionWorkflowStage? {
+        CATInspectionWorkflowStage(substateValue: sinistro.substate) ??
+        stateEnum(for: sinistro)?.catInspectionWorkflowStage
+    }
+
+    func operationalEntryState(for sinistro: Sinistro) -> StatoSinistro {
+        sinistro.sopralluogo ? .sopralluogoDaFissare : .inAttesaDocumentale
+    }
+
+    func startCATAutomaticScheduling(
+        for sinistro: Sinistro,
+        context: NSManagedObjectContext,
+        userEmail: String? = nil
+    ) async throws {
+        sinistro.sopralluogo = true
+        try await changeState(
+            for: sinistro,
+            to: .sopralluogoDaFissare,
+            context: context,
+            userEmail: userEmail
+        )
+    }
+
+    func markCATSchedulingForManualAgreement(
+        for sinistro: Sinistro,
+        context: NSManagedObjectContext,
+        userEmail: String? = nil
+    ) async throws {
+        sinistro.sopralluogo = true
+        try await changeState(
+            for: sinistro,
+            to: .sopralluogoDaConcordare,
+            context: context,
+            userEmail: userEmail
+        )
+    }
+
+    func confirmCATAppointment(
+        for sinistro: Sinistro,
+        scheduledAt: Date? = nil,
+        context: NSManagedObjectContext,
+        userEmail: String? = nil
+    ) async throws {
+        sinistro.sopralluogo = true
+        if let scheduledAt {
+            sinistro.dataSopralluogo = scheduledAt
+        }
+        try await changeState(
+            for: sinistro,
+            to: .sopralluogoFissato,
+            context: context,
+            userEmail: userEmail
+        )
+    }
+
+    func completeCATInspection(
+        for sinistro: Sinistro,
+        completedAt: Date? = nil,
+        context: NSManagedObjectContext,
+        userEmail: String? = nil
+    ) async throws {
+        if let completedAt {
+            sinistro.dataSopralluogo = completedAt
+        }
+        try await changeState(
+            for: sinistro,
+            to: .periziaDaEseguire,
+            context: context,
+            userEmail: userEmail
+        )
+    }
     
     /// Restituisce le descrizioni di tutti gli stati in un gruppo (per filtri)
     func stateDescriptionsInGroup(_ group: StateGroup) -> [String] {
@@ -1275,6 +1411,12 @@ class StatoManager: ObservableObject {
     func countSinistri(inGroup group: StateGroup, from sinistri: [Sinistro]) -> Int {
         let descriptions = stateDescriptionsInGroup(group)
         return sinistri.filter { descriptions.contains($0.stato ?? "") }.count
+    }
+
+    private func stateEnum(for sinistro: Sinistro) -> StatoSinistro? {
+        guard let stato = sinistro.stato,
+              let stateID = getStatoId(fromDescrizione: stato) else { return nil }
+        return StatoSinistro(rawValue: stateID)
     }
     
     // MARK: - Filtri per Tipo Perizia (Documentale vs Tradizionale)
@@ -1487,7 +1629,12 @@ class StatoManager: ObservableObject {
 
         if userEmail != nil {
             let currentRoles = await MainActor.run { CurrentUserService.shared.currentRoles }
-            guard newState.isAccessible(to: currentRoles) else {
+            let isCATWorkflowCompletion =
+                currentRoles.contains(.cat) &&
+                oldStateEnum?.isCATInspectionWorkflowState == true &&
+                newState == .periziaDaEseguire
+
+            guard newState.isAccessible(to: currentRoles) || isCATWorkflowCompletion else {
                 let errorMsg = "Ruolo non autorizzato per lo stato \(newState.descrizione)"
                 print("[StatoManager] ❌ \(errorMsg)")
                 throw NSError(domain: "StatoManager", code: 3, userInfo: [NSLocalizedDescriptionKey: errorMsg])
@@ -1528,6 +1675,36 @@ class StatoManager: ObservableObject {
         
         // Aggiorna le date in base al nuovo stato
         switch newState {
+        case .sopralluogoDaFissare:
+            sinistro.sopralluogo = true
+            if oldStateEnum?.isCATInspectionWorkflowState != true {
+                sinistro.dataSopralluogo = nil
+            }
+            sinistro.substate = CATInspectionWorkflowStage.automaticSchedulingInProgress.substateValue
+
+        case .sopralluogoDaConcordare:
+            sinistro.sopralluogo = true
+            sinistro.substate = CATInspectionWorkflowStage.manualSchedulingRequired.substateValue
+
+        case .sopralluogoFissato:
+            sinistro.sopralluogo = true
+            sinistro.substate = CATInspectionWorkflowStage.scheduledAwaitingVisit.substateValue
+
+        case .sopralluogoRestituito:
+            sinistro.sopralluogo = true
+            sinistro.substate = CATInspectionWorkflowStage.replanningRequired.substateValue
+
+        case .periziaDaEseguire:
+            if oldStateEnum?.isCATInspectionWorkflowState == true {
+                sinistro.assignedToUserEmail = nil
+                sinistro.assignedToUserName = nil
+                sinistro.ownerEmail = nil
+                sinistro.dataAssegnazione = nil
+                sinistro.substate = CATInspectionWorkflowStage.expertAssignmentPending.substateValue
+            } else if CATInspectionWorkflowStage(substateValue: sinistro.substate) != nil {
+                sinistro.substate = nil
+            }
+
         case .attoInviato:
             // Atto inviato → valorizza dataInvioAtto (sovrascrive sempre)
             sinistro.dataInvioAtto = oggi
@@ -1601,6 +1778,12 @@ class StatoManager: ObservableObject {
             }
             
         default:
+            if oldStateEnum?.isCATInspectionWorkflowState == true,
+               newState.isCATInspectionWorkflowState == false,
+               newState != .periziaDaEseguire,
+               CATInspectionWorkflowStage(substateValue: sinistro.substate) != nil {
+                sinistro.substate = nil
+            }
             break
         }
         

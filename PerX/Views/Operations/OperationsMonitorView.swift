@@ -76,12 +76,34 @@ private struct TeamSnapshot {
 }
 
 private enum OperationsMetricsBuilder {
-    static let triageStates: Set<StatoManager.StatoSinistro> = Set(
-        StatoManager.StatoSinistro.allCases.filter { $0.requiredRole == .manager && !$0.isSystem }
-    )
+    static let triageStates: Set<StatoManager.StatoSinistro> = [
+        .istruzione,
+        .primoContatto,
+        .secondoContatto,
+        .inAttesaAssegnazione,
+        .sopralluogoAssegnato,
+        .sopralluogoDaFissare,
+        .sopralluogoDaConcordare,
+        .videoperiziaDaEseguire,
+        .daGestireVideoperizia,
+        .daGestireTradizionale,
+        .daGestireDocumentale,
+        .daGestireNoResidui,
+        .attesaPassiva,
+        .daControllare,
+        .daChiudereASistema,
+        .daRevisionare
+    ]
+
+    static let assignmentPoolStates: Set<StatoManager.StatoSinistro> = [
+        .periziaDaEseguire,
+        .periziaDaEseguireDocumentale,
+        .periziaDaEseguireNoResidui
+    ]
 
     static let orderedGroups: [StateGroup] = [
         .daScaricare,
+        .sopralluogo,
         .inAttesa,
         .periziaDaEseguire,
         .videoperizia,
@@ -108,12 +130,25 @@ private enum OperationsMetricsBuilder {
 
     static func isTriage(_ sinistro: Sinistro) -> Bool {
         guard let state = state(for: sinistro) else { return false }
-        return triageStates.contains(state)
+        if triageStates.contains(state) {
+            return true
+        }
+        if assignmentPoolStates.contains(state) {
+            return isUnassigned(sinistro)
+        }
+        return false
     }
 
     static func isAssigned(to email: String, sinistro: Sinistro) -> Bool {
         let owner = (sinistro.assignedToUserEmail ?? sinistro.ownerEmail)?.lowercased()
         return owner == email.lowercased()
+    }
+
+    static func isUnassigned(_ sinistro: Sinistro) -> Bool {
+        let owner = (sinistro.assignedToUserEmail ?? sinistro.ownerEmail)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? ""
+        return owner.isEmpty
     }
 
     @MainActor
@@ -180,7 +215,7 @@ struct StudioMonitorView: View {
     private var totalActive: Int { snapshots.reduce(0) { $0 + $1.activeClaims } }
     private var totalClosed: Int { snapshots.reduce(0) { $0 + $1.closedClaims } }
     private var totalTarget: Int { snapshots.reduce(0) { $0 + $1.target } }
-    private var triageCount: Int { claims.filter { OperationsMetricsBuilder.isTriage($0) && ($0.assignedToUserEmail ?? "").isEmpty }.count }
+    private var triageCount: Int { claims.filter { OperationsMetricsBuilder.isTriage($0) && OperationsMetricsBuilder.isUnassigned($0) }.count }
 
     var body: some View {
         ScrollView {
@@ -253,7 +288,7 @@ struct TeamMonitorView: View {
         guard let currentCompany else { return nil }
         let companyClaims = claims.filter { OperationsMetricsBuilder.company(for: $0) == currentCompany }
         let triageClaims = companyClaims
-            .filter { OperationsMetricsBuilder.isTriage($0) && ($0.assignedToUserEmail ?? "").isEmpty }
+            .filter { OperationsMetricsBuilder.isTriage($0) && OperationsMetricsBuilder.isUnassigned($0) }
             .sorted { OperationsMetricsBuilder.currentPriority(for: $0) > OperationsMetricsBuilder.currentPriority(for: $1) }
 
         let profiles = teamProfiles(for: currentCompany)

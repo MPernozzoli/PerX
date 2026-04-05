@@ -1128,7 +1128,7 @@ class TaskManager: ObservableObject {
         if fileService.hasAnyRegularFileRecursively(inDirectory: path) {
             if sinistro.stato == StatoManager.StatoSinistro.daScaricare.descrizione ||
                 sinistro.stato == StatoManager.StatoSinistro.istruzione.descrizione {
-                let newState: StatoManager.StatoSinistro = sinistro.sopralluogo ? .periziaDaEseguire : .inAttesaDocumentale
+                let newState = StatoManager.shared.operationalEntryState(for: sinistro)
                 Task {
                     try? await StatoManager.shared.changeState(for: sinistro, to: newState, context: PersistenceController.shared.container.viewContext)
                 }

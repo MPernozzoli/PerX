@@ -78,6 +78,22 @@ uvicorn app.main:app --reload
 - `PUT /api/v1/claims/{id}` - Update claim
 - `POST /api/v1/claims/{id}/state-transitions` - Change state
 - `GET /api/v1/claims/{id}/events` - Get timeline
+- `POST /api/v1/portal/claims/{id}/access-links` - Genera link di accesso portale per un assicurato
+- `POST /api/v1/portal/auth/start` - Avvia challenge pubblico per accesso assicurato
+- `POST /api/v1/portal/auth/exchange` - Scambia magic link con sessione portale
+- `GET /api/v1/portal/claim` - Dashboard assicurato sul proprio sinistro
+
+## Portale assicurati
+
+Il backend include ora un perimetro dedicato al portale web assicurati:
+
+- modelli separati per accessi portale, challenge, documentale, firma, IBAN e chat esterna;
+- token di sessione distinti rispetto agli utenti interni;
+- endpoint dedicati sotto `/api/v1/portal`;
+- instradamento dei messaggi assicurato -> team interno tramite il sistema chat esistente;
+- architettura pronta per integrare invio e-mail automatico, SMS OTP e upload firmati storage.
+
+Per il dettaglio funzionale e dei flussi, vedere anche `Documentation/insured-portal-architecture.md`.
 
 ## Deployment
 

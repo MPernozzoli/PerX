@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "change-me-in-production"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
+    PORTAL_TOKEN_SECRET: Optional[str] = None
+    PORTAL_SESSION_EXPIRE_MINUTES: int = 60 * 12
+    PORTAL_CHALLENGE_EXPIRE_MINUTES: int = 30
+    PORTAL_APP_URL: str = "http://localhost:3001"
+    PORTAL_DEBUG_PREVIEW_LINKS: bool = True
 
     # Platform admin / multi-tenant bootstrap
     APP_ADMIN_EMAIL: str = "info@pynkstudio.it"
@@ -60,6 +65,8 @@ class Settings(BaseSettings):
     FF_CLAIMS_WRITE_TO_CLOUD_ONLY: bool = False
     FF_TASKS_ENABLED: bool = False
     FF_AUTOMATIONS_ENABLED: bool = False
+    FF_INSPECTION_AUTOMATIONS_ENABLED: bool = True
+    INSPECTION_AUTOMATION_POLL_SECONDS: int = 60
     
     class Config:
         env_file = str(ENV_FILE)

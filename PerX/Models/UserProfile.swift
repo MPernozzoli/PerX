@@ -10,6 +10,7 @@ enum UserRole: String, Codable, CaseIterable, Identifiable {
     case teamLeader = "capoTeam"
     case manager = "gestore"
     case expert = "perito"
+    case cat = "cat"
     case secretary = "segreteria"
     
     var id: String { rawValue }
@@ -21,6 +22,7 @@ enum UserRole: String, Codable, CaseIterable, Identifiable {
         case .teamLeader: return "Capo Team"
         case .manager: return "Gestore"
         case .expert: return "Perito"
+        case .cat: return "CAT"
         case .secretary: return "Segreteria"
         }
     }
@@ -32,6 +34,7 @@ enum UserRole: String, Codable, CaseIterable, Identifiable {
         case .teamLeader: return "person.3"
         case .manager: return "tray.full"
         case .expert: return "briefcase"
+        case .cat: return "mappin.and.ellipse"
         case .secretary: return "doc.text"
         }
     }

@@ -19,7 +19,9 @@ from app.api.v1 import (
     routes_internal_chat,
     routes_ai_chat,
     routes_planning,
+    routes_portal,
     routes_profiles,
+    routes_reporting,
     routes_tasks,
     routes_tenants,
     routes_whatsapp,
@@ -57,6 +59,7 @@ app.add_middleware(
 # Include routers
 app.include_router(routes_auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(routes_profiles.router, prefix="/api/v1/profiles", tags=["profiles"])
+app.include_router(routes_reporting.router, prefix="/api/v1/reports", tags=["reporting"])
 app.include_router(routes_claims.router, prefix="/api/v1/claims", tags=["claims"])
 app.include_router(routes_tasks.router, prefix="/api/v1", tags=["tasks"])
 app.include_router(routes_documents.router, prefix="/api/v1", tags=["documents"])
@@ -67,6 +70,7 @@ app.include_router(routes_whatsapp.router, prefix="/api/v1/whatsapp", tags=["wha
 app.include_router(routes_internal_chat.router, prefix="/api/v1/internal-chat", tags=["internal-chat"])
 app.include_router(routes_ai_chat.router, prefix="/api/v1/ai-chat", tags=["ai-chat"])
 app.include_router(routes_planning.router, prefix="/api/v1", tags=["planning"])
+app.include_router(routes_portal.router, prefix="/api/v1/portal", tags=["portal"])
 app.include_router(routes_admin.router, prefix="/api/v1/admin", tags=["admin"])
 app.include_router(routes_tenants.router, prefix="/api/v1/tenants", tags=["tenants"])
 

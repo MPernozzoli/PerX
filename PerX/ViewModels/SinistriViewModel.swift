@@ -813,6 +813,8 @@ final class SinistriViewModel: ObservableObject {
             return sinistro.dataRevoca
         case .sopralluogoFissato, .sopralluogoRestituito:
             return sinistro.dataSopralluogo
+        case .sopralluogoDaFissare, .sopralluogoDaConcordare:
+            return sinistro.dataIncarico ?? sinistro.dataCreazione
             
         // Stati di gestione usano dataAssegnazione
         case .inGestione, .inGestioneDocumentale, .inGestioneVideoperizia:

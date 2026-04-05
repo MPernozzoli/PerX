@@ -603,6 +603,7 @@ private struct RoleBadge: View {
         case .teamLeader: return .blue
         case .manager: return .teal
         case .expert: return .green
+        case .cat: return .pink
         case .secretary: return .orange
         }
     }

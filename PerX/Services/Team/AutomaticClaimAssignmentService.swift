@@ -401,17 +401,26 @@ final class AutomaticClaimAssignmentService: ObservableObject {
 
         let actorEmail = normalizeEmail(CurrentUserService.shared.currentEmail)
         let previousDisplay = claim.assignedToUserName ?? claim.assignedToUserEmail ?? claim.ownerEmail ?? currentAssignee
+        let currentState = state(for: claim)
+        let fallbackState = fallbackStateAfterAutomaticRevocation(for: currentState)
 
         claim.assignedToUserEmail = nil
         claim.assignedToUserName = nil
         claim.ownerEmail = nil
-        if state(for: claim) != .inAttesaAssegnazione {
-            claim.stato = StatoManager.StatoSinistro.inAttesaAssegnazione.descrizione
+        claim.dataAssegnazione = nil
+        if currentState != fallbackState {
+            claim.stato = fallbackState.descrizione
         }
         claim.cloudKitLastModified = Date()
+        let note: String
+        if currentState == fallbackState {
+            note = "Revoca automatica da \(previousDisplay): sinistro rimesso nel pool \(fallbackState.descrizione)"
+        } else {
+            note = "Revoca automatica da \(previousDisplay): stato riportato a \(fallbackState.descrizione)"
+        }
         claim.addDiarioEntry(
             DiarioEntry(
-                testo: "Revoca automatica da \(previousDisplay) per riequilibrio carico",
+                testo: note,
                 tipo: .assegnazione,
                 createdByEmail: actorEmail.nilIfBlank
             )
@@ -516,6 +525,9 @@ final class AutomaticClaimAssignmentService: ObservableObject {
     private var readyStates: Set<StatoManager.StatoSinistro> {
         [
             .inAttesaAssegnazione,
+            .periziaDaEseguire,
+            .periziaDaEseguireDocumentale,
+            .periziaDaEseguireNoResidui,
             .sopralluogoAssegnato,
             .videoperiziaDaEseguire,
             .daGestireVideoperizia,
@@ -523,6 +535,21 @@ final class AutomaticClaimAssignmentService: ObservableObject {
             .daGestireDocumentale,
             .daGestireNoResidui
         ]
+    }
+
+    private func fallbackStateAfterAutomaticRevocation(
+        for currentState: StatoManager.StatoSinistro?
+    ) -> StatoManager.StatoSinistro {
+        switch currentState {
+        case .periziaDaEseguire?:
+            return .periziaDaEseguire
+        case .periziaDaEseguireDocumentale?:
+            return .periziaDaEseguireDocumentale
+        case .periziaDaEseguireNoResidui?:
+            return .periziaDaEseguireNoResidui
+        default:
+            return .inAttesaAssegnazione
+        }
     }
 
     private func claimPriority(for claim: Sinistro) -> Double {

@@ -344,9 +344,7 @@ class ClaimEngine: ObservableObject {
         case .folderDownloaded:
             // Aggiorna stato se era "da scaricare"
             if currentState == .daScaricare {
-                let nextState: StatoManager.StatoSinistro = sinistro.sopralluogo
-                    ? .periziaDaEseguire
-                    : .inAttesaDocumentale
+                let nextState = StatoManager.shared.operationalEntryState(for: sinistro)
                 
                 return ClaimEngineDecision(
                     actionType: .autoStateChange,

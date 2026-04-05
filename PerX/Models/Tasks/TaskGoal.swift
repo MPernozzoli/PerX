@@ -236,6 +236,8 @@ extension StatoManager.StatoSinistro {
         case .periziaDaEseguireNoResidui: return 5
         case .periziaDaEseguireDocumentale: return 5
         case .videoperiziaDaFissare: return 5
+        case .sopralluogoDaFissare: return 5
+        case .sopralluogoDaConcordare: return 5
         case .sopralluogoAssegnato: return 6
         case .videoperiziaDaEseguire: return 6
         case .daGestireVideoperizia: return 7

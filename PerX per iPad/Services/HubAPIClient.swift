@@ -543,6 +543,10 @@ class HubAPIClient: ObservableObject {
         try await cloudDownload(endpoint: "/api/v1/profiles/\(userID)/assets/\(assetType)")
     }
 
+    func getMonthlyConsuntivoFromCloud(year: Int, month: Int, mineOnly: Bool = true) async throws -> CloudConsuntivoMonthDTO {
+        try await cloudGet(endpoint: "/api/v1/reports/consuntivo?year=\(year)&month=\(month)&mine_only=\(mineOnly)")
+    }
+
     private func authorizedCloudRequest(url: URL) async throws -> URLRequest {
         let token = try await cloudLogin()
         var request = URLRequest(url: url)
@@ -776,6 +780,51 @@ struct CloudProfileAssetDTO: Decodable {
     let mime_type: String?
     let size_bytes: Int
     let asset_url: String
+}
+
+struct CloudConsuntivoMonthDTO: Codable {
+    let anno: Int
+    let mese: Int
+    let scope: String
+    let sinistri_assegnati: Int
+    let sinistri_chiusi: Int
+    let tot_liquidato: Double
+    let tot_compensi: Double
+    let tot_danno: Double
+    let atti_inviati: Int
+    let media_giornaliera: Double
+    let daily_stats: [CloudConsuntivoDailyStatDTO]
+    let company_stats: [CloudConsuntivoCompanyStatDTO]
+    let sinistri_del_mese: [CloudConsuntivoClaimItemDTO]
+}
+
+struct CloudConsuntivoDailyStatDTO: Codable {
+    let giorno: Int
+    let assegnazioni: Int
+    let chiusure: Int
+    let atti_inviati: Int
+}
+
+struct CloudConsuntivoCompanyStatDTO: Codable {
+    let codice_compagnia: String
+    let nome_compagnia: String
+    let gruppo_compagnia: String?
+    let assegnazioni: Int
+    let chiusure: Int
+    let atti_inviati: Int
+    let liquidato_totale: Double
+}
+
+struct CloudConsuntivoClaimItemDTO: Codable {
+    let id: String
+    let riferimento: String
+    let stato: String
+    let nome_assicurato: String
+    let nome_compagnia: String
+    let data_assegnazione: Date?
+    let data_chiusura: Date?
+    let stima_danno: Double?
+    let liquidato: Double?
 }
 
 // Sinistri
