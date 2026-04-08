@@ -12,7 +12,7 @@ class HubEventService: ObservableObject {
     @Published var scheduledWhatsAppSent: [String: String] = [:] // scheduledId -> sentMessageId
     @Published var scheduledWhatsAppFailed: [String: String] = [:] // scheduledId -> error
     
-    private let hubService = HubService.shared
+    private let cloudClient = HubAPIAdapterClient.shared
     private var pollingTask: Task<Void, Never>?
     private var lastEventTimestamp: Date = Date().addingTimeInterval(-60) // Ultimi 60 secondi
     
@@ -44,14 +44,7 @@ class HubEventService: ObservableObject {
     private func pollEvents() async {
         do {
             let sinceTimestamp = lastEventTimestamp.timeIntervalSince1970
-            let endpoint = "/internal/events?since=\(sinceTimestamp)"
-            
-            let data = try await hubService.get(endpoint: endpoint)
-            
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            
-            let events = try decoder.decode([HubEvent].self, from: data)
+            let events: [HubEvent] = try await cloudClient.cloudGet("/api/v1/hub/internal/events?since=\(sinceTimestamp)")
             
             for event in events {
                 processEvent(event)

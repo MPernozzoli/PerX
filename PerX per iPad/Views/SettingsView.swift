@@ -13,7 +13,6 @@ struct SettingsView: View {
     @StateObject private var accountManager = AccountManager.shared
     @State private var showingLogoutConfirm = false
     @State private var hubURL = HubAPIClient.shared.hubBaseURL
-    @State private var cloudAPIURL = HubAPIClient.shared.cloudAPIBaseURL
     @State private var cloudAPIEmail = HubAPIClient.shared.cloudAPIEmail
     @State private var cloudAPIPassword = ""
     @State private var isCheckingHub = false
@@ -74,14 +73,11 @@ struct SettingsView: View {
                 
                 // Hub Configuration
                 Section("Hub Server") {
-                    TextField("URL Hub (es: https://hub.example.com)", text: $hubURL)
-                        .textContentType(.URL)
-                        .keyboardType(.URL)
-                        .autocapitalization(.none)
-                        .autocorrectionDisabled()
-                        .onChange(of: hubURL) { newValue in
-                            hubClient.hubBaseURL = newValue
-                        }
+                    LabeledContent("Endpoint") {
+                        Text(hubURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Non configurato" : hubURL)
+                            .foregroundColor(.secondary)
+                            .textSelection(.enabled)
+                    }
                     
                     HStack {
                         Circle()
@@ -113,14 +109,11 @@ struct SettingsView: View {
                 }
 
                 Section("Cloud API") {
-                    TextField("URL Backend (es: https://api.example.com)", text: $cloudAPIURL)
-                        .textContentType(.URL)
-                        .keyboardType(.URL)
-                        .autocapitalization(.none)
-                        .autocorrectionDisabled()
-                        .onChange(of: cloudAPIURL) { newValue in
-                            hubClient.cloudAPIBaseURL = newValue
-                        }
+                    LabeledContent("Endpoint") {
+                        Text(HubAPIClient.fixedCloudAPIBaseURL)
+                            .foregroundColor(.secondary)
+                            .textSelection(.enabled)
+                    }
 
                     TextField("Email backend", text: $cloudAPIEmail)
                         .textInputAutocapitalization(.never)
@@ -161,7 +154,7 @@ struct SettingsView: View {
                                 Text("Testa login")
                             }
                         }
-                        .disabled(cloudAPIURL.isEmpty || cloudAPIEmail.isEmpty || cloudAPIPassword.isEmpty || isCheckingCloud)
+                        .disabled(cloudAPIEmail.isEmpty || cloudAPIPassword.isEmpty || isCheckingCloud)
                     }
 
                     if let result = cloudCheckResult {
@@ -296,7 +289,6 @@ struct SettingsView: View {
     private func checkCloudConnection() async {
         isCheckingCloud = true
         cloudCheckResult = nil
-        hubClient.cloudAPIBaseURL = cloudAPIURL.trimmingCharacters(in: .whitespacesAndNewlines)
         hubClient.cloudAPIEmail = cloudAPIEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         hubClient.saveCloudPassword(cloudAPIPassword)
 

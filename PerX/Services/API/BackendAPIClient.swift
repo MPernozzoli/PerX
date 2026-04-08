@@ -168,7 +168,7 @@ final class BackendAPIClient {
     }
 
     private var resolvedBaseURLString: String {
-        let raw = HubConfigService.shared.resolvedHubBaseURL().trimmingCharacters(in: .whitespacesAndNewlines)
+        let raw = HubConfigService.shared.cloudAPIBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         if raw.isEmpty { return "" }
         if raw.contains("/api/") {
             return raw

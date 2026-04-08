@@ -11,6 +11,7 @@ class HubAPIClient: ObservableObject {
     private let session: URLSession
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
+    private let cloudClient = HubAPIAdapterClient.shared
     
     private init() {
         let config = URLSessionConfiguration.default
@@ -46,6 +47,11 @@ class HubAPIClient: ObservableObject {
         (tenantSlug ?? HubConfigService.shared.currentTenantSlug).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    private func compatEndpoint(_ endpoint: String) -> String {
+        let trimmed = endpoint.hasPrefix("/") ? String(endpoint.dropFirst()) : endpoint
+        return "/api/v1/hub/\(trimmed)"
+    }
+
     private func makeRequest(url: URL, method: String = "GET", tenantSlug: String? = nil, contentType: String? = nil) -> URLRequest {
         var request = URLRequest(url: url)
         request.httpMethod = method
@@ -59,12 +65,7 @@ class HubAPIClient: ObservableObject {
     // MARK: - Health
     
     func checkHealth() async throws -> HealthResponse {
-        let url = try url(path: "health")
-        let request = makeRequest(url: url)
-        let (data, response) = try await session.data(for: request)
-        try validateResponse(response)
-        
-        let health = try decoder.decode(HealthResponse.self, from: data)
+        let health: HealthResponse = try await cloudClient.cloudGet(compatEndpoint("health"))
         isConnected = true
         return health
     }
@@ -73,48 +74,34 @@ class HubAPIClient: ObservableObject {
     
     /// Invia heartbeat per segnalare che il client è attivo
     func sendHeartbeat(userId: String, clientInfo: String? = nil, tenantSlug: String? = nil) async throws {
-        let url = try url(path: "heartbeat", tenantSlug: tenantSlug)
-        var request = makeRequest(url: url, method: "POST", tenantSlug: tenantSlug, contentType: "application/json")
-        
         struct HeartbeatRequest: Encodable {
             let user_id: String
             let client_info: String?
         }
-        
-        request.httpBody = try encoder.encode(HeartbeatRequest(user_id: userId, client_info: clientInfo))
-        
-        let (_, response) = try await session.data(for: request)
-        try validateResponse(response)
+
+        struct EmptyResponse: Decodable {}
+        let _: EmptyResponse = try await cloudClient.cloudPost(
+            compatEndpoint("heartbeat"),
+            body: HeartbeatRequest(user_id: userId, client_info: clientInfo)
+        )
     }
     
     // MARK: - Vault Operations
     
     /// Lista file di un sinistro
     func listFiles(sinistroRef: String, tenantSlug: String? = nil) async throws -> [VaultFileDTO] {
-        let url = try url(path: "vault/sinistri/\(sinistroRef)/files", tenantSlug: tenantSlug)
-        let request = makeRequest(url: url, tenantSlug: tenantSlug)
-        let (data, response) = try await session.data(for: request)
-        try validateResponse(response)
-        return try decoder.decode([VaultFileDTO].self, from: data)
+        try await cloudClient.cloudGet(compatEndpoint("vault/sinistri/\(sinistroRef)/files"))
     }
     
     /// Stato cartella sinistro
     func getSinistroFolderStatus(sinistroRef: String, tenantSlug: String? = nil) async throws -> SinistroFolderDTO {
-        let url = try url(path: "vault/sinistri/\(sinistroRef)/status", tenantSlug: tenantSlug)
-        let request = makeRequest(url: url, tenantSlug: tenantSlug)
-        let (data, response) = try await session.data(for: request)
-        try validateResponse(response)
-        return try decoder.decode(SinistroFolderDTO.self, from: data)
+        try await cloudClient.cloudGet(compatEndpoint("vault/sinistri/\(sinistroRef)/status"))
     }
     
     /// Crea cartella sinistro
     func createSinistroFolder(sinistroRef: String, tenantSlug: String? = nil) async throws -> SinistroFolderDTO {
-        let url = try url(path: "vault/sinistri/\(sinistroRef)", tenantSlug: tenantSlug)
-        var request = makeRequest(url: url, method: "POST", tenantSlug: tenantSlug)
-        
-        let (data, response) = try await session.data(for: request)
-        try validateResponse(response)
-        return try decoder.decode(SinistroFolderDTO.self, from: data)
+        struct EmptyBody: Encodable {}
+        return try await cloudClient.cloudPost(compatEndpoint("vault/sinistri/\(sinistroRef)"), body: EmptyBody())
     }
     
     /// Garantisce che la cartella sinistro sia disponibile (crea se necessario)
@@ -128,8 +115,13 @@ class HubAPIClient: ObservableObject {
     
     /// Download file
     func downloadFile(fileId: String, tenantSlug: String? = nil) async throws -> Data {
-        let url = try url(path: "vault/files/\(fileId)/download", tenantSlug: tenantSlug)
-        let request = makeRequest(url: url, tenantSlug: tenantSlug)
+        guard let base = URL(string: "\(HubConfigService.shared.cloudAPIBaseURL)\(compatEndpoint("vault/files/\(fileId)/download"))") else {
+            throw HubAPIError.invalidURL
+        }
+        let token = try await cloudClient.loginToCloud(forceRefresh: false)
+        var request = URLRequest(url: base)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
         let (data, response) = try await session.data(for: request)
         try validateResponse(response)
         return data
@@ -137,111 +129,101 @@ class HubAPIClient: ObservableObject {
     
     /// Upload file
     func uploadFile(sinistroRef: String, filename: String, folder: String, data: Data, tenantSlug: String? = nil) async throws -> VaultFileDTO {
-        let url = try url(path: "vault/sinistri/\(sinistroRef)/upload", tenantSlug: tenantSlug)
-        
-        var request = makeRequest(url: url, method: "POST", tenantSlug: tenantSlug, contentType: "application/json")
-        
         let uploadRequest = FileUploadRequest(
             filename: filename,
             folder: folder,
             data: data.base64EncodedString(),
             mimeType: mimeType(for: filename)
         )
-        
-        request.httpBody = try encoder.encode(uploadRequest)
-        
-        let (responseData, response) = try await session.data(for: request)
-        try validateResponse(response)
-        return try decoder.decode(VaultFileDTO.self, from: responseData)
+
+        return try await cloudClient.cloudPost(
+            compatEndpoint("vault/sinistri/\(sinistroRef)/upload"),
+            body: uploadRequest
+        )
     }
     
     /// Elimina file
     func deleteFile(fileId: String, tenantSlug: String? = nil) async throws {
-        let url = try url(path: "vault/files/\(fileId)", tenantSlug: tenantSlug)
-        var request = makeRequest(url: url, method: "DELETE", tenantSlug: tenantSlug)
-        
-        let (_, response) = try await session.data(for: request)
-        try validateResponse(response)
+        try await cloudClient.cloudDelete(compatEndpoint("vault/files/\(fileId)"))
+    }
+
+    /// Lista versioni di un file
+    func listFileVersions(fileId: String, tenantSlug: String? = nil) async throws -> [VaultFileVersionDTO] {
+        try await cloudClient.cloudGet(compatEndpoint("vault/files/\(fileId)/versions"))
+    }
+
+    /// Ripristina una versione di un file
+    func restoreFileVersion(fileId: String, versionId: String, tenantSlug: String? = nil) async throws -> VaultFileDTO {
+        struct EmptyBody: Encodable {}
+        return try await cloudClient.cloudPost(
+            compatEndpoint("vault/files/\(fileId)/versions/\(versionId)/restore"),
+            body: EmptyBody()
+        )
+    }
+
+    /// Lista cestino del sinistro
+    func listTrash(sinistroRef: String, tenantSlug: String? = nil) async throws -> [VaultTrashItemDTO] {
+        try await cloudClient.cloudGet(compatEndpoint("vault/sinistri/\(sinistroRef)/trash"))
+    }
+
+    /// Ripristina file dal cestino
+    func restoreFile(fileId: String, originalPath: String? = nil, tenantSlug: String? = nil) async throws -> VaultFileDTO {
+        struct RestoreRequest: Encodable {
+            let originalPath: String?
+        }
+        return try await cloudClient.cloudPost(
+            compatEndpoint("vault/files/\(fileId)/restore"),
+            body: RestoreRequest(originalPath: originalPath)
+        )
     }
     
     /// Sposta file in _export
     func moveToExport(fileId: String, tenantSlug: String? = nil) async throws -> VaultFileDTO {
-        let url = try url(path: "vault/files/\(fileId)/export", tenantSlug: tenantSlug)
-        var request = makeRequest(url: url, method: "POST", tenantSlug: tenantSlug)
-        
-        let (data, response) = try await session.data(for: request)
-        try validateResponse(response)
-        return try decoder.decode(VaultFileDTO.self, from: data)
+        struct EmptyBody: Encodable {}
+        return try await cloudClient.cloudPost(compatEndpoint("vault/files/\(fileId)/export"), body: EmptyBody())
     }
     
     // MARK: - Job Operations
     
     /// Lista job pendenti
     func getPendingJobs(limit: Int = 10, tenantSlug: String? = nil) async throws -> [JobDTO] {
-        let url = try url(path: "jobs/pending?limit=\(limit)", tenantSlug: tenantSlug)
-        let request = makeRequest(url: url, tenantSlug: tenantSlug)
-        let (data, response) = try await session.data(for: request)
-        try validateResponse(response)
-        return try decoder.decode([JobDTO].self, from: data)
+        try await cloudClient.cloudGet(compatEndpoint("jobs/pending?limit=\(limit)"))
     }
     
     /// Crea job import cartella
     func createImportFolderJob(sinistroRef: String, legacyPath: String, tenantSlug: String? = nil) async throws -> JobDTO {
-        let url = try url(path: "jobs/import/folder", tenantSlug: tenantSlug)
-        
-        var request = makeRequest(url: url, method: "POST", tenantSlug: tenantSlug, contentType: "application/json")
-        
         struct ImportRequest: Encodable {
             let sinistroRef: String
             let legacyPath: String
         }
-        
-        request.httpBody = try encoder.encode(ImportRequest(sinistroRef: sinistroRef, legacyPath: legacyPath))
-        
-        let (data, response) = try await session.data(for: request)
-        try validateResponse(response)
-        return try decoder.decode(JobDTO.self, from: data)
+
+        return try await cloudClient.cloudPost(
+            compatEndpoint("jobs/import/folder"),
+            body: ImportRequest(sinistroRef: sinistroRef, legacyPath: legacyPath)
+        )
     }
     
     // MARK: - Generic HTTP Methods
     
     /// GET generico con risposta decodificata
     func get<T: Decodable>(endpoint: String, tenantSlug: String? = nil) async throws -> T {
-        let url = try url(path: endpoint, tenantSlug: tenantSlug)
-        let request = makeRequest(url: url, tenantSlug: tenantSlug)
-        let (data, response) = try await session.data(for: request)
-        try validateResponse(response)
-        return try decoder.decode(T.self, from: data)
+        try await cloudClient.cloudGet(compatEndpoint(endpoint))
     }
     
     /// POST generico con body e risposta decodificata
     func post<B: Encodable, T: Decodable>(endpoint: String, body: B, tenantSlug: String? = nil) async throws -> T {
-        let url = try url(path: endpoint, tenantSlug: tenantSlug)
-        var request = makeRequest(url: url, method: "POST", tenantSlug: tenantSlug, contentType: "application/json")
-        request.httpBody = try encoder.encode(body)
-        
-        let (data, response) = try await session.data(for: request)
-        try validateResponse(response)
-        return try decoder.decode(T.self, from: data)
+        try await cloudClient.cloudPost(compatEndpoint(endpoint), body: body)
     }
     
     /// POST generico con body, senza risposta (void)
     func post<B: Encodable>(endpoint: String, body: B, tenantSlug: String? = nil) async throws {
-        let url = try url(path: endpoint, tenantSlug: tenantSlug)
-        var request = makeRequest(url: url, method: "POST", tenantSlug: tenantSlug, contentType: "application/json")
-        request.httpBody = try encoder.encode(body)
-        
-        let (_, response) = try await session.data(for: request)
-        try validateResponse(response)
+        struct EmptyResponse: Decodable {}
+        let _: EmptyResponse = try await cloudClient.cloudPost(compatEndpoint(endpoint), body: body)
     }
     
     /// DELETE generico
     func delete(endpoint: String, tenantSlug: String? = nil) async throws {
-        let url = try url(path: endpoint, tenantSlug: tenantSlug)
-        var request = makeRequest(url: url, method: "DELETE", tenantSlug: tenantSlug)
-        
-        let (_, response) = try await session.data(for: request)
-        try validateResponse(response)
+        try await cloudClient.cloudDelete(compatEndpoint(endpoint))
     }
     
     // MARK: - Helpers
@@ -334,6 +316,31 @@ struct VaultFileDTO: Codable, Identifiable {
     let checksum: String?
     let createdAt: Date
     let modifiedAt: Date?
+    let status: String?
+    let logicalPath: String?
+    let storageProvider: String?
+    let versionNo: Int?
+}
+
+struct VaultFileVersionDTO: Codable, Identifiable {
+    let id: String
+    let documentId: String
+    let versionNo: Int
+    let size: Int64
+    let checksum: String?
+    let createdAt: Date
+    let description: String?
+}
+
+struct VaultTrashItemDTO: Codable, Identifiable {
+    let id: String
+    let sinistroRef: String
+    let fileName: String
+    let originalPath: String?
+    let deletedAt: String?
+    let size: Int64
+    let mimeType: String?
+    let checksum: String?
 }
 
 struct SinistroFolderDTO: Codable {

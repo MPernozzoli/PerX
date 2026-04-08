@@ -485,7 +485,7 @@ class GoogleAuthService: ObservableObject {
     }
 
     private func normalizedBackendBaseURL(override: String? = nil) -> String? {
-        let candidate = (override ?? HubConfigService.shared.cloudAPIBaseURL)
+        let candidate = (override ?? HubConfigService.fixedCloudAPIBaseURL)
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard !candidate.isEmpty else { return nil }
@@ -537,7 +537,6 @@ class GoogleAuthService: ObservableObject {
         saveBackendValue(normalizedEmail, forKey: "active_email")
 
         BackendAPIClient.shared.storeAccessToken(tokenResponse.access_token)
-        HubConfigService.shared.cloudAPIBaseURL = baseURL
         HubConfigService.shared.cloudAPIEmail = normalizedEmail
         HubAPIAdapterClient.shared.saveCloudPassword(normalizedPassword)
         HubAPIAdapterClient.shared.clearCloudSession()

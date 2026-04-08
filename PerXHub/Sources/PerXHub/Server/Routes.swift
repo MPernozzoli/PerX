@@ -1,6 +1,7 @@
 import Vapor
 import PerXCore
 import SQLite
+import CryptoKit
 
 private extension Request {
     func perxTenantSlug() -> String {
@@ -14,6 +15,65 @@ private struct HubTenantDescriptor: Content {
     let tenantSlug: String
     let hubId: String
     let isDedicated: Bool
+}
+
+private struct InternalEnsureClaimRequest: Content {
+    let tenantId: String
+    let claimRef: String
+}
+
+private struct InternalUploadRequest: Content {
+    let tenantId: String
+    let claimRef: String
+    let relativePath: String
+    let data: String
+    let mimeType: String?
+}
+
+private struct InternalPathRequest: Content {
+    let relativePath: String
+    let missingOk: Bool?
+}
+
+private struct InternalMoveCopyRequest: Content {
+    let sourcePath: String
+    let destinationPath: String
+    let overwrite: Bool?
+}
+
+private struct InternalStorageResponse: Content {
+    let relativePath: String
+    let sizeBytes: Int64
+    let checksumSHA256: String
+}
+
+private struct InternalDownloadResponse: Content {
+    let relativePath: String
+    let data: String
+}
+
+private func requireStorageAccess(_ req: Request) throws {
+    let configured = HubConfiguration.storageSharedSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !configured.isEmpty else {
+        throw Abort(.internalServerError, reason: "Storage shared secret not configured")
+    }
+    let provided = req.headers.first(name: "X-PerX-Storage-Token")?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    guard provided == configured else {
+        throw Abort(.unauthorized, reason: "Invalid storage token")
+    }
+}
+
+private func absoluteVaultPath(for relativePath: String) throws -> String {
+    let clean = relativePath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    guard !clean.isEmpty, !clean.contains("..") else {
+        throw Abort(.badRequest, reason: "Invalid relative path")
+    }
+    return "\(HubConfiguration.vaultPath)/\(clean)"
+}
+
+private func ensureParentDirectory(for fullPath: String) throws {
+    let directory = URL(fileURLWithPath: fullPath).deletingLastPathComponent().path
+    try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
 }
 
 // MARK: - WhatsApp QR Code Storage
@@ -72,6 +132,98 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
             hubId: HubConfiguration.hubID,
             isDedicated: HubConfiguration.dedicatedTenantSlug == tenantSlug
         )
+    }
+
+    let internalStorage = app.grouped("internal", "storage")
+
+    internalStorage.post("claims", "ensure") { req async throws -> HTTPStatus in
+        try requireStorageAccess(req)
+        let payload = try req.content.decode(InternalEnsureClaimRequest.self)
+        try await VaultManager.shared.createSinistroFolder(sinistroRef: payload.claimRef, tenantSlug: payload.tenantId)
+        return .ok
+    }
+
+    internalStorage.post("files", "upload", body: .collect(maxSize: "100mb")) { req async throws -> InternalStorageResponse in
+        try requireStorageAccess(req)
+        let payload = try req.content.decode(InternalUploadRequest.self)
+        guard let data = Data(base64Encoded: payload.data) else {
+            throw Abort(.badRequest, reason: "Invalid base64 data")
+        }
+        let filePath = try absoluteVaultPath(for: payload.relativePath)
+        try ensureParentDirectory(for: filePath)
+        try data.write(to: URL(fileURLWithPath: filePath), options: .atomic)
+        let checksum = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        return InternalStorageResponse(
+            relativePath: payload.relativePath,
+            sizeBytes: Int64(data.count),
+            checksumSHA256: checksum
+        )
+    }
+
+    internalStorage.post("files", "download") { req async throws -> InternalDownloadResponse in
+        try requireStorageAccess(req)
+        let payload = try req.content.decode(InternalPathRequest.self)
+        let filePath = try absoluteVaultPath(for: payload.relativePath)
+        guard FileManager.default.fileExists(atPath: filePath) else {
+            throw Abort(.notFound, reason: "File not found")
+        }
+        let data = try Data(contentsOf: URL(fileURLWithPath: filePath))
+        return InternalDownloadResponse(
+            relativePath: payload.relativePath,
+            data: data.base64EncodedString()
+        )
+    }
+
+    internalStorage.post("files", "copy") { req async throws -> HTTPStatus in
+        try requireStorageAccess(req)
+        let payload = try req.content.decode(InternalMoveCopyRequest.self)
+        let sourcePath = try absoluteVaultPath(for: payload.sourcePath)
+        let destinationPath = try absoluteVaultPath(for: payload.destinationPath)
+        guard FileManager.default.fileExists(atPath: sourcePath) else {
+            throw Abort(.notFound, reason: "Source file not found")
+        }
+        try ensureParentDirectory(for: destinationPath)
+        if FileManager.default.fileExists(atPath: destinationPath) {
+            guard payload.overwrite == true else {
+                throw Abort(.conflict, reason: "Destination already exists")
+            }
+            try FileManager.default.removeItem(atPath: destinationPath)
+        }
+        try FileManager.default.copyItem(atPath: sourcePath, toPath: destinationPath)
+        return .ok
+    }
+
+    internalStorage.post("files", "move") { req async throws -> HTTPStatus in
+        try requireStorageAccess(req)
+        let payload = try req.content.decode(InternalMoveCopyRequest.self)
+        let sourcePath = try absoluteVaultPath(for: payload.sourcePath)
+        let destinationPath = try absoluteVaultPath(for: payload.destinationPath)
+        guard FileManager.default.fileExists(atPath: sourcePath) else {
+            throw Abort(.notFound, reason: "Source file not found")
+        }
+        try ensureParentDirectory(for: destinationPath)
+        if FileManager.default.fileExists(atPath: destinationPath) {
+            guard payload.overwrite == true else {
+                throw Abort(.conflict, reason: "Destination already exists")
+            }
+            try FileManager.default.removeItem(atPath: destinationPath)
+        }
+        try FileManager.default.moveItem(atPath: sourcePath, toPath: destinationPath)
+        return .ok
+    }
+
+    internalStorage.post("files", "delete") { req async throws -> HTTPStatus in
+        try requireStorageAccess(req)
+        let payload = try req.content.decode(InternalPathRequest.self)
+        let filePath = try absoluteVaultPath(for: payload.relativePath)
+        if FileManager.default.fileExists(atPath: filePath) {
+            try FileManager.default.removeItem(atPath: filePath)
+            return .ok
+        }
+        if payload.missingOk == true {
+            return .ok
+        }
+        throw Abort(.notFound, reason: "File not found")
     }
     
     // MARK: - Heartbeat (per tracking utenti connessi)

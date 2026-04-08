@@ -116,9 +116,7 @@ final class GoogleAuthServiceiOS: ObservableObject {
             throw AuthError.missingCredentials
         }
 
-        guard let normalizedBaseURL = normalizedBaseURL(override: baseURL) else {
-            throw AuthError.missingBackendURL
-        }
+        let normalizedBaseURL = normalizedBaseURL(override: baseURL)
 
         let tokenResponse = try await requestToken(
             email: normalizedEmail,
@@ -211,19 +209,11 @@ final class GoogleAuthServiceiOS: ObservableObject {
         }
     }
 
-    private func normalizedBaseURL(override: String? = nil) -> String? {
-        let candidate = (override ?? hubClient.cloudAPIBaseURL)
+    private func normalizedBaseURL(override: String? = nil) -> String {
+        let candidate = (override ?? HubAPIClient.fixedCloudAPIBaseURL)
             .trimmingCharacters(in: .whitespacesAndNewlines)
-
-        if !candidate.isEmpty {
-            return candidate.hasSuffix("/") ? String(candidate.dropLast()) : candidate
-        }
-
-        #if targetEnvironment(simulator)
-        return "http://127.0.0.1:8000"
-        #else
-        return nil
-        #endif
+        let resolved = candidate.isEmpty ? HubAPIClient.fixedCloudAPIBaseURL : candidate
+        return resolved.hasSuffix("/") ? String(resolved.dropLast()) : resolved
     }
 
     private func errorMessage(from data: Data, statusCode: Int) -> String {
@@ -301,7 +291,7 @@ final class GoogleAuthServiceiOS: ObservableObject {
             case .missingSavedCredentials:
                 return "Credenziali salvate mancanti per questo account."
             case .missingBackendURL:
-                return "Configura l'URL del backend prima di accedere."
+                return "Endpoint backend non disponibile."
             case .invalidBackendURL:
                 return "URL backend non valido."
             case .invalidResponse:

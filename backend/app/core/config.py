@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     # Storage
     STORAGE_BUCKET_NAME: str = "perx-attachments"
     STORAGE_PROVIDER: str = "gcs"  # gcs, s3
+    VAULT_STORAGE_PROVIDER: str = "local"  # local, mac_mini
+    VAULT_STORAGE_ROOT: str = "/tmp/perx-hub-compat"
+    MAC_MINI_STORAGE_URL: Optional[str] = None
+    MAC_MINI_STORAGE_TOKEN: Optional[str] = None
     
     # Pub/Sub
     PUBSUB_PROJECT_ID: str = ""

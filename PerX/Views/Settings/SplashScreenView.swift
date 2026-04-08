@@ -236,7 +236,6 @@ private struct MacManualLoginView: View {
 
     @Environment(\.dismiss) private var dismiss
 
-    @State private var backendURL = HubConfigService.shared.cloudAPIBaseURL
     @State private var email = HubConfigService.shared.cloudAPIEmail
     @State private var password = ""
     @State private var isLoggingIn = false
@@ -250,8 +249,11 @@ private struct MacManualLoginView: View {
             Text("Usa le stesse credenziali backend disponibili su iPad. Gli account demo vengono salvati per i login successivi.")
                 .foregroundStyle(.secondary)
 
-            TextField("URL backend", text: $backendURL)
-                .textFieldStyle(.roundedBorder)
+            LabeledContent("Backend") {
+                Text(HubConfigService.fixedCloudAPIBaseURL)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
 
             TextField("Email", text: $email)
                 .textFieldStyle(.roundedBorder)
@@ -297,8 +299,6 @@ private struct MacManualLoginView: View {
     private func performLogin() {
         let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let normalizedPassword = password.trimmingCharacters(in: .whitespacesAndNewlines)
-        let normalizedURL = backendURL.trimmingCharacters(in: .whitespacesAndNewlines)
-
         isLoggingIn = true
         errorMessage = nil
 
@@ -306,8 +306,7 @@ private struct MacManualLoginView: View {
             do {
                 try await GoogleAuthService.shared.signIn(
                     email: normalizedEmail,
-                    password: normalizedPassword,
-                    baseURL: normalizedURL
+                    password: normalizedPassword
                 )
                 await MainActor.run {
                     onComplete(true)

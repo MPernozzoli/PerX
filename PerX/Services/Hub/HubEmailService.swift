@@ -19,6 +19,7 @@ class HubEmailService: ObservableObject {
     // MARK: - Dependencies
     
     private let hubClient = HubAPIClient.shared
+    private let cloudClient = HubAPIAdapterClient.shared
     private let session: URLSession
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
@@ -27,11 +28,6 @@ class HubEmailService: ObservableObject {
     private var pollingTask: Task<Void, Never>?
     
     // MARK: - Configuration
-    
-    private var baseURL: URL? {
-        let urlString = HubConfigService.shared.hubBaseURL
-        return URL(string: urlString)
-    }
     
     private init() {
         let config = URLSessionConfiguration.default
@@ -46,30 +42,20 @@ class HubEmailService: ObservableObject {
         encoder.dateEncodingStrategy = .iso8601
     }
     
-    // MARK: - URL Helper
-    
-    private func url(path: String) throws -> URL {
-        guard let base = baseURL else {
-            throw HubEmailError.notConfigured
-        }
-        let baseString = base.absoluteString.hasSuffix("/") ? base.absoluteString : base.absoluteString + "/"
-        guard let url = URL(string: baseString + path) else {
-            throw HubEmailError.invalidURL
-        }
-        return url
+    // MARK: - Endpoint Helper
+
+    private func compatPath(_ path: String) -> String {
+        let trimmed = path.hasPrefix("/") ? String(path.dropFirst()) : path
+        return "/api/v1/hub/\(trimmed)"
     }
     
     // MARK: - Fetch Emails
     
     /// Recupera email per un sinistro specifico
     func fetchEmails(forSinistro ref: String) async throws -> [EmailDTO] {
-        let url = try url(path: "emails/sinistro/\(ref)")
-        let (data, response) = try await session.data(from: url)
-        try validateResponse(response)
-        
-        let emails = try decoder.decode([EmailDTO].self, from: data)
+        let emails: [EmailDTO] = try await cloudClient.cloudGet("/api/v1/hub/emails?user=&limit=200")
         print("[HubEmailService] 📥 Scaricate \(emails.count) email per sinistro \(ref)")
-        return emails
+        return emails.filter { $0.sinistroRef == ref }
     }
     
     /// Recupera email per l'utente corrente (con limit e opzionale mailbox filter)
@@ -78,94 +64,66 @@ class HubEmailService: ObservableObject {
         if let mailbox = mailbox {
             path += "&mailbox=\(mailbox)"
         }
-        
-        let url = try url(path: path)
-        let (data, response) = try await session.data(from: url)
-        try validateResponse(response)
-        
-        let emails = try decoder.decode([EmailDTO].self, from: data)
+
+        let emails: [EmailDTO] = try await cloudClient.cloudGet(compatPath(path))
         print("[HubEmailService] 📥 Scaricate \(emails.count) email per utente \(userEmail)")
         return emails
     }
     
     /// Recupera le caselle disponibili per l'utente
     func fetchMailboxes(forUser userEmail: String) async throws -> [MailboxDTO] {
-        let path = "emails/mailboxes?user=\(userEmail.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? userEmail)"
-        let url = try url(path: path)
-        let (data, response) = try await session.data(from: url)
-        try validateResponse(response)
-        
-        let mailboxes = try decoder.decode([MailboxDTO].self, from: data)
+        let path = compatPath("emails/mailboxes?user=\(userEmail.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? userEmail)")
+        let mailboxes: [MailboxDTO] = try await cloudClient.cloudGet(path)
         print("[HubEmailService] 📬 Trovate \(mailboxes.count) caselle per \(userEmail)")
         return mailboxes
     }
     
     /// Recupera dettaglio email completo (body incluso)
     func fetchEmailDetail(messageId: String) async throws -> EmailDetailDTO {
-        let url = try url(path: "emails/detail/\(messageId)")
-        let (data, response) = try await session.data(from: url)
-        try validateResponse(response)
-        return try decoder.decode(EmailDetailDTO.self, from: data)
+        try await cloudClient.cloudGet(compatPath("emails/detail/\(messageId)"))
     }
     
     // MARK: - Email Actions
     
     /// Associa email a sinistro
     func associateEmail(messageId: String, toSinistro ref: String) async throws {
-        let url = try url(path: "emails/\(messageId)/associate")
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
         struct AssociateRequest: Encodable {
             let sinistroRef: String
         }
-        request.httpBody = try encoder.encode(AssociateRequest(sinistroRef: ref))
-        
-        let (_, response) = try await session.data(for: request)
-        try validateResponse(response)
+        struct EmptyResponse: Decodable {}
+        let _: EmptyResponse = try await cloudClient.cloudPost(
+            compatPath("emails/\(messageId)/associate"),
+            body: AssociateRequest(sinistroRef: ref)
+        )
         
         print("[HubEmailService] ✅ Email \(messageId) associata a \(ref)")
     }
     
     /// Marca email come letta
     func markAsRead(messageId: String, accountId: String? = nil) async throws {
-        let url = try url(path: "emails/\(messageId)/read")
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        if let accountId = accountId {
-            struct ReadRequest: Encodable {
-                let accountId: String
-            }
-            request.httpBody = try encoder.encode(ReadRequest(accountId: accountId))
+        struct ReadRequest: Encodable {
+            let accountId: String?
         }
-        
-        let (_, response) = try await session.data(for: request)
-        try validateResponse(response)
+        struct EmptyResponse: Decodable {}
+        let _: EmptyResponse = try await cloudClient.cloudPost(
+            compatPath("emails/\(messageId)/read"),
+            body: ReadRequest(accountId: accountId)
+        )
         
         print("[HubEmailService] ✅ Email \(messageId) marcata come letta")
     }
     
     /// Tagga email con una categoria
     func tagEmail(messageId: String, category: String, sinistroRef: String?) async throws {
-        let url = try url(path: "emails/\(messageId)/tag")
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
         struct TagRequest: Encodable {
             let category: String
             let sinistroRef: String?
         }
-        request.httpBody = try encoder.encode(TagRequest(category: category, sinistroRef: sinistroRef))
-        
-        let (_, response) = try await session.data(for: request)
-        try validateResponse(response)
+        struct EmptyResponse: Decodable {}
+        let _: EmptyResponse = try await cloudClient.cloudPost(
+            compatPath("emails/\(messageId)/tag"),
+            body: TagRequest(category: category, sinistroRef: sinistroRef)
+        )
         
         print("[HubEmailService] 🏷️ Email \(messageId) taggata come \(category)")
     }
@@ -218,12 +176,6 @@ class HubEmailService: ObservableObject {
         references: String? = nil,
         attachments: [(filename: String, data: Data, mimeType: String?)]? = nil
     ) async throws -> SendEmailResponse {
-        let url = try url(path: "emails/send")
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
         let attachmentData = attachments?.map { att in
             SendEmailRequest.AttachmentData(
                 filename: att.filename,
@@ -245,13 +197,11 @@ class HubEmailService: ObservableObject {
             references: references,
             attachments: attachmentData
         )
-        
-        request.httpBody = try encoder.encode(sendRequest)
-        
-        let (data, response) = try await session.data(for: request)
-        try validateResponse(response)
-        
-        let result = try decoder.decode(SendEmailResponse.self, from: data)
+
+        let result: SendEmailResponse = try await cloudClient.cloudPost(
+            compatPath("emails/send"),
+            body: sendRequest
+        )
         
         if result.success {
             print("[HubEmailService] 📤 Email inviata: \(result.messageId ?? "N/A")")
@@ -274,12 +224,6 @@ class HubEmailService: ObservableObject {
         scheduledFor: Date,
         sinistroRef: String? = nil
     ) async throws -> ScheduledEmailDTO {
-        let url = try url(path: "emails/schedule")
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
         struct ScheduleRequest: Encodable {
             let accountId: String
             let to: [String]
@@ -289,41 +233,31 @@ class HubEmailService: ObservableObject {
             let scheduledFor: Date
             let sinistroRef: String?
         }
-        
-        request.httpBody = try encoder.encode(ScheduleRequest(
-            accountId: accountId,
-            to: to,
-            cc: cc,
-            subject: subject,
-            body: body,
-            scheduledFor: scheduledFor,
-            sinistroRef: sinistroRef
-        ))
-        
-        let (data, response) = try await session.data(for: request)
-        try validateResponse(response)
-        
-        let scheduled = try decoder.decode(ScheduledEmailDTO.self, from: data)
+
+        let scheduled: ScheduledEmailDTO = try await cloudClient.cloudPost(
+            compatPath("emails/schedule"),
+            body: ScheduleRequest(
+                accountId: accountId,
+                to: to,
+                cc: cc,
+                subject: subject,
+                body: body,
+                scheduledFor: scheduledFor,
+                sinistroRef: sinistroRef
+            )
+        )
         print("[HubEmailService] 📅 Email programmata per \(scheduledFor)")
         return scheduled
     }
     
     /// Lista email programmate
     func getScheduledEmails(forAccount accountId: String) async throws -> [ScheduledEmailDTO] {
-        let url = try url(path: "emails/scheduled?accountId=\(accountId)")
-        let (data, response) = try await session.data(from: url)
-        try validateResponse(response)
-        return try decoder.decode([ScheduledEmailDTO].self, from: data)
+        try await cloudClient.cloudGet(compatPath("emails/scheduled?accountId=\(accountId)"))
     }
     
     /// Cancella email programmata
     func cancelScheduledEmail(id: String) async throws {
-        let url = try url(path: "emails/scheduled/\(id)")
-        var request = URLRequest(url: url)
-        request.httpMethod = "DELETE"
-        
-        let (_, response) = try await session.data(for: request)
-        try validateResponse(response)
+        try await cloudClient.cloudDelete(compatPath("emails/scheduled/\(id)"))
         print("[HubEmailService] 🗑️ Email programmata \(id) cancellata")
     }
     

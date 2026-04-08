@@ -6,6 +6,7 @@ import Combine
 @MainActor
 final class HubConfigService: ObservableObject {
     static let shared = HubConfigService()
+    static let fixedCloudAPIBaseURL = "https://api.perx.it"
 
     struct TenantHubOverride: Codable, Equatable, Identifiable {
         var id: String { tenantSlug }
@@ -40,7 +41,7 @@ final class HubConfigService: ObservableObject {
     }
     
     /// URL base dell'Hub (es. http://mac-mini.tailnet:8080)
-    @Published var hubBaseURL: String {
+    @Published private(set) var hubBaseURL: String {
         didSet {
             UserDefaults.standard.set(hubBaseURL, forKey: "hub.baseURL")
             UserDefaults.standard.set(Date(), forKey: "localEditAt.hub.baseURL")
@@ -59,11 +60,7 @@ final class HubConfigService: ObservableObject {
     @Published private(set) var tenantHubOverrides: [String: TenantHubOverride] = [:]
 
     /// URL base del backend cloud (es. https://api.example.com)
-    @Published var cloudAPIBaseURL: String {
-        didSet {
-            UserDefaults.standard.set(cloudAPIBaseURL, forKey: "cloud.api.baseURL")
-        }
-    }
+    @Published private(set) var cloudAPIBaseURL: String
 
     /// Email usata per autenticarsi al backend cloud
     @Published var cloudAPIEmail: String {
@@ -95,17 +92,18 @@ final class HubConfigService: ObservableObject {
         let savedFileMode = UserDefaults.standard.string(forKey: "hub.fileManagementMode") ?? ManagementMode.cloud.rawValue
         let savedEmailMode = UserDefaults.standard.string(forKey: "hub.emailManagementMode") ?? ManagementMode.cloud.rawValue
         let savedWAMode = UserDefaults.standard.string(forKey: "hub.whatsappManagementMode") ?? ManagementMode.cloud.rawValue
-        let savedURL = UserDefaults.standard.string(forKey: "hub.baseURL") ?? ""
-        let savedCloudURL = UserDefaults.standard.string(forKey: "cloud.api.baseURL") ?? ""
+        let savedURL = UserDefaults.standard.string(forKey: "hub.baseURL") ?? Self.fixedCloudAPIBaseURL
         let savedCloudEmail = UserDefaults.standard.string(forKey: "cloud.api.email") ?? ""
         let savedOverrides = UserDefaults.standard.data(forKey: tenantHubOverridesKey)
         
         self.fileManagementMode = ManagementMode(rawValue: savedFileMode) ?? .cloud
         self.emailManagementMode = ManagementMode(rawValue: savedEmailMode) ?? .cloud
         self.whatsappManagementMode = ManagementMode(rawValue: savedWAMode) ?? .cloud
-        self.hubBaseURL = savedURL
-        self.cloudAPIBaseURL = savedCloudURL
+        self.hubBaseURL = savedURL.isEmpty ? Self.fixedCloudAPIBaseURL : Self.fixedCloudAPIBaseURL
+        self.cloudAPIBaseURL = Self.fixedCloudAPIBaseURL
         self.cloudAPIEmail = savedCloudEmail
+        UserDefaults.standard.set(Self.fixedCloudAPIBaseURL, forKey: "cloud.api.baseURL")
+        UserDefaults.standard.set(Self.fixedCloudAPIBaseURL, forKey: "hub.baseURL")
         if let savedOverrides,
            let decoded = try? JSONDecoder().decode([String: TenantHubOverride].self, from: savedOverrides) {
             self.tenantHubOverrides = decoded
@@ -256,7 +254,6 @@ final class HubConfigService: ObservableObject {
     }
 
     var isCloudAPIConfigured: Bool {
-        !cloudAPIBaseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
         !cloudAPIEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
@@ -266,11 +263,7 @@ final class HubConfigService: ObservableObject {
     }
 
     func resolvedHubBaseURL(for tenantSlug: String? = nil) -> String {
-        let slug = (tenantSlug ?? currentTenantSlug).trimmingCharacters(in: .whitespacesAndNewlines)
-        if let override = tenantHubOverrides[slug], !override.baseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return override.baseURL
-        }
-        return hubBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        cloudAPIBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     func tenantOverride(for tenantSlug: String? = nil) -> TenantHubOverride? {

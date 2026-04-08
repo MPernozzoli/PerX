@@ -136,6 +136,43 @@ class VaultService: ObservableObject {
         cache.removeCachedFile(fileId: file.id)
         cache.invalidateFileList(sinistroRef: file.sinistroRef)
     }
+
+    /// Lista versioni disponibili per un file cloud
+    func listVersions(for file: VaultFileDTO) async throws -> [VaultFileVersionDTO] {
+        guard config.fileManagementMode == .cloud else {
+            throw VaultServiceError.notInCloudMode
+        }
+        return try await api.listFileVersions(fileId: file.id)
+    }
+
+    /// Lista elementi nel cestino per il sinistro
+    func listTrash(sinistroRef: String) async throws -> [VaultTrashItemDTO] {
+        guard config.fileManagementMode == .cloud else {
+            throw VaultServiceError.notInCloudMode
+        }
+        return try await api.listTrash(sinistroRef: sinistroRef)
+    }
+
+    /// Ripristina un file dal cestino
+    func restoreFile(_ item: VaultTrashItemDTO) async throws -> VaultFileDTO {
+        guard config.fileManagementMode == .cloud else {
+            throw VaultServiceError.notInCloudMode
+        }
+        let restored = try await api.restoreFile(fileId: item.id, originalPath: item.originalPath)
+        cache.invalidateFileList(sinistroRef: item.sinistroRef)
+        return restored
+    }
+
+    /// Ripristina una versione precedente di un file
+    func restoreVersion(file: VaultFileDTO, version: VaultFileVersionDTO) async throws -> VaultFileDTO {
+        guard config.fileManagementMode == .cloud else {
+            throw VaultServiceError.notInCloudMode
+        }
+        let restored = try await api.restoreFileVersion(fileId: file.id, versionId: version.id)
+        cache.removeCachedFile(fileId: file.id)
+        cache.invalidateFileList(sinistroRef: file.sinistroRef)
+        return restored
+    }
     
     /// Sposta file in cartella _export (per sync verso legacy)
     func moveToExport(_ file: VaultFileDTO) async throws -> VaultFileDTO {
