@@ -8,7 +8,9 @@ enum UserRole: String, Codable, CaseIterable, Identifiable {
     case admin = "admin"
     case director = "direttore"
     case teamLeader = "capoTeam"
+    case manager = "gestore"
     case expert = "perito"
+    case cat = "cat"
     case secretary = "segreteria"
     
     var id: String { rawValue }
@@ -18,7 +20,9 @@ enum UserRole: String, Codable, CaseIterable, Identifiable {
         case .admin: return "Amministratore"
         case .director: return "Direttore"
         case .teamLeader: return "Capo Team"
+        case .manager: return "Gestore"
         case .expert: return "Perito"
+        case .cat: return "CAT"
         case .secretary: return "Segreteria"
         }
     }
@@ -28,7 +32,9 @@ enum UserRole: String, Codable, CaseIterable, Identifiable {
         case .admin: return "shield.checkered"
         case .director: return "crown"
         case .teamLeader: return "person.3"
+        case .manager: return "tray.full"
         case .expert: return "briefcase"
+        case .cat: return "mappin.and.ellipse"
         case .secretary: return "doc.text"
         }
     }
@@ -116,6 +122,8 @@ struct UserProfile: Codable, Equatable, Identifiable {
     // Dati personali
     var firstName: String
     var lastName: String
+    var jobTitle: String?
+    var phoneNumber: String?
     var birthDate: Date?
     var birthdayVisibility: BirthdayVisibility
     var notifyBirthday: Bool
@@ -123,8 +131,10 @@ struct UserProfile: Codable, Equatable, Identifiable {
     // Avatar
     var avatarType: AvatarType
     var avatarPhotoData: Data?
+    var avatarAssetURL: String?
     var generatedAvatar: GeneratedAvatar
     var avatarGifURL: String?
+    var signatureImageURL: String?
     
     // Lavoro
     var contractType: ContractType?
@@ -133,6 +143,8 @@ struct UserProfile: Codable, Equatable, Identifiable {
     // Preferenze
     var enableBadges: Bool
     var sendReadReceipts: Bool
+    var emailSignatureHTML: String?
+    var emailSignatureText: String?
     
     // Metadata
     var createdAt: Date
@@ -145,8 +157,20 @@ struct UserProfile: Codable, Equatable, Identifiable {
         return fullName.isEmpty ? username : fullName
     }
     
+    var isPlatformAdmin: Bool {
+        email.lowercased() == "info@pynkstudio.it"
+    }
+
     var isAdmin: Bool {
-        email.lowercased() == "massimo.pernozzoli@actsrl.it"
+        isPlatformAdmin || roles.contains(.admin)
+    }
+
+    var isTenantAdmin: Bool {
+        roles.contains(.admin)
+    }
+
+    var canManageTenantSettings: Bool {
+        isPlatformAdmin || isTenantAdmin
     }
     
     var canSeeAdminRole: Bool {
@@ -175,17 +199,23 @@ struct UserProfile: Codable, Equatable, Identifiable {
         self.username = Self.generateUsername(from: email)
         self.firstName = ""
         self.lastName = ""
+        self.jobTitle = nil
+        self.phoneNumber = nil
         self.birthDate = nil
         self.birthdayVisibility = .everyone
         self.notifyBirthday = true
         self.avatarType = .generated
         self.avatarPhotoData = nil
+        self.avatarAssetURL = nil
         self.generatedAvatar = .default
         self.avatarGifURL = nil
+        self.signatureImageURL = nil
         self.contractType = nil
         self.roles = []
         self.enableBadges = false
         self.sendReadReceipts = true
+        self.emailSignatureHTML = nil
+        self.emailSignatureText = nil
         self.createdAt = Date()
         self.updatedAt = Date()
     }
@@ -229,4 +259,3 @@ struct UserProfile: Codable, Equatable, Identifiable {
         }
     }
 }
-

@@ -12,6 +12,7 @@ class ClaimBase(BaseModel):
     numero_sinistro: Optional[str] = None
     compagnia: Optional[str] = None
     stato_corrente: str
+    garanzia: str = "Fenomeno Elettrico"
     agenzia: Optional[str] = None
     nome_assicurato: Optional[str] = None
     email_assicurato: Optional[str] = None
@@ -77,4 +78,3 @@ class ClaimEventResponse(BaseModel):
     
     class Config:
         from_attributes = True
-

@@ -2,6 +2,20 @@ import Vapor
 import PerXCore
 import SQLite
 
+private extension Request {
+    func perxTenantSlug() -> String {
+        let headerTenant = headers.first(name: "X-PerX-Tenant")?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let queryTenant = query[String.self, at: "tenant"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return ([headerTenant, queryTenant, HubConfiguration.defaultTenantSlug].compactMap { $0 }.first { !$0.isEmpty }) ?? "default"
+    }
+}
+
+private struct HubTenantDescriptor: Content {
+    let tenantSlug: String
+    let hubId: String
+    let isDedicated: Bool
+}
+
 // MARK: - WhatsApp QR Code Storage
 
 /// Actor per gestire i QR codes WhatsApp in modo thread-safe
@@ -46,8 +60,17 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
         let uptime = Date().timeIntervalSince(startTime)
         return HealthResponse(
             status: "ok",
-            version: "1.1.0",
+            version: "1.2.0",
             uptime: uptime
+        )
+    }
+
+    app.get("tenant-context") { req -> HubTenantDescriptor in
+        let tenantSlug = req.perxTenantSlug()
+        return HubTenantDescriptor(
+            tenantSlug: tenantSlug,
+            hubId: HubConfiguration.hubID,
+            isDedicated: HubConfiguration.dedicatedTenantSlug == tenantSlug
         )
     }
     
@@ -61,16 +84,18 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
     app.post("heartbeat") { req async throws -> HTTPStatus in
         let request = try req.content.decode(HeartbeatRequest.self)
         let db = try await DatabaseManager.shared.db()
+        let tenantSlug = req.perxTenantSlug()
         
         // Upsert: insert or update last_seen
         try db.run(DatabaseSchema.connectedClients.upsert(
+            DatabaseSchema.ConnectedClientsColumns.tenantSlug <- tenantSlug,
             DatabaseSchema.ConnectedClientsColumns.userId <- request.user_id,
             DatabaseSchema.ConnectedClientsColumns.lastSeen <- Date().timeIntervalSince1970,
             DatabaseSchema.ConnectedClientsColumns.clientInfo <- request.client_info,
-            onConflictOf: DatabaseSchema.ConnectedClientsColumns.userId
+            onConflictOf: DatabaseSchema.ConnectedClientsColumns.tenantSlug, DatabaseSchema.ConnectedClientsColumns.userId
         ))
         
-        print("[Hub] Heartbeat from \(request.user_id)")
+        print("[Hub] Heartbeat from \(request.user_id) tenant=\(tenantSlug)")
         return .ok
     }
     
@@ -78,47 +103,64 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
     
     app.get("stats") { req async throws -> HubStatsResponse in
         let db = try await DatabaseManager.shared.db()
+        let tenantSlug = req.perxTenantSlug()
         
         // Job stats
         let pendingJobsCount = try db.scalar(
-            DatabaseSchema.jobs.filter(DatabaseSchema.JobsColumns.status == "pending").count
+            DatabaseSchema.jobs
+                .filter(DatabaseSchema.JobsColumns.tenantSlug == tenantSlug)
+                .filter(DatabaseSchema.JobsColumns.status == "pending").count
         )
         let inProgressJobsCount = try db.scalar(
-            DatabaseSchema.jobs.filter(DatabaseSchema.JobsColumns.status == "in_progress").count
+            DatabaseSchema.jobs
+                .filter(DatabaseSchema.JobsColumns.tenantSlug == tenantSlug)
+                .filter(DatabaseSchema.JobsColumns.status == JobStatus.inProgress.rawValue).count
         )
         
         // Email stats
-        let totalEmails = try db.scalar(DatabaseSchema.emails.count)
+        let totalEmails = try db.scalar(DatabaseSchema.emails.filter(DatabaseSchema.EmailsColumns.tenantSlug == tenantSlug).count)
         let unsyncedEmails = try db.scalar(
-            DatabaseSchema.emails.filter(DatabaseSchema.EmailsColumns.syncedToCK == false).count
+            DatabaseSchema.emails
+                .filter(DatabaseSchema.EmailsColumns.tenantSlug == tenantSlug)
+                .filter(DatabaseSchema.EmailsColumns.syncedToCK == false).count
         )
         
         // Attachments stats
         let pendingAttachments = try db.scalar(
-            DatabaseSchema.attachments.filter(DatabaseSchema.AttachmentsColumns.status == "pending").count
+            DatabaseSchema.attachments
+                .filter(DatabaseSchema.AttachmentsColumns.tenantSlug == tenantSlug)
+                .filter(DatabaseSchema.AttachmentsColumns.status == "pending").count
         )
         let processingAttachments = try db.scalar(
-            DatabaseSchema.attachments.filter(DatabaseSchema.AttachmentsColumns.status == "processing").count
+            DatabaseSchema.attachments
+                .filter(DatabaseSchema.AttachmentsColumns.tenantSlug == tenantSlug)
+                .filter(DatabaseSchema.AttachmentsColumns.status == "processing").count
         )
         
         // Sinistri count
-        let sinistroFolders = try db.scalar(DatabaseSchema.sinistroFolders.count)
+        let sinistroFolders = try db.scalar(
+            DatabaseSchema.sinistroFolders.filter(DatabaseSchema.SinistroFoldersColumns.tenantSlug == tenantSlug).count
+        )
         
         // Connected users (heartbeat negli ultimi 5 minuti)
         let fiveMinutesAgo = Date().timeIntervalSince1970 - 300 // 5 minuti
         let connectedUsersCount = try db.scalar(
             DatabaseSchema.connectedClients.filter(
+                DatabaseSchema.ConnectedClientsColumns.tenantSlug == tenantSlug &&
                 DatabaseSchema.ConnectedClientsColumns.lastSeen > fiveMinutesAgo
             ).count
         )
         
         // WhatsApp stats
-        let totalWAMessages = try db.scalar(DatabaseSchema.whatsappMessages.count)
+        let totalWAMessages = try db.scalar(
+            DatabaseSchema.whatsappMessages.filter(DatabaseSchema.WhatsAppMessagesColumns.tenantSlug == tenantSlug).count
+        )
         
         // Messaggi di oggi
         let startOfToday = Calendar.current.startOfDay(for: Date()).timeIntervalSince1970
         let todayWAMessages = try db.scalar(
             DatabaseSchema.whatsappMessages
+                .filter(DatabaseSchema.WhatsAppMessagesColumns.tenantSlug == tenantSlug)
                 .filter(DatabaseSchema.WhatsAppMessagesColumns.timestamp >= startOfToday)
                 .count
         )
@@ -126,6 +168,7 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
         // Chat non lette
         let unreadChats = try db.scalar(
             DatabaseSchema.whatsappChats
+                .filter(DatabaseSchema.WhatsAppChatsColumns.tenantSlug == tenantSlug)
                 .filter(DatabaseSchema.WhatsAppChatsColumns.unreadCount > 0)
                 .count
         )
@@ -133,6 +176,7 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
         // Messaggi schedulati pending
         let scheduledPending = try db.scalar(
             DatabaseSchema.scheduledWhatsApp
+                .filter(DatabaseSchema.ScheduledWhatsAppColumns.tenantSlug == tenantSlug)
                 .filter(DatabaseSchema.ScheduledWhatsAppColumns.status == "pending")
                 .count
         )
@@ -146,10 +190,14 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
         
         // Sync stats (cartelle monitorate e jobs di sync)
         let activeFolders = try db.scalar(
-            DatabaseSchema.sinistroFolders.filter(DatabaseSchema.SinistroFoldersColumns.status == "active").count
+            DatabaseSchema.sinistroFolders
+                .filter(DatabaseSchema.SinistroFoldersColumns.tenantSlug == tenantSlug)
+                .filter(DatabaseSchema.SinistroFoldersColumns.status == SinistroFolderStatus.ready.rawValue)
+                .count
         )
         let pendingSyncJobs = try db.scalar(
             DatabaseSchema.jobs
+                .filter(DatabaseSchema.JobsColumns.tenantSlug == tenantSlug)
                 .filter(DatabaseSchema.JobsColumns.status == "pending")
                 .filter(DatabaseSchema.JobsColumns.type.like("%import%") || DatabaseSchema.JobsColumns.type.like("%export%") || DatabaseSchema.JobsColumns.type.like("%scan%"))
                 .count
@@ -164,6 +212,7 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
         // Per ora contiamo le email con source "jfish" o diario entries recenti
         let todayScheduledEmails = try db.scalar(
             DatabaseSchema.scheduledEmails
+                .filter(DatabaseSchema.ScheduledEmailsColumns.tenantSlug == tenantSlug)
                 .filter(DatabaseSchema.ScheduledEmailsColumns.createdAt >= startOfToday)
                 .count
         )
@@ -204,7 +253,7 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
             throw Abort(.badRequest, reason: "Missing sinistro ref")
         }
         
-        let files = try await VaultManager.shared.listFiles(sinistroRef: ref)
+        let files = try await VaultManager.shared.listFiles(sinistroRef: ref, tenantSlug: req.perxTenantSlug())
         return files.map { VaultFileDTO(from: $0) }
     }
     
@@ -214,7 +263,7 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
             throw Abort(.badRequest, reason: "Missing sinistro ref")
         }
         
-        guard let folder = try await DatabaseManager.shared.getSinistroFolder(sinistroRef: ref) else {
+        guard let folder = try await DatabaseManager.shared.getSinistroFolder(sinistroRef: ref, tenantSlug: req.perxTenantSlug()) else {
             throw Abort(.notFound, reason: "Sinistro folder not found")
         }
         
@@ -227,9 +276,10 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
             throw Abort(.badRequest, reason: "Missing sinistro ref")
         }
         
-        try await VaultManager.shared.createSinistroFolder(sinistroRef: ref)
+        let tenantSlug = req.perxTenantSlug()
+        try await VaultManager.shared.createSinistroFolder(sinistroRef: ref, tenantSlug: tenantSlug)
         
-        guard let folder = try await DatabaseManager.shared.getSinistroFolder(sinistroRef: ref) else {
+        guard let folder = try await DatabaseManager.shared.getSinistroFolder(sinistroRef: ref, tenantSlug: tenantSlug) else {
             throw Abort(.internalServerError, reason: "Failed to create folder")
         }
         
@@ -242,7 +292,7 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
             throw Abort(.badRequest, reason: "Missing file id")
         }
         
-        let (file, data) = try await VaultManager.shared.getFile(id: id)
+        let (file, data) = try await VaultManager.shared.getFile(id: id, tenantSlug: req.perxTenantSlug())
         
         var headers = HTTPHeaders()
         headers.add(name: .contentType, value: file.mimeType ?? "application/octet-stream")
@@ -269,6 +319,7 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
             folder: upload.folder,
             filename: upload.filename,
             data: data,
+            tenantSlug: req.perxTenantSlug(),
             source: .upload
         )
         
@@ -281,7 +332,7 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
             throw Abort(.badRequest, reason: "Missing file id")
         }
         
-        try await VaultManager.shared.deleteFile(id: id)
+        try await VaultManager.shared.deleteFile(id: id, tenantSlug: req.perxTenantSlug())
         return .noContent
     }
     
@@ -291,7 +342,7 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
             throw Abort(.badRequest, reason: "Missing file id")
         }
         
-        let file = try await VaultManager.shared.moveToExport(id: id)
+        let file = try await VaultManager.shared.moveToExport(id: id, tenantSlug: req.perxTenantSlug())
         return VaultFileDTO(from: file)
     }
     
@@ -302,7 +353,7 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
     // Lista job pendenti
     jobs.get("pending") { req async throws -> [JobDTO] in
         let limit = req.query[Int.self, at: "limit"] ?? 10
-        let pending = try await JobService.shared.getPendingJobs(limit: limit)
+        let pending = try await JobService.shared.getPendingJobs(limit: limit, tenantSlug: req.perxTenantSlug())
         return pending.map { JobDTO(from: $0) }
     }
     
@@ -312,7 +363,7 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
             throw Abort(.badRequest, reason: "Missing job id")
         }
         
-        guard let job = try await JobService.shared.getJob(id: id) else {
+        guard let job = try await JobService.shared.getJob(id: id, tenantSlug: req.perxTenantSlug()) else {
             throw Abort(.notFound, reason: "Job not found")
         }
         
@@ -325,7 +376,7 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
             throw Abort(.badRequest, reason: "Missing job id")
         }
         
-        let job = try await JobService.shared.startJob(id: id)
+        let job = try await JobService.shared.startJob(id: id, tenantSlug: req.perxTenantSlug())
         return JobDTO(from: job)
     }
     
@@ -335,7 +386,7 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
             throw Abort(.badRequest, reason: "Missing job id")
         }
         
-        let job = try await JobService.shared.completeJob(id: id)
+        let job = try await JobService.shared.completeJob(id: id, tenantSlug: req.perxTenantSlug())
         return JobDTO(from: job)
     }
     
@@ -346,7 +397,7 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
         }
         
         let failRequest = try req.content.decode(JobFailRequest.self)
-        let job = try await JobService.shared.failJob(id: id, errorMessage: failRequest.message)
+        let job = try await JobService.shared.failJob(id: id, errorMessage: failRequest.message, tenantSlug: req.perxTenantSlug())
         return JobDTO(from: job)
     }
     
@@ -362,7 +413,8 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
         let job = try await JobService.shared.createImportFolderJob(
             sinistroRef: request.sinistroRef,
             legacyPath: request.legacyPath,
-            priority: request.priority ?? 0
+            priority: request.priority ?? 0,
+            tenantSlug: req.perxTenantSlug()
         )
         return JobDTO(from: job)
     }
@@ -379,7 +431,8 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
         let job = try await JobService.shared.createExportFileJob(
             vaultFileId: request.vaultFileId,
             legacyPath: request.legacyPath,
-            priority: request.priority ?? 0
+            priority: request.priority ?? 0,
+            tenantSlug: req.perxTenantSlug()
         )
         return JobDTO(from: job)
     }
@@ -394,7 +447,8 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
         let request = try req.content.decode(ScanRequest.self)
         let job = try await JobService.shared.createScanLegacyJob(
             sinistroRef: request.sinistroRef,
-            legacyPath: request.legacyPath
+            legacyPath: request.legacyPath,
+            tenantSlug: req.perxTenantSlug()
         )
         return JobDTO(from: job)
     }
@@ -405,7 +459,8 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
             throw Abort(.badRequest, reason: "Missing job id")
         }
         
-        guard let job = try await JobService.shared.getJob(id: jobId) else {
+        let tenantSlug = req.perxTenantSlug()
+        guard let job = try await JobService.shared.getJob(id: jobId, tenantSlug: tenantSlug) else {
             throw Abort(.notFound, reason: "Job not found")
         }
         
@@ -431,11 +486,72 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
             folder: upload.folder,
             filename: upload.filename,
             data: data,
+            tenantSlug: tenantSlug,
             source: .importJob,
             sourceId: jobId
         )
         
         return VaultFileDTO(from: file)
+    }
+
+    // MARK: - Planner Routes
+
+    let planner = app.grouped("planner")
+
+    planner.get("settings") { req async throws -> AssignmentPlannerSettingsDTO in
+        try await AssignmentPlannerService.shared.getSettings(tenantSlug: req.perxTenantSlug())
+    }
+
+    planner.post("settings") { req async throws -> AssignmentPlannerSettingsDTO in
+        var settings = try req.content.decode(AssignmentPlannerSettingsDTO.self)
+        settings = AssignmentPlannerSettingsDTO(
+            tenantSlug: req.perxTenantSlug(),
+            planningHorizonDays: settings.planningHorizonDays,
+            defaultMonthlyTarget: settings.defaultMonthlyTarget,
+            maxLoadRatioPerExpert: settings.maxLoadRatioPerExpert,
+            rebalancePriorityMargin: settings.rebalancePriorityMargin,
+            workingPenalty: settings.workingPenalty,
+            offlinePenalty: settings.offlinePenalty,
+            enabled: settings.enabled
+        )
+        return try await AssignmentPlannerService.shared.updateSettings(settings)
+    }
+
+    planner.get("members") { req async throws -> [AssignmentMemberSettingsDTO] in
+        try await AssignmentPlannerService.shared.listMembers(tenantSlug: req.perxTenantSlug())
+    }
+
+    planner.post("members") { req async throws -> AssignmentMemberSettingsDTO in
+        let member = try req.content.decode(AssignmentMemberSettingsDTO.self)
+        let scopedMember = AssignmentMemberSettingsDTO(
+            tenantSlug: req.perxTenantSlug(),
+            email: member.email.lowercased(),
+            displayName: member.displayName,
+            assignedCompanies: member.assignedCompanies,
+            roleOverrides: member.roleOverrides,
+            monthlyClaimTarget: member.monthlyClaimTarget,
+            maxAuthority: member.maxAuthority,
+            preferredAgencyCodes: member.preferredAgencyCodes,
+            preferredPolicyNumbers: member.preferredPolicyNumbers,
+            preferredInsureds: member.preferredInsureds,
+            isActive: member.isActive
+        )
+        return try await AssignmentPlannerService.shared.upsertMember(scopedMember)
+    }
+
+    planner.get("plan") { req async throws -> AssignmentPlanDTO in
+        if let plan = try await AssignmentPlannerService.shared.currentPlan(tenantSlug: req.perxTenantSlug()) {
+            return plan
+        }
+        return AssignmentPlanDTO(tenantSlug: req.perxTenantSlug(), assignments: [], unassignedClaimReferences: [])
+    }
+
+    planner.post("recompute") { req async throws -> AssignmentPlanDTO in
+        let request = try? req.content.decode(AssignmentPlanRecomputeRequest.self)
+        return try await AssignmentPlannerService.shared.recomputePlan(
+            tenantSlug: req.perxTenantSlug(),
+            reason: request?.reason
+        )
     }
     
     // MARK: - Manifest Routes (per sync tracking)
@@ -2933,4 +3049,3 @@ struct WhatsAppMessageDTO: Content {
     let ackStatus: Int?
     let ackTimestamp: Date?
 }
-

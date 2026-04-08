@@ -51,7 +51,9 @@ struct AccountSelectorView: View {
         }
         .sheet(isPresented: $showingNewAccount) {
             NewAccountLoginView { success in
-                showingNewAccount = false
+                if success {
+                    showingNewAccount = false
+                }
             }
         }
         .sheet(isPresented: $showingPasscodeEntry) {
@@ -116,7 +118,7 @@ struct AccountSelectorView: View {
                 .font(.title)
                 .foregroundColor(.white)
             
-            Text("Accedi con il tuo account Google\nper iniziare a usare PerX")
+            Text("Configura backend, email e password\nper iniziare a usare PerX")
                 .font(.body)
                 .foregroundColor(.white.opacity(0.7))
                 .multilineTextAlignment(.center)
@@ -124,7 +126,7 @@ struct AccountSelectorView: View {
             Button {
                 showingNewAccount = true
             } label: {
-                Label("Accedi con Google", systemImage: "person.badge.plus")
+                Label("Aggiungi account", systemImage: "person.badge.plus")
                     .font(.headline)
                     .foregroundColor(.white)
                     .padding(.horizontal, 32)
@@ -206,12 +208,10 @@ struct AccountSelectorView: View {
         
         Task {
             do {
-                // Prova login con refresh token salvato
-                if let refreshToken = accountManager.getRefreshToken(for: account.email) {
-                    try await GoogleAuthServiceiOS.shared.signInWithRefreshToken(refreshToken)
+                if let password = accountManager.getPassword(for: account.email) {
+                    try await GoogleAuthServiceiOS.shared.signIn(email: account.email, password: password)
                 } else {
-                    // Nessun refresh token, serve nuovo login
-                    try await GoogleAuthServiceiOS.shared.signIn()
+                    throw GoogleAuthServiceiOS.AuthError.missingSavedCredentials
                 }
             } catch {
                 errorMessage = error.localizedDescription
@@ -338,8 +338,22 @@ struct NewAccountLoginView: View {
     let onComplete: (Bool) -> Void
     
     @Environment(\.dismiss) private var dismiss
+    @State private var backendURL: String
+    @State private var email: String
+    @State private var password: String
     @State private var isLoggingIn = false
     @State private var errorMessage: String?
+
+    init(
+        onComplete: @escaping (Bool) -> Void,
+        initialEmail: String = "",
+        initialPassword: String = ""
+    ) {
+        self.onComplete = onComplete
+        _backendURL = State(initialValue: Self.defaultBackendURL())
+        _email = State(initialValue: initialEmail)
+        _password = State(initialValue: initialPassword)
+    }
     
     var body: some View {
         NavigationStack {
@@ -357,10 +371,30 @@ struct NewAccountLoginView: View {
                         .font(.title)
                         .foregroundColor(.white)
                     
-                    Text("Accedi con il tuo account Google aziendale")
+                    Text("Accedi con email e password del backend PerX")
                         .font(.body)
                         .foregroundColor(.white.opacity(0.7))
                         .multilineTextAlignment(.center)
+
+                    VStack(spacing: 14) {
+                        TextField("URL backend", text: $backendURL)
+                            .textContentType(.URL)
+                            .keyboardType(.URL)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .textFieldStyle(.roundedBorder)
+
+                        TextField("Email", text: $email)
+                            .textContentType(.username)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .textFieldStyle(.roundedBorder)
+
+                        SecureField("Password", text: $password)
+                            .textContentType(.password)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    .frame(maxWidth: 420)
                     
                     Button {
                         performLogin()
@@ -370,20 +404,30 @@ struct NewAccountLoginView: View {
                                 ProgressView()
                                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
                             } else {
-                                Image(systemName: "g.circle.fill")
-                                    .font(.title2)
+                                Image(systemName: "arrow.right.circle.fill")
+                                    .font(.title3)
                             }
                             
-                            Text("Continua con Google")
+                            Text("Accedi e salva account")
                                 .font(.headline)
                         }
                         .foregroundColor(.white)
-                        .frame(maxWidth: 300)
+                        .frame(maxWidth: 320)
                         .padding(.vertical, 16)
                         .background(Color.blue)
                         .cornerRadius(12)
                     }
-                    .disabled(isLoggingIn)
+                    .disabled(
+                        isLoggingIn ||
+                        email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                        password.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    )
+
+                    Text("L'URL backend resta condiviso su questo iPad. In simulatore, se vuoto, viene proposto `http://127.0.0.1:8000`.")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.55))
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 420)
                     
                     if let error = errorMessage {
                         Text(error)
@@ -409,19 +453,46 @@ struct NewAccountLoginView: View {
     }
     
     private func performLogin() {
+        let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let normalizedPassword = password.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedBackendURL = backendURL.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !normalizedEmail.isEmpty, !normalizedPassword.isEmpty else {
+            errorMessage = "Inserisci email e password."
+            return
+        }
+
         isLoggingIn = true
         errorMessage = nil
         
         Task {
             do {
-                try await GoogleAuthServiceiOS.shared.signIn()
+                try await GoogleAuthServiceiOS.shared.signIn(
+                    email: normalizedEmail,
+                    password: normalizedPassword,
+                    baseURL: normalizedBackendURL
+                )
                 onComplete(true)
+                dismiss()
             } catch {
                 errorMessage = error.localizedDescription
                 onComplete(false)
             }
             isLoggingIn = false
         }
+    }
+
+    private static func defaultBackendURL() -> String {
+        let saved = HubAPIClient.shared.cloudAPIBaseURL
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if !saved.isEmpty {
+            return saved
+        }
+        #if targetEnvironment(simulator)
+        return "http://127.0.0.1:8000"
+        #else
+        return ""
+        #endif
     }
 }
 

@@ -224,7 +224,7 @@ class ControlHandler: BaseEmailHandler {
         let maxTimeWindow: TimeInterval = 5 * 60 // 5 minuti
         let endDate = afterDate.addingTimeInterval(maxTimeWindow)
         
-        // Estrai dominio dello studio dalla mail di revisione (info@actsrl.it -> actsrl.it)
+        // Estrai dominio del tenant dalla mail di revisione
         // EmailRepository è @MainActor, quindi dobbiamo chiamarlo da MainActor
         let revisionEmail = await MainActor.run {
             EmailRepository.shared.getEmail(byId: revisionEmailId)

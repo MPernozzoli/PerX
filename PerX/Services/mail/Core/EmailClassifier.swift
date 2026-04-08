@@ -4,20 +4,7 @@ import Foundation
 /// Analizza subject, sender, body e attachments per determinare la categoria
 class EmailClassifier {
     static let shared = EmailClassifier()
-    
-    // MARK: - Configuration
-    
-    /// Domini email dello studio (noi)
-    private let studioDomains = [
-        "manivaperizie.it",
-        "studioperizie.it"
-        // Aggiungi altri domini se necessario
-    ]
-    
-    /// Email della compagnia mandante
-    private let companyEmails = [
-        "info@actsrl.it"
-    ]
+    private let tenantMailSettings = TenantMailSettingsService.shared
     
     /// Domini agenzie
     private let agencyDomainPatterns = [
@@ -95,10 +82,8 @@ class EmailClassifier {
         }
         
         // PRIORITÀ 2: Se il mittente è uno dei nostri domini, è outbound
-        for domain in studioDomains {
-            if senderEmail.contains(domain) {
-                return .outbound
-            }
+        if tenantMailSettings.isInternalEmail(senderEmail) {
+            return .outbound
         }
         
         return .inbound
@@ -107,9 +92,8 @@ class EmailClassifier {
     // MARK: - Sender Type Detection
     
     private func determineSenderType(senderEmail: String, subject: String, body: String) -> EmailSenderType {
-        // Compagnia mandante
-        if companyEmails.contains(senderEmail) {
-            return .company
+        if tenantMailSettings.isInternalEmail(senderEmail) {
+            return .studio
         }
         
         // Verifica pattern nel dominio
@@ -137,7 +121,7 @@ class EmailClassifier {
         }
         
         // Studio (noi)
-        for studioDomain in studioDomains {
+        for studioDomain in tenantMailSettings.allInternalDomains() {
             if domain.contains(studioDomain) {
                 return .studio
             }
@@ -176,55 +160,25 @@ class EmailClassifier {
         
         var matchedPatterns: [String] = []
         
-        // MARK: - Inbound from Company (alta priorità)
-        
-        if senderType == .company || companyEmails.contains(senderEmail) || senderEmail.lowercased() == "info@actsrl.it" {
-            // Assegnazione perito (due varianti)
+        if subject.contains("perizia controllata") {
             let subjectLower = subject.lowercased()
-            if subjectLower.contains("assegnazione perito") || 
-               (subjectLower.contains("assegnazione") && subjectLower.hasSuffix(":")) {
-                matchedPatterns.append("assegnazione")
-                return (.assignment, 0.95, matchedPatterns)
-            }
-            
-            // Revoca (tre varianti)
-            // Variante 1: "Revoca incarico videoperizia per sinistro..."
-            // Variante 2: "Revoca incarico per sinistro..."
-            // Variante 3: "...REVOCA INCARICO"
-            if subjectLower.contains("revoca incarico") || 
-               subjectLower.contains("revoca videoperizia") ||
-               subjectLower.contains("revoca incarico") ||
-               (subjectLower.contains("sinistro") && subjectLower.contains("revoca incarico")) {
-                matchedPatterns.append("revoca incarico")
-                return (.revocation, 0.95, matchedPatterns)
-            }
-            
-            // Perizia controllata
-            // Pattern: "perizia controllata: [riferimento] - [nome assicurato]" (no body needed)
-            if subject.contains("perizia controllata") {
-                // Verifica pattern specifico con riferimento e nome assicurato
-                let subjectLower = subject.lowercased()
-                if subjectLower.contains("perizia controllata:") || 
-                   (subjectLower.contains("perizia controllata") && subjectLower.contains("-")) {
-                    matchedPatterns.append("perizia controllata")
-                    return (.controlled, 0.95, matchedPatterns)
-                }
-                // Pattern generico
+            if subjectLower.contains("perizia controllata:") ||
+               (subjectLower.contains("perizia controllata") && subjectLower.contains("-")) {
                 matchedPatterns.append("perizia controllata")
-                return (.controlled, 0.9, matchedPatterns)
+                return (.controlled, 0.95, matchedPatterns)
             }
-            
-            // Richiesta revisione - pattern specifico prioritario
-            if subject.contains("perizia da revisionare") {
-                matchedPatterns.append("perizia da revisionare")
-                return (.revisionRequested, 0.98, matchedPatterns) // Alta confidenza per pattern specifico
-            }
-            
-            // Richiesta revisione (pattern generico)
-            if subject.contains("richiesta revisione") || subject.contains("revisione perizia") {
-                matchedPatterns.append("richiesta revisione")
-                return (.revisionRequested, 0.9, matchedPatterns)
-            }
+            matchedPatterns.append("perizia controllata")
+            return (.controlled, 0.9, matchedPatterns)
+        }
+
+        if subject.contains("perizia da revisionare") {
+            matchedPatterns.append("perizia da revisionare")
+            return (.revisionRequested, 0.98, matchedPatterns)
+        }
+
+        if subject.contains("richiesta revisione") || subject.contains("revisione perizia") {
+            matchedPatterns.append("richiesta revisione")
+            return (.revisionRequested, 0.9, matchedPatterns)
         }
         
         // MARK: - Acts (Atti)
@@ -511,28 +465,7 @@ class EmailClassifier {
     
     /// Verifica se l'email proviene da un dominio interno dello studio o email associata
     private func isFromStudio(senderEmail: String) -> Bool {
-        let senderLower = senderEmail.lowercased()
-        
-        // Verifica domini studio
-        for domain in studioDomains {
-            if senderLower.contains(domain) {
-                return true
-            }
-        }
-        
-        // Verifica domini partner noti
-        let partnerDomains = [
-            "actsrl.it",
-            "allconsulting.org"
-        ]
-        
-        for domain in partnerDomains {
-            if senderLower.contains(domain) {
-                return true
-            }
-        }
-        
-        return false
+        tenantMailSettings.isInternalEmail(senderEmail.lowercased())
     }
     
     // MARK: - Reference Extraction
@@ -598,4 +531,3 @@ class EmailClassifier {
         return Dictionary(grouping: classifiedEmails, by: { $0.category })
     }
 }
-

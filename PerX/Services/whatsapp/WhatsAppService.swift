@@ -9,7 +9,7 @@ class WhatsAppService: ObservableObject {
     
     /// WhatsApp è disponibile solo se l'Hub è raggiungibile
     static var isAvailable: Bool {
-        !HubConfigService.shared.hubBaseURL.isEmpty
+        !HubConfigService.shared.resolvedHubBaseURL().isEmpty
     }
     
     // MARK: - Published Properties

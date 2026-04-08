@@ -426,68 +426,6 @@ struct WhatsAppThreadDetailView: View {
     }
 }
 
-// MARK: - Compose WhatsApp View
-
-struct ComposeWhatsAppView: View {
-    @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject var session: SessionCoordinator
-    
-    @State private var phoneNumber = ""
-    @State private var message = ""
-    @State private var isSending = false
-    
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("Destinatario") {
-                    TextField("Numero di telefono", text: $phoneNumber)
-                        .keyboardType(.phonePad)
-                }
-                
-                Section("Messaggio") {
-                    TextEditor(text: $message)
-                        .frame(minHeight: 150)
-                }
-            }
-            .navigationTitle("Nuovo Messaggio")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Annulla") { dismiss() }
-                }
-                
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Invia") {
-                        Task { await sendMessage() }
-                    }
-                    .disabled(!canSend || isSending)
-                }
-            }
-        }
-    }
-    
-    private var canSend: Bool {
-        !phoneNumber.isEmpty && !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-    
-    private func sendMessage() async {
-        isSending = true
-        defer { isSending = false }
-        
-        do {
-            _ = try await HubOutboxService.shared.sendWhatsApp(
-                phoneNumber: phoneNumber,
-                chatId: nil,
-                message: message.trimmingCharacters(in: .whitespacesAndNewlines),
-                sinistroRiferimento: nil
-            )
-            dismiss()
-        } catch {
-            print("Errore invio: \(error)")
-        }
-    }
-}
-
 // MARK: - iPadCloudKitSyncService Extension
 
 extension iPadCloudKitSyncService {

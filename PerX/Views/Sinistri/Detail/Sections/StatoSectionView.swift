@@ -191,10 +191,13 @@ struct StatoSectionView: View {
         let validTransitions = currentStato.validTransitions
         let validStates = validTransitions.compactMap { transitionEnum -> StatoManager.StatoInfo? in
             statoManager.allAvailableStates.first { $0.id == transitionEnum.id }
-        }
+        }.filter { statoManager.canCurrentUserAccess(stateInfo: $0) }
         
         let customStates = statoManager.allAvailableStates.filter { stato in
-            !stato.isSystem && stato.isActive && !validStates.contains(where: { $0.id == stato.id })
+            !stato.isSystem &&
+            stato.isActive &&
+            statoManager.canCurrentUserAccess(stateInfo: stato) &&
+            !validStates.contains(where: { $0.id == stato.id })
         }
         
         return validStates + customStates
@@ -203,9 +206,9 @@ struct StatoSectionView: View {
     private func getAllStatesOrdered() -> [StatoManager.StatoInfo] {
         let allStates = statoManager.allAvailableStates.filter { stato in
             if let systemState = StatoManager.StatoSinistro(rawValue: stato.id) {
-                return systemState.isVisible && !systemState.isSystem
+                return systemState.isVisible && !systemState.isSystem && statoManager.canCurrentUserAccess(stateInfo: stato)
             }
-            return stato.isActive && !stato.isSystem
+            return stato.isActive && !stato.isSystem && statoManager.canCurrentUserAccess(stateInfo: stato)
         }
         
         return allStates.sorted { stato1, stato2 in

@@ -180,6 +180,7 @@ public class Sinistro: NSManagedObject, Identifiable {
     @NSManaged public var dataSinistro: Date?
     @NSManaged public var dannoAccertatoNetto: NSDecimalNumber?
     @NSManaged public var tags: NSSet?
+    @NSManaged public var garanzia: String?
     @NSManaged public var fulminazione: String?
     @NSManaged public var gruppo: String?
     @NSManaged public var area: String?

@@ -327,12 +327,73 @@ struct iPadConsuntivoView: View {
     private func loadStats() async {
         isLoading = true
         defer { isLoading = false }
-        
-        // Dati da CloudKit (tramite sync service)
-        await loadStatsFromCloudKit()
+
+        if session.hubClient.isCloudConfigured {
+            do {
+                try await loadStatsFromCloud()
+                return
+            } catch {
+                dataSource = "Fallback locale"
+                print("[iPadConsuntivo] ⚠️ Consuntivo cloud fallito, fallback locale: \(error)")
+            }
+        }
+
+        await loadStatsFromLocalSnapshot()
     }
-    
-    private func loadStatsFromCloudKit() async {
+
+    private func loadStatsFromCloud() async throws {
+        let response = try await session.hubClient.getMonthlyConsuntivoFromCloud(year: anno, month: mese)
+        dailyStats = response.daily_stats.map {
+            StatisticheGiorno(
+                anno: response.anno,
+                mese: response.mese,
+                giorno: $0.giorno,
+                assegnazioni: $0.assegnazioni,
+                chiusure: $0.chiusure,
+                attiInviati: $0.atti_inviati
+            )
+        }
+
+        companyStats = response.company_stats.map {
+            StatisticheCompagnia(
+                codiceCompagnia: $0.codice_compagnia,
+                nomeCompagnia: $0.nome_compagnia,
+                gruppoCompagnia: $0.gruppo_compagnia,
+                assegnazioni: $0.assegnazioni,
+                chiusure: $0.chiusure,
+                attiInviati: $0.atti_inviati,
+                liquidatoTotale: $0.liquidato_totale
+            )
+        }
+
+        stats = ConsuntivoStats(
+            sinistriAssegnati: response.sinistri_assegnati,
+            sinistriChiusi: response.sinistri_chiusi,
+            totLiquidato: response.tot_liquidato,
+            totCompensi: response.tot_compensi,
+            totDanno: response.tot_danno,
+            attiInviati: response.atti_inviati,
+            mediaGiornaliera: response.media_giornaliera,
+            sinistriDelMese: response.sinistri_del_mese.map {
+                SinistroMinimal(
+                    id: $0.id,
+                    riferimento: $0.riferimento,
+                    stato: $0.stato,
+                    nomeAssicurato: $0.nome_assicurato,
+                    nomeCompagnia: $0.nome_compagnia,
+                    dataAssegnazione: $0.data_assegnazione,
+                    dataChiusura: $0.data_chiusura,
+                    stimaDanno: $0.stima_danno ?? $0.liquidato,
+                    substate: nil,
+                    fulminazione: true
+                )
+            }
+        )
+
+        dataSource = response.scope == "mine" ? "Cloud API" : "Cloud API (\(response.scope))"
+    }
+
+    private func loadStatsFromLocalSnapshot() async {
         let sinistri = session.cloudKitSyncService?.sinistri ?? []
         let calendar = Calendar.current
         let monthStart = calendar.date(from: calendar.dateComponents([.year, .month], from: selectedMonth))!
@@ -416,8 +477,8 @@ struct iPadConsuntivoView: View {
             mediaGiornaliera: chiusiNelMese.isEmpty ? 0 : Double(chiusiNelMese.count) / 22.0,
             sinistriDelMese: sinistriDelMese
         )
-        
-        dataSource = "CloudKit"
+
+        dataSource = session.cloudKitSyncService?.dataSource.rawValue ?? "Locale"
     }
     
     private func formatCurrency(_ value: Double) -> String {

@@ -67,9 +67,11 @@ class Claim(Base):
     numero_polizza = Column(String, nullable=True)
     tipo_polizza = Column(String, nullable=True)
     divisione_compagnia = Column(String, nullable=True)
+    garanzia = Column(String, nullable=False, default="Fenomeno Elettrico")
     
     # Flags
     iban = Column(Boolean, default=False, nullable=False)
+    iban_value = Column(String, nullable=True)
     sinistro_collegato = Column(Boolean, default=False, nullable=False)
     id_sinistro_collegato = Column(String, nullable=True)
     sopralluogo = Column(Boolean, default=False, nullable=False)
@@ -101,4 +103,3 @@ class Claim(Base):
         Index("idx_claims_tenant_stato", "tenant_id", "stato_corrente"),
         Index("idx_claims_tenant_created", "tenant_id", "created_at"),
     )
-

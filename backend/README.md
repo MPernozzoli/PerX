@@ -2,6 +2,23 @@
 
 Backend FastAPI per la piattaforma cloud-first di gestione sinistri PerX.
 
+## Supabase
+
+Il backend e' predisposto per usare Supabase come database Postgres gestito.
+
+1. Copia `backend/.env.example` in `backend/.env` se non esiste.
+2. Imposta `DATABASE_URL` con la connection string Postgres di Supabase.
+3. Imposta `SUPABASE_URL`, `SUPABASE_ANON_KEY` e `SUPABASE_SERVICE_ROLE_KEY`.
+4. Esegui le migration Alembic dal folder `backend/`.
+
+Esempio:
+
+```bash
+cd backend
+alembic upgrade head
+uvicorn app.main:app --reload
+```
+
 ## Struttura
 
 ```
@@ -34,7 +51,7 @@ pip install -r requirements.txt
 2. Configure environment:
 ```bash
 cp .env.example .env
-# Edit .env with your settings
+# Edit .env with your settings / Supabase credentials
 ```
 
 3. Run migrations:
@@ -51,12 +68,39 @@ uvicorn app.main:app --reload
 
 - `POST /api/v1/auth/login` - Login
 - `GET /api/v1/auth/me` - Current user info
+- `GET /api/v1/admin/tenants` - Lista tenant, solo platform admin
+- `GET /api/v1/admin/users` - Lista utenti cross-tenant, solo platform admin
+- `GET /api/v1/tenants/me/settings` - Legge le impostazioni tenant per tenant admin o platform admin
+- `PUT /api/v1/tenants/me/settings` - Aggiorna le impostazioni tenant per tenant admin o platform admin
 - `GET /api/v1/claims` - List claims
 - `POST /api/v1/claims` - Create claim
 - `GET /api/v1/claims/{id}` - Get claim
 - `PUT /api/v1/claims/{id}` - Update claim
 - `POST /api/v1/claims/{id}/state-transitions` - Change state
 - `GET /api/v1/claims/{id}/events` - Get timeline
+- `POST /api/v1/portal/claims/{id}/access-links` - Genera link di accesso portale per un assicurato
+- `POST /api/v1/portal/auth/start` - Avvia challenge pubblico per accesso assicurato
+- `POST /api/v1/portal/auth/exchange` - Scambia magic link con sessione portale
+- `GET /api/v1/portal/claims` - Elenca tutti i sinistri accessibili allo stesso assicurato
+- `GET /api/v1/portal/claim` - Dashboard assicurato sul proprio sinistro
+- `GET /api/v1/portal/claim/inspection-scheduling` - Restituisce stato, posizione e disponibilita sopralluogo
+- `PUT /api/v1/portal/claim/inspection-scheduling/location` - Conferma indirizzo e coordinate del sopralluogo
+- `PUT /api/v1/portal/claim/inspection-scheduling/preferences` - Salva le finestre preferite dell'assicurato
+
+## Portale assicurati
+
+Il backend include ora un perimetro dedicato al portale web assicurati:
+
+- modelli separati per accessi portale, challenge, documentale, firma, IBAN e chat esterna;
+- token di sessione distinti rispetto agli utenti interni;
+- endpoint dedicati sotto `/api/v1/portal`;
+- instradamento dei messaggi assicurato -> team interno tramite il sistema chat esistente;
+- integrazione del workflow CAT per fissazione sopralluoghi lato assicurato;
+- architettura pronta per integrare invio e-mail automatico, SMS OTP e upload firmati storage.
+
+In ambiente `dev` e con `PORTAL_DEV_CLAIM_REFERENCE_ONLY_AUTH=True`, il portale puo creare al volo un accesso partendo dal solo riferimento sinistro e mostrare direttamente il magic link di anteprima senza ulteriori verifiche. Questa scorciatoia e pensata solo per sviluppo locale.
+
+Per il dettaglio funzionale e dei flussi, vedere anche `Documentation/insured-portal-architecture.md`.
 
 ## Deployment
 
@@ -70,3 +114,9 @@ Run container:
 docker run -p 8080:8080 --env-file .env perx-cloud-api
 ```
 
+## Multi-tenant e platform admin
+
+- Ogni studio peritale corrisponde a un tenant applicativo.
+- Gli utenti standard vedono solo i dati del proprio tenant.
+- L'account `info@pynkstudio.it` viene inizializzato come `is_platform_admin=true` e puo' accedere ai dati di tutti i tenant.
+- Gli endpoint claims supportano il query param `tenant_id` solo per il platform admin; senza parametro il platform admin vede tutti i tenant.

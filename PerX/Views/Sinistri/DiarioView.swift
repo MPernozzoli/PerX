@@ -77,6 +77,7 @@ struct DiarioView: View {
     @State private var parsedTags: [ParsedTag] = []
     
     private let diarioService = DiarioService.shared
+    private let cloudContent = CloudContentAdapter.shared
     
     // MARK: - Owner Check (per push CloudKit quando non-owner)
     
@@ -380,6 +381,11 @@ struct DiarioView: View {
     
     private func loadEntries() async {
         isLoading = true
+
+        if cloudContent.isConfigured, let riferimento = sinistro.riferimento {
+            await loadEntriesFromCloud(riferimento: riferimento)
+            return
+        }
         
         // Carica PRIMA le entry salvate dal CoreData e mostra subito
         var savedEntries: [DiarioEntryViewModel] = []
@@ -565,6 +571,61 @@ struct DiarioView: View {
         
         await MainActor.run {
             unprocessedEmailsCount = unprocessedCount
+        }
+    }
+
+    private func loadEntriesFromCloud(riferimento: String) async {
+        defer {
+            Task { @MainActor in
+                isLoading = false
+            }
+        }
+
+        do {
+            async let diaryTask = cloudContent.getDiaryEntries(sinistroRef: riferimento)
+            async let emailTask = EmailAdapter.shared.getEmails(sinistroRef: riferimento)
+
+            let (cloudEntries, cloudEmails) = try await (diaryTask, emailTask)
+
+            var mappedDiary = cloudEntries.map { entry in
+                DiarioEntryViewModel(
+                    id: UUID(uuidString: entry.id) ?? UUID(),
+                    timestamp: entry.happened_at,
+                    tipo: mapDiaryType(entry.entry_type),
+                    titolo: entry.title ?? "Nota",
+                    riassunto: entry.body_text ?? "",
+                    contenutoCompleto: entry.body_text ?? "",
+                    email: nil,
+                    emailMessageId: nil
+                )
+            }
+
+            let mappedEmails = cloudEmails.map { email in
+                DiarioEntryViewModel(
+                    id: UUID(uuidString: email.id) ?? UUID(),
+                    timestamp: email.date,
+                    tipo: .email,
+                    titolo: email.subject,
+                    riassunto: email.subject,
+                    contenutoCompleto: email.subject,
+                    email: nil,
+                    emailMessageId: email.id
+                )
+            }
+
+            mappedDiary.append(contentsOf: mappedEmails)
+            mappedDiary.sort { $0.timestamp < $1.timestamp }
+
+            await MainActor.run {
+                entries = mappedDiary
+                unprocessedEmailsCount = 0
+            }
+        } catch {
+            print("[DiarioView] Cloud load failed: \(error.localizedDescription)")
+            await MainActor.run {
+                entries = []
+                unprocessedEmailsCount = 0
+            }
         }
     }
     
@@ -761,6 +822,37 @@ struct DiarioView: View {
         // Crea entry ID per tracking PRIMA di processare
         let entryId = UUID()
         let actorEmail = currentUserEmail
+
+        if cloudContent.isConfigured, let riferimento = sinistro.riferimento {
+            do {
+                let created = try await cloudContent.createDiaryNote(
+                    sinistroRef: riferimento,
+                    title: titolo,
+                    body: noteText,
+                    happenedAt: Date()
+                )
+
+                let newEntry = DiarioEntryViewModel(
+                    id: UUID(uuidString: created.id) ?? entryId,
+                    timestamp: created.happened_at,
+                    tipo: .notaUtente,
+                    titolo: titolo,
+                    riassunto: riassunto,
+                    contenutoCompleto: noteText
+                )
+
+                await MainActor.run {
+                    entries.append(newEntry)
+                    entries.sort { $0.timestamp < $1.timestamp }
+                    newNoteText = ""
+                    parsedTags = []
+                    isGeneratingSummary = false
+                }
+                return
+            } catch {
+                print("[DiarioView] Cloud save failed, fallback locale: \(error.localizedDescription)")
+            }
+        }
         
         // Crea e salva entry nel CoreData (con createdByEmail per tracciamento notifiche)
         let diarioEntry = DiarioEntry(
@@ -816,6 +908,15 @@ struct DiarioView: View {
             parsedTags = []
             isGeneratingSummary = false
         }
+    }
+
+    private func mapDiaryType(_ value: String) -> DiarioEntryType {
+        let normalized = value.lowercased()
+        if normalized.contains("email") { return .email }
+        if normalized.contains("whatsapp") { return .whatsapp }
+        if normalized.contains("state") || normalized.contains("stato") { return .cambioStato }
+        if normalized.contains("system") || normalized.contains("sistema") { return .sistema }
+        return .notaUtente
     }
 }
 

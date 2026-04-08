@@ -25,6 +25,7 @@ final class iPadCloudKitSyncService: ObservableObject {
     
     enum DataSource: String {
         case none = "Non connesso"
+        case cloudAPI = "Cloud API"
         case hub = "Hub"
         case cloudKit = "CloudKit"
     }
@@ -94,7 +95,18 @@ final class iPadCloudKitSyncService: ObservableObject {
             lastSyncAt = Date()
         }
         
-        // Prova prima Hub, poi CloudKit come fallback
+        // Prova prima Cloud API, poi Hub, poi CloudKit come fallback finale
+        do {
+            if hubClient.isCloudConfigured {
+                try await fetchSinistriFromCloudAPI()
+                dataSource = .cloudAPI
+                print("[iPadSync] ✅ Sync da Cloud API completato: \(sinistri.count) sinistri")
+                return
+            }
+        } catch {
+            print("[iPadSync] ⚠️ Cloud API non disponibile, provo Hub: \(error)")
+        }
+
         do {
             try await fetchSinistriFromHub()
             dataSource = .hub
@@ -115,7 +127,26 @@ final class iPadCloudKitSyncService: ObservableObject {
     }
     
     // MARK: - Hub Fetch
-    
+
+    private func fetchSinistriFromCloudAPI() async throws {
+        let dtos = try await hubClient.getSinistriFromCloud()
+
+        sinistri = dtos.map { dto in
+            SinistroMinimal(
+                id: dto.riferimento,
+                riferimento: dto.riferimento,
+                stato: dto.stato,
+                nomeAssicurato: dto.nomeAssicurato,
+                nomeCompagnia: dto.nomeCompagnia,
+                dataAssegnazione: dto.dataAssegnazione,
+                dataChiusura: dto.dataChiusura,
+                stimaDanno: dto.stimaDanno,
+                substate: dto.statoDetail,
+                fulminazione: dto.garanzia == "Fenomeno Elettrico"
+            )
+        }
+    }
+
     private func fetchSinistriFromHub() async throws {
         let dtos = try await hubClient.getSinistri()
         
@@ -130,7 +161,7 @@ final class iPadCloudKitSyncService: ObservableObject {
                 dataChiusura: dto.dataChiusura,
                 stimaDanno: dto.stimaDanno,
                 substate: dto.statoDetail,
-                fulminazione: false // TODO: aggiungere campo in SinistroDTO
+                fulminazione: dto.garanzia == "Fenomeno Elettrico"
             )
         }
     }
@@ -149,6 +180,15 @@ final class iPadCloudKitSyncService: ObservableObject {
     // MARK: - Sinistro Full (on-demand)
     
     func fetchSinistroFull(riferimento: String) async throws -> SinistroFull? {
+        if hubClient.isCloudConfigured {
+            do {
+                let dto = try await hubClient.getSinistroFromCloud(riferimento: riferimento)
+                return SinistroFull(from: dto)
+            } catch {
+                print("[iPadSync] ⚠️ Cloud API dettaglio fallita, provo Hub: \(error)")
+            }
+        }
+
         // Prova Hub prima
         do {
             let dto = try await hubClient.getSinistro(riferimento: riferimento)
@@ -168,6 +208,14 @@ final class iPadCloudKitSyncService: ObservableObject {
     // MARK: - Diario
     
     func fetchDiarioEntries(riferimento: String) async throws -> [DiarioEntryDTO] {
+        if hubClient.isCloudConfigured {
+            do {
+                return try await hubClient.getDiarioEntriesFromCloud(riferimento: riferimento)
+            } catch {
+                print("[iPadSync] ⚠️ Cloud API diario fallita, provo Hub: \(error)")
+            }
+        }
+
         // Prova Hub prima
         do {
             let hubEntries = try await hubClient.getDiarioEntries(riferimento: riferimento)
@@ -186,6 +234,13 @@ final class iPadCloudKitSyncService: ObservableObject {
     /// Aggiunge nota al diario tramite Hub
     func addDiarioEntry(riferimento: String, testo: String, tipo: String = "nota") async throws -> DiarioEntryDTO {
         let request = CreateDiarioEntryRequest(tipo: tipo, titolo: nil, testo: testo)
+        if hubClient.isCloudConfigured {
+            do {
+                return try await hubClient.addDiarioEntryToCloud(riferimento: riferimento, entry: request)
+            } catch {
+                print("[iPadSync] ⚠️ Cloud API add diario fallita, provo Hub: \(error)")
+            }
+        }
         let hubEntry = try await hubClient.addDiarioEntry(riferimento: riferimento, entry: request)
         return DiarioEntryDTO(from: hubEntry)
     }
@@ -193,6 +248,14 @@ final class iPadCloudKitSyncService: ObservableObject {
     // MARK: - Email processate
     
     func fetchProcessedEmails(riferimento: String) async throws -> [ProcessedEmailDTO] {
+        if hubClient.isCloudConfigured {
+            do {
+                return try await hubClient.getProcessedEmailsFromCloud(riferimento: riferimento)
+            } catch {
+                print("[iPadSync] ⚠️ Cloud API email fallita, provo CloudKit: \(error)")
+            }
+        }
+
         // Per ora solo CloudKit - Hub non ha endpoint email processate
         let predicate = NSPredicate(format: "sinistroRiferimento == %@", riferimento)
         let query = CKQuery(recordType: RecordType.processedEmail, predicate: predicate)
@@ -547,7 +610,7 @@ struct SinistroFull: Identifiable, Codable {
         self.dataAccettazioneVerbale = nil
         self.dataRevoca = nil
         self.dataPagamentoPremio = nil
-        self.fulminazione = nil
+        self.fulminazione = dto.garanzia
         self.sopralluogo = false
         self.giustificativi = false
         self.iban = false
@@ -657,6 +720,16 @@ struct DiarioEntryDTO: Identifiable, Codable {
         self.contenutoCompleto = record["contenutoCompleto"] as? String
         self.createdBy = record["createdBy"] as? String
     }
+
+    init(from dto: CloudDiaryEntryDTO) {
+        self.id = dto.id
+        self.timestamp = dto.happened_at
+        self.tipo = dto.entry_type
+        self.titolo = dto.title
+        self.riassunto = dto.body_text ?? ""
+        self.contenutoCompleto = dto.body_text
+        self.createdBy = dto.created_by_user_id
+    }
 }
 
 struct ProcessedEmailDTO: Identifiable, Codable, Hashable {
@@ -696,6 +769,25 @@ struct ProcessedEmailDTO: Identifiable, Codable, Hashable {
         self.isRead = record["isRead"] as? Bool ?? true
         self.hasAttachments = record["hasAttachments"] as? Bool ?? false
         self.attachments = (record["attachments"] as? [String]) ?? []
+    }
+
+    init(from dto: CloudEmailDTO, sinistroRiferimento: String?) {
+        self.id = dto.id
+        self.messageId = dto.message_id
+        self.subject = dto.subject ?? ""
+        self.from = dto.from_address
+        self.to = []
+        self.cc = []
+        self.date = dto.received_at
+        self.category = dto.status
+        self.sinistroRiferimento = sinistroRiferimento
+        self.sinistroAssicurato = nil
+        self.bodyText = dto.body_text
+        self.bodyHtml = dto.body_html
+        self.folder = dto.mailbox_id
+        self.isRead = true
+        self.hasAttachments = false
+        self.attachments = []
     }
     
     // Convenience initializer for local creation

@@ -11,7 +11,7 @@ extension CKDatabase {
     /// - Parameter record: Il record da salvare
     /// - Returns: Il record salvato
     func saveRecordAsync(_ record: CKRecord) async throws -> CKRecord {
-        try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<CKRecord, Error>) in
             self.save(record) { saved, error in
                 if let error {
                     continuation.resume(throwing: error)
@@ -27,7 +27,7 @@ extension CKDatabase {
     /// - Returns: Il record recuperato
     /// - Throws: Errore se il record non esiste o in caso di errore di rete
     func fetchRecordAsync(_ recordID: CKRecord.ID) async throws -> CKRecord {
-        try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<CKRecord, Error>) in
             self.fetch(withRecordID: recordID) { record, error in
                 if let error {
                     continuation.resume(throwing: error)
@@ -46,7 +46,7 @@ extension CKDatabase {
     /// - Parameter recordID: L'ID del record da recuperare
     /// - Returns: Il record recuperato o nil se non esiste
     func fetchRecordIfExists(_ recordID: CKRecord.ID) async throws -> CKRecord? {
-        try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<CKRecord?, Error>) in
             self.fetch(withRecordID: recordID) { record, error in
                 if let error {
                     if let ckError = error as? CKError, ckError.code == .unknownItem {
@@ -65,7 +65,7 @@ extension CKDatabase {
     /// - Parameter query: La query da eseguire
     /// - Returns: Array di record trovati
     func performQueryAsync(_ query: CKQuery) async throws -> [CKRecord] {
-        try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[CKRecord], Error>) in
             self.perform(query, inZoneWith: nil) { records, error in
                 if let error {
                     continuation.resume(throwing: error)
@@ -94,7 +94,7 @@ extension CKDatabase {
     /// - Parameter recordID: L'ID del record da eliminare
     /// - Returns: L'ID del record eliminato
     func deleteRecordReturningIDAsync(_ recordID: CKRecord.ID) async throws -> CKRecord.ID {
-        try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<CKRecord.ID, Error>) in
             self.delete(withRecordID: recordID) { deletedID, error in
                 if let error {
                     continuation.resume(throwing: error)
@@ -112,7 +112,7 @@ extension CKContainer {
     
     /// Recupera lo stato dell'account iCloud in modo asincrono.
     func accountStatusAsync() async throws -> CKAccountStatus {
-        try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<CKAccountStatus, Error>) in
             self.accountStatus { status, error in
                 if let error {
                     continuation.resume(throwing: error)
@@ -125,7 +125,7 @@ extension CKContainer {
     
     /// Recupera l'ID del record utente corrente.
     func fetchUserRecordIDAsync() async throws -> CKRecord.ID {
-        try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<CKRecord.ID, Error>) in
             self.fetchUserRecordID { recordID, error in
                 if let error {
                     continuation.resume(throwing: error)

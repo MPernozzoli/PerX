@@ -10,6 +10,9 @@ public struct DatabaseSchema {
     public static let jobs = Table("jobs")
     public static let fileManifest = Table("file_manifest")
     public static let sinistroFolders = Table("sinistro_folders")
+    public static let plannerSettings = Table("planner_settings")
+    public static let plannerMemberSettings = Table("planner_member_settings")
+    public static let plannerAssignments = Table("planner_assignments")
     
     // Sinistri table (Hub source of truth)
     public static let sinistri = Table("sinistri")
@@ -33,6 +36,7 @@ public struct DatabaseSchema {
     
     public struct VaultFilesColumns {
         public static let id = Expression<String>("id")
+        public static let tenantSlug = Expression<String>("tenant_slug")
         public static let sinistroRef = Expression<String>("sinistro_ref")
         public static let relativePath = Expression<String>("relative_path")
         public static let filename = Expression<String>("filename")
@@ -50,6 +54,7 @@ public struct DatabaseSchema {
     
     public struct JobsColumns {
         public static let id = Expression<String>("id")
+        public static let tenantSlug = Expression<String>("tenant_slug")
         public static let type = Expression<String>("type")
         public static let status = Expression<String>("status")
         public static let priority = Expression<Int>("priority")
@@ -65,6 +70,7 @@ public struct DatabaseSchema {
     
     public struct FileManifestColumns {
         public static let legacyPath = Expression<String>("legacy_path")
+        public static let tenantSlug = Expression<String>("tenant_slug")
         public static let vaultFileId = Expression<String?>("vault_file_id")
         public static let lastKnownChecksum = Expression<String?>("last_known_checksum")
         public static let lastKnownSize = Expression<Int64?>("last_known_size")
@@ -77,6 +83,7 @@ public struct DatabaseSchema {
     
     public struct SinistroFoldersColumns {
         public static let sinistroRef = Expression<String>("sinistro_ref")
+        public static let tenantSlug = Expression<String>("tenant_slug")
         public static let status = Expression<String>("status")
         public static let lastSyncAt = Expression<Double?>("last_sync_at")
         public static let fileCount = Expression<Int>("file_count")
@@ -87,6 +94,7 @@ public struct DatabaseSchema {
     // MARK: - sinistri columns
     
     public struct SinistriColumns {
+        public static let tenantSlug = Expression<String>("tenant_slug")
         // Identificativi
         public static let riferimento = Expression<String>("riferimento")
         public static let numeroSinistro = Expression<String?>("numero_sinistro")
@@ -191,6 +199,7 @@ public struct DatabaseSchema {
     // MARK: - emails columns
     
     public struct EmailsColumns {
+        public static let tenantSlug = Expression<String>("tenant_slug")
         public static let messageId = Expression<String>("message_id")
         public static let accountId = Expression<String>("account_id")
         public static let subject = Expression<String?>("subject")
@@ -233,6 +242,7 @@ public struct DatabaseSchema {
     // MARK: - email_accounts columns (per deduplicazione CC)
     
     public struct EmailAccountsColumns {
+        public static let tenantSlug = Expression<String>("tenant_slug")
         public static let messageId = Expression<String>("message_id")
         public static let accountId = Expression<String>("account_id")
         public static let mailbox = Expression<String?>("mailbox")
@@ -243,6 +253,7 @@ public struct DatabaseSchema {
     
     public struct AttachmentsColumns {
         public static let id = Expression<String>("id")
+        public static let tenantSlug = Expression<String>("tenant_slug")
         public static let messageId = Expression<String>("message_id")
         public static let sourceType = Expression<String>("source_type") // email/whatsapp
         public static let filename = Expression<String>("filename")
@@ -260,6 +271,7 @@ public struct DatabaseSchema {
     
     public struct ScheduledEmailsColumns {
         public static let id = Expression<String>("id")
+        public static let tenantSlug = Expression<String>("tenant_slug")
         public static let accountId = Expression<String>("account_id")
         public static let toAddresses = Expression<String>("to_addresses") // JSON
         public static let ccAddresses = Expression<String?>("cc_addresses") // JSON
@@ -278,6 +290,7 @@ public struct DatabaseSchema {
     
     public struct ScheduledWhatsAppColumns {
         public static let id = Expression<String>("id")
+        public static let tenantSlug = Expression<String>("tenant_slug")
         public static let accountId = Expression<String>("account_id")
         public static let phoneNumber = Expression<String>("phone_number")
         public static let body = Expression<String>("body")
@@ -297,6 +310,7 @@ public struct DatabaseSchema {
     // MARK: - archived_email_refs columns (per sinistri chiusi)
     
     public struct ArchivedEmailRefsColumns {
+        public static let tenantSlug = Expression<String>("tenant_slug")
         public static let sinistroRef = Expression<String>("sinistro_ref")
         public static let messageId = Expression<String>("message_id")
         public static let date = Expression<Double>("date")
@@ -306,6 +320,7 @@ public struct DatabaseSchema {
     // MARK: - connected_clients columns (heartbeat tracking)
     
     public struct ConnectedClientsColumns {
+        public static let tenantSlug = Expression<String>("tenant_slug")
         public static let userId = Expression<String>("user_id")
         public static let lastSeen = Expression<Double>("last_seen")
         public static let clientInfo = Expression<String?>("client_info") // optional: app version, platform, etc.
@@ -315,6 +330,7 @@ public struct DatabaseSchema {
     
     public struct WhatsAppChatsColumns {
         public static let id = Expression<String>("id")
+        public static let tenantSlug = Expression<String>("tenant_slug")
         public static let accountId = Expression<String>("account_id")
         public static let chatId = Expression<String>("chat_id")           // ID chat WhatsApp (numero@c.us o gruppo)
         public static let name = Expression<String?>("name")                // Nome contatto/gruppo
@@ -332,6 +348,7 @@ public struct DatabaseSchema {
     
     public struct WhatsAppMessagesColumns {
         public static let id = Expression<String>("id")
+        public static let tenantSlug = Expression<String>("tenant_slug")
         public static let accountId = Expression<String>("account_id")
         public static let chatId = Expression<String>("chat_id")
         public static let waMessageId = Expression<String>("wa_message_id")  // ID messaggio WhatsApp
@@ -352,6 +369,28 @@ public struct DatabaseSchema {
         public static let ackStatus = Expression<Int?>("ack_status")
         public static let ackTimestamp = Expression<Double?>("ack_timestamp")
     }
+
+    // MARK: - planner_* columns
+
+    public struct PlannerSettingsColumns {
+        public static let tenantSlug = Expression<String>("tenant_slug")
+        public static let settingsJSON = Expression<String>("settings_json")
+        public static let updatedAt = Expression<Double>("updated_at")
+    }
+
+    public struct PlannerMemberSettingsColumns {
+        public static let tenantSlug = Expression<String>("tenant_slug")
+        public static let email = Expression<String>("email")
+        public static let payloadJSON = Expression<String>("payload_json")
+        public static let updatedAt = Expression<Double>("updated_at")
+    }
+
+    public struct PlannerAssignmentsColumns {
+        public static let tenantSlug = Expression<String>("tenant_slug")
+        public static let claimReference = Expression<String>("claim_reference")
+        public static let payloadJSON = Expression<String>("payload_json")
+        public static let generatedAt = Expression<Double>("generated_at")
+    }
     
     // MARK: - Create Tables
     
@@ -359,6 +398,7 @@ public struct DatabaseSchema {
         // vault_files
         try db.run(vaultFiles.create(ifNotExists: true) { t in
             t.column(VaultFilesColumns.id, primaryKey: true)
+            t.column(VaultFilesColumns.tenantSlug, defaultValue: "default")
             t.column(VaultFilesColumns.sinistroRef)
             t.column(VaultFilesColumns.relativePath)
             t.column(VaultFilesColumns.filename)
@@ -373,12 +413,13 @@ public struct DatabaseSchema {
         })
         
         // Indexes for vault_files
-        try db.run(vaultFiles.createIndex(VaultFilesColumns.sinistroRef, ifNotExists: true))
+        try db.run(vaultFiles.createIndex(VaultFilesColumns.tenantSlug, VaultFilesColumns.sinistroRef, ifNotExists: true))
         try db.run(vaultFiles.createIndex(VaultFilesColumns.source, VaultFilesColumns.sourceId, ifNotExists: true))
         
         // jobs
         try db.run(jobs.create(ifNotExists: true) { t in
             t.column(JobsColumns.id, primaryKey: true)
+            t.column(JobsColumns.tenantSlug, defaultValue: "default")
             t.column(JobsColumns.type)
             t.column(JobsColumns.status)
             t.column(JobsColumns.priority)
@@ -391,11 +432,12 @@ public struct DatabaseSchema {
         })
         
         // Index for jobs by status and priority
-        try db.run(jobs.createIndex(JobsColumns.status, JobsColumns.priority, JobsColumns.createdAt, ifNotExists: true))
+        try db.run(jobs.createIndex(JobsColumns.tenantSlug, JobsColumns.status, JobsColumns.priority, JobsColumns.createdAt, ifNotExists: true))
         
         // file_manifest
         try db.run(fileManifest.create(ifNotExists: true) { t in
             t.column(FileManifestColumns.legacyPath, primaryKey: true)
+            t.column(FileManifestColumns.tenantSlug, defaultValue: "default")
             t.column(FileManifestColumns.vaultFileId)
             t.column(FileManifestColumns.lastKnownChecksum)
             t.column(FileManifestColumns.lastKnownSize)
@@ -406,18 +448,22 @@ public struct DatabaseSchema {
         
         // sinistro_folders
         try db.run(sinistroFolders.create(ifNotExists: true) { t in
-            t.column(SinistroFoldersColumns.sinistroRef, primaryKey: true)
+            t.column(SinistroFoldersColumns.tenantSlug, defaultValue: "default")
+            t.column(SinistroFoldersColumns.sinistroRef)
             t.column(SinistroFoldersColumns.status)
             t.column(SinistroFoldersColumns.lastSyncAt)
             t.column(SinistroFoldersColumns.fileCount, defaultValue: 0)
             t.column(SinistroFoldersColumns.totalSize, defaultValue: 0)
             t.column(SinistroFoldersColumns.errorMessage)
+            t.primaryKey(SinistroFoldersColumns.tenantSlug, SinistroFoldersColumns.sinistroRef)
         })
+        try db.run(sinistroFolders.createIndex(SinistroFoldersColumns.tenantSlug, SinistroFoldersColumns.status, ifNotExists: true))
         
         // sinistri
         try db.run(sinistri.create(ifNotExists: true) { t in
+            t.column(SinistriColumns.tenantSlug, defaultValue: "default")
             // Identificativi
-            t.column(SinistriColumns.riferimento, primaryKey: true)
+            t.column(SinistriColumns.riferimento)
             t.column(SinistriColumns.numeroSinistro)
             t.column(SinistriColumns.numeroPolizza)
             t.column(SinistriColumns.tipoPolizza)
@@ -515,16 +561,18 @@ public struct DatabaseSchema {
             t.column(SinistriColumns.createdAt)
             t.column(SinistriColumns.syncedToCK, defaultValue: false)
             t.column(SinistriColumns.cloudKitRecordID)
+            t.primaryKey(SinistriColumns.tenantSlug, SinistriColumns.riferimento)
         })
         
         // Indexes for sinistri
-        try db.run(sinistri.createIndex(SinistriColumns.stato, ifNotExists: true))
-        try db.run(sinistri.createIndex(SinistriColumns.assegnatario, ifNotExists: true))
-        try db.run(sinistri.createIndex(SinistriColumns.syncedToCK, ifNotExists: true))
+        try db.run(sinistri.createIndex(SinistriColumns.tenantSlug, SinistriColumns.stato, ifNotExists: true))
+        try db.run(sinistri.createIndex(SinistriColumns.tenantSlug, SinistriColumns.assegnatario, ifNotExists: true))
+        try db.run(sinistri.createIndex(SinistriColumns.tenantSlug, SinistriColumns.syncedToCK, ifNotExists: true))
         
         // emails
         try db.run(emails.create(ifNotExists: true) { t in
-            t.column(EmailsColumns.messageId, primaryKey: true)
+            t.column(EmailsColumns.tenantSlug, defaultValue: "default")
+            t.column(EmailsColumns.messageId)
             t.column(EmailsColumns.accountId)
             t.column(EmailsColumns.subject)
             t.column(EmailsColumns.senderEmail)
@@ -542,25 +590,28 @@ public struct DatabaseSchema {
             t.column(EmailsColumns.threadId)
             t.column(EmailsColumns.processedAt)
             t.column(EmailsColumns.syncedToCK, defaultValue: false)
+            t.primaryKey(EmailsColumns.tenantSlug, EmailsColumns.messageId)
         })
         
         // Indexes for emails
-        try db.run(emails.createIndex(EmailsColumns.sinistroRef, ifNotExists: true))
-        try db.run(emails.createIndex(EmailsColumns.date, ifNotExists: true))
-        try db.run(emails.createIndex(EmailsColumns.category, ifNotExists: true))
+        try db.run(emails.createIndex(EmailsColumns.tenantSlug, EmailsColumns.sinistroRef, ifNotExists: true))
+        try db.run(emails.createIndex(EmailsColumns.tenantSlug, EmailsColumns.date, ifNotExists: true))
+        try db.run(emails.createIndex(EmailsColumns.tenantSlug, EmailsColumns.category, ifNotExists: true))
         
         // email_accounts (per deduplicazione CC)
         try db.run(emailAccounts.create(ifNotExists: true) { t in
+            t.column(EmailAccountsColumns.tenantSlug, defaultValue: "default")
             t.column(EmailAccountsColumns.messageId)
             t.column(EmailAccountsColumns.accountId)
             t.column(EmailAccountsColumns.mailbox)
             t.column(EmailAccountsColumns.isRead, defaultValue: false)
-            t.primaryKey(EmailAccountsColumns.messageId, EmailAccountsColumns.accountId)
+            t.primaryKey(EmailAccountsColumns.tenantSlug, EmailAccountsColumns.messageId, EmailAccountsColumns.accountId)
         })
         
         // attachments
         try db.run(attachments.create(ifNotExists: true) { t in
             t.column(AttachmentsColumns.id, primaryKey: true)
+            t.column(AttachmentsColumns.tenantSlug, defaultValue: "default")
             t.column(AttachmentsColumns.messageId)
             t.column(AttachmentsColumns.sourceType)
             t.column(AttachmentsColumns.filename)
@@ -575,12 +626,13 @@ public struct DatabaseSchema {
         })
         
         // Index for attachments
-        try db.run(attachments.createIndex(AttachmentsColumns.messageId, ifNotExists: true))
-        try db.run(attachments.createIndex(AttachmentsColumns.status, ifNotExists: true))
+        try db.run(attachments.createIndex(AttachmentsColumns.tenantSlug, AttachmentsColumns.messageId, ifNotExists: true))
+        try db.run(attachments.createIndex(AttachmentsColumns.tenantSlug, AttachmentsColumns.status, ifNotExists: true))
         
         // scheduled_emails
         try db.run(scheduledEmails.create(ifNotExists: true) { t in
             t.column(ScheduledEmailsColumns.id, primaryKey: true)
+            t.column(ScheduledEmailsColumns.tenantSlug, defaultValue: "default")
             t.column(ScheduledEmailsColumns.accountId)
             t.column(ScheduledEmailsColumns.toAddresses)
             t.column(ScheduledEmailsColumns.ccAddresses)
@@ -596,11 +648,12 @@ public struct DatabaseSchema {
         })
         
         // Index for scheduled_emails
-        try db.run(scheduledEmails.createIndex(ScheduledEmailsColumns.status, ScheduledEmailsColumns.scheduledAt, ifNotExists: true))
+        try db.run(scheduledEmails.createIndex(ScheduledEmailsColumns.tenantSlug, ScheduledEmailsColumns.status, ScheduledEmailsColumns.scheduledAt, ifNotExists: true))
         
         // scheduled_whatsapp
         try db.run(scheduledWhatsApp.create(ifNotExists: true) { t in
             t.column(ScheduledWhatsAppColumns.id, primaryKey: true)
+            t.column(ScheduledWhatsAppColumns.tenantSlug, defaultValue: "default")
             t.column(ScheduledWhatsAppColumns.accountId)
             t.column(ScheduledWhatsAppColumns.phoneNumber)
             t.column(ScheduledWhatsAppColumns.body)
@@ -618,27 +671,31 @@ public struct DatabaseSchema {
         })
         
         // Index for scheduled_whatsapp
-        try db.run(scheduledWhatsApp.createIndex(ScheduledWhatsAppColumns.status, ScheduledWhatsAppColumns.scheduledAt, ifNotExists: true))
+        try db.run(scheduledWhatsApp.createIndex(ScheduledWhatsAppColumns.tenantSlug, ScheduledWhatsAppColumns.status, ScheduledWhatsAppColumns.scheduledAt, ifNotExists: true))
         
         // archived_email_refs (per sinistri chiusi)
         try db.run(archivedEmailRefs.create(ifNotExists: true) { t in
+            t.column(ArchivedEmailRefsColumns.tenantSlug, defaultValue: "default")
             t.column(ArchivedEmailRefsColumns.sinistroRef)
             t.column(ArchivedEmailRefsColumns.messageId)
             t.column(ArchivedEmailRefsColumns.date)
             t.column(ArchivedEmailRefsColumns.subject)
-            t.primaryKey(ArchivedEmailRefsColumns.sinistroRef, ArchivedEmailRefsColumns.messageId)
+            t.primaryKey(ArchivedEmailRefsColumns.tenantSlug, ArchivedEmailRefsColumns.sinistroRef, ArchivedEmailRefsColumns.messageId)
         })
         
         // connected_clients (heartbeat tracking)
         try db.run(connectedClients.create(ifNotExists: true) { t in
-            t.column(ConnectedClientsColumns.userId, primaryKey: true)
+            t.column(ConnectedClientsColumns.tenantSlug, defaultValue: "default")
+            t.column(ConnectedClientsColumns.userId)
             t.column(ConnectedClientsColumns.lastSeen)
             t.column(ConnectedClientsColumns.clientInfo)
+            t.primaryKey(ConnectedClientsColumns.tenantSlug, ConnectedClientsColumns.userId)
         })
         
         // whatsapp_chats
         try db.run(whatsappChats.create(ifNotExists: true) { t in
             t.column(WhatsAppChatsColumns.id, primaryKey: true)
+            t.column(WhatsAppChatsColumns.tenantSlug, defaultValue: "default")
             t.column(WhatsAppChatsColumns.accountId)
             t.column(WhatsAppChatsColumns.chatId)
             t.column(WhatsAppChatsColumns.name)
@@ -650,16 +707,17 @@ public struct DatabaseSchema {
             t.column(WhatsAppChatsColumns.sinistroRef)
             t.column(WhatsAppChatsColumns.createdAt)
             t.column(WhatsAppChatsColumns.updatedAt)
-            t.unique(WhatsAppChatsColumns.accountId, WhatsAppChatsColumns.chatId)
+            t.unique(WhatsAppChatsColumns.tenantSlug, WhatsAppChatsColumns.accountId, WhatsAppChatsColumns.chatId)
         })
         
         // Indexes for whatsapp_chats
-        try db.run(whatsappChats.createIndex(WhatsAppChatsColumns.accountId, ifNotExists: true))
-        try db.run(whatsappChats.createIndex(WhatsAppChatsColumns.sinistroRef, ifNotExists: true))
+        try db.run(whatsappChats.createIndex(WhatsAppChatsColumns.tenantSlug, WhatsAppChatsColumns.accountId, ifNotExists: true))
+        try db.run(whatsappChats.createIndex(WhatsAppChatsColumns.tenantSlug, WhatsAppChatsColumns.sinistroRef, ifNotExists: true))
         
         // whatsapp_messages
         try db.run(whatsappMessages.create(ifNotExists: true) { t in
             t.column(WhatsAppMessagesColumns.id, primaryKey: true)
+            t.column(WhatsAppMessagesColumns.tenantSlug, defaultValue: "default")
             t.column(WhatsAppMessagesColumns.accountId)
             t.column(WhatsAppMessagesColumns.chatId)
             t.column(WhatsAppMessagesColumns.waMessageId)
@@ -682,13 +740,37 @@ public struct DatabaseSchema {
         
         // Indexes for whatsapp_messages
         try db.run(whatsappMessages.createIndex(
+            WhatsAppMessagesColumns.tenantSlug,
             WhatsAppMessagesColumns.accountId,
             WhatsAppMessagesColumns.chatId,
             WhatsAppMessagesColumns.timestamp,
             ifNotExists: true
         ))
-        try db.run(whatsappMessages.createIndex(WhatsAppMessagesColumns.sinistroRef, ifNotExists: true))
-        try db.run(whatsappMessages.createIndex(WhatsAppMessagesColumns.waMessageId, ifNotExists: true))
+        try db.run(whatsappMessages.createIndex(WhatsAppMessagesColumns.tenantSlug, WhatsAppMessagesColumns.sinistroRef, ifNotExists: true))
+        try db.run(whatsappMessages.createIndex(WhatsAppMessagesColumns.tenantSlug, WhatsAppMessagesColumns.waMessageId, ifNotExists: true))
+
+        try db.run(plannerSettings.create(ifNotExists: true) { t in
+            t.column(PlannerSettingsColumns.tenantSlug, primaryKey: true)
+            t.column(PlannerSettingsColumns.settingsJSON)
+            t.column(PlannerSettingsColumns.updatedAt)
+        })
+
+        try db.run(plannerMemberSettings.create(ifNotExists: true) { t in
+            t.column(PlannerMemberSettingsColumns.tenantSlug)
+            t.column(PlannerMemberSettingsColumns.email)
+            t.column(PlannerMemberSettingsColumns.payloadJSON)
+            t.column(PlannerMemberSettingsColumns.updatedAt)
+            t.primaryKey(PlannerMemberSettingsColumns.tenantSlug, PlannerMemberSettingsColumns.email)
+        })
+
+        try db.run(plannerAssignments.create(ifNotExists: true) { t in
+            t.column(PlannerAssignmentsColumns.tenantSlug)
+            t.column(PlannerAssignmentsColumns.claimReference)
+            t.column(PlannerAssignmentsColumns.payloadJSON)
+            t.column(PlannerAssignmentsColumns.generatedAt)
+            t.primaryKey(PlannerAssignmentsColumns.tenantSlug, PlannerAssignmentsColumns.claimReference)
+        })
+        try db.run(plannerAssignments.createIndex(PlannerAssignmentsColumns.tenantSlug, PlannerAssignmentsColumns.generatedAt, ifNotExists: true))
     }
     
     // MARK: - Migrations
@@ -712,6 +794,47 @@ public struct DatabaseSchema {
         }
         if !hasAckTimestamp {
             try db.run("ALTER TABLE whatsapp_messages ADD COLUMN ack_timestamp REAL")
+        }
+
+        for tableName in [
+            "vault_files",
+            "jobs",
+            "file_manifest",
+            "sinistro_folders",
+            "sinistri",
+            "emails",
+            "email_accounts",
+            "attachments",
+            "scheduled_emails",
+            "scheduled_whatsapp",
+            "archived_email_refs",
+            "connected_clients",
+            "whatsapp_chats",
+            "whatsapp_messages"
+        ] {
+            try ensureTenantColumn(on: tableName, db: db)
+        }
+
+        try db.run("CREATE INDEX IF NOT EXISTS idx_vault_files_tenant_sinistro ON vault_files (tenant_slug, sinistro_ref)")
+        try db.run("CREATE INDEX IF NOT EXISTS idx_jobs_tenant_status_priority_created ON jobs (tenant_slug, status, priority, created_at)")
+        try db.run("CREATE INDEX IF NOT EXISTS idx_sinistro_folders_tenant_status ON sinistro_folders (tenant_slug, status)")
+        try db.run("CREATE INDEX IF NOT EXISTS idx_sinistri_tenant_stato ON sinistri (tenant_slug, stato)")
+        try db.run("CREATE INDEX IF NOT EXISTS idx_sinistri_tenant_assegnatario ON sinistri (tenant_slug, assegnatario)")
+        try db.run("CREATE INDEX IF NOT EXISTS idx_emails_tenant_sinistro ON emails (tenant_slug, sinistro_ref)")
+        try db.run("CREATE INDEX IF NOT EXISTS idx_attachments_tenant_status ON attachments (tenant_slug, status)")
+        try db.run("CREATE INDEX IF NOT EXISTS idx_sched_email_tenant_status_at ON scheduled_emails (tenant_slug, status, scheduled_at)")
+        try db.run("CREATE INDEX IF NOT EXISTS idx_sched_wa_tenant_status_at ON scheduled_whatsapp (tenant_slug, status, scheduled_at)")
+        try db.run("CREATE INDEX IF NOT EXISTS idx_wa_chats_tenant_account ON whatsapp_chats (tenant_slug, account_id)")
+        try db.run("CREATE INDEX IF NOT EXISTS idx_wa_messages_tenant_chat_time ON whatsapp_messages (tenant_slug, account_id, chat_id, timestamp)")
+    }
+
+    private static func ensureTenantColumn(on tableName: String, db: Connection) throws {
+        let tableInfo = try db.prepare("PRAGMA table_info(\(tableName))")
+        let hasTenantColumn = tableInfo.contains { row in
+            (row[1] as? String) == "tenant_slug"
+        }
+        if !hasTenantColumn {
+            try db.run("ALTER TABLE \(tableName) ADD COLUMN tenant_slug TEXT NOT NULL DEFAULT 'default'")
         }
     }
 }

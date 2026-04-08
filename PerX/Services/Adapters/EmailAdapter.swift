@@ -25,9 +25,14 @@ final class EmailAdapter: ObservableObject {
     func getEmails(sinistroRef: String) async throws -> [EmailListItem] {
         isLoading = true
         defer { isLoading = false }
-        
-        let emails = try await hubEmailService.fetchEmails(forSinistro: sinistroRef)
-        return emails.map { EmailListItem(from: $0) }
+
+        if hubClient.isCloudConfigured {
+            let emails = try await CloudContentAdapter.shared.getEmails(sinistroRef: sinistroRef)
+            return emails.map { EmailListItem(from: $0) }
+        } else {
+            let emails = try await hubEmailService.fetchEmails(forSinistro: sinistroRef)
+            return emails.map { EmailListItem(from: $0) }
+        }
     }
     
     /// Recupera email per utente
@@ -206,6 +211,19 @@ struct EmailListItem: Identifiable {
         self.direction = nil
         self.mailbox = nil
         self.isRead = email.isRead
+    }
+
+    init(from dto: CloudEmailResponse) {
+        self.id = dto.id
+        self.subject = dto.subject ?? "(Senza oggetto)"
+        self.senderEmail = dto.from_address
+        self.senderName = nil
+        self.date = dto.received_at
+        self.category = dto.status
+        self.sinistroRef = nil
+        self.direction = nil
+        self.mailbox = dto.mailbox_id
+        self.isRead = true
     }
 }
 

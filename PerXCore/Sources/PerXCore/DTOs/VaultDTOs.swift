@@ -5,6 +5,7 @@ import Foundation
 /// DTO per risposta lista file
 public struct VaultFileDTO: Codable, Sendable {
     public let id: String
+    public let tenantSlug: String
     public let sinistroRef: String
     public let filename: String
     public let folder: String
@@ -16,6 +17,7 @@ public struct VaultFileDTO: Codable, Sendable {
     
     public init(from file: VaultFile) {
         self.id = file.id
+        self.tenantSlug = file.tenantSlug
         self.sinistroRef = file.sinistroRef
         self.filename = file.filename
         self.folder = file.folder
@@ -28,6 +30,7 @@ public struct VaultFileDTO: Codable, Sendable {
     
     public init(
         id: String,
+        tenantSlug: String = "default",
         sinistroRef: String,
         filename: String,
         folder: String,
@@ -38,6 +41,7 @@ public struct VaultFileDTO: Codable, Sendable {
         modifiedAt: Date? = nil
     ) {
         self.id = id
+        self.tenantSlug = tenantSlug
         self.sinistroRef = sinistroRef
         self.filename = filename
         self.folder = folder
@@ -66,6 +70,7 @@ public struct FileUploadRequest: Codable, Sendable {
 
 /// DTO per stato cartella sinistro
 public struct SinistroFolderDTO: Codable, Sendable {
+    public let tenantSlug: String
     public let sinistroRef: String
     public let status: SinistroFolderStatus
     public let fileCount: Int
@@ -73,6 +78,7 @@ public struct SinistroFolderDTO: Codable, Sendable {
     public let lastSyncAt: Date?
     
     public init(from folder: SinistroFolder) {
+        self.tenantSlug = folder.tenantSlug
         self.sinistroRef = folder.sinistroRef
         self.status = folder.status
         self.fileCount = folder.fileCount
@@ -81,12 +87,14 @@ public struct SinistroFolderDTO: Codable, Sendable {
     }
     
     public init(
+        tenantSlug: String = "default",
         sinistroRef: String,
         status: SinistroFolderStatus,
         fileCount: Int,
         totalSize: Int64,
         lastSyncAt: Date?
     ) {
+        self.tenantSlug = tenantSlug
         self.sinistroRef = sinistroRef
         self.status = status
         self.fileCount = fileCount
@@ -100,6 +108,7 @@ public struct SinistroFolderDTO: Codable, Sendable {
 /// DTO per risposta job
 public struct JobDTO: Codable, Sendable {
     public let id: String
+    public let tenantSlug: String
     public let type: JobType
     public let status: JobStatus
     public let priority: Int
@@ -111,6 +120,7 @@ public struct JobDTO: Codable, Sendable {
     
     public init(from job: Job) {
         self.id = job.id
+        self.tenantSlug = job.tenantSlug
         self.type = job.type
         self.status = job.status
         self.priority = job.priority

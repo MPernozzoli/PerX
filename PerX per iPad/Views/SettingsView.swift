@@ -13,8 +13,13 @@ struct SettingsView: View {
     @StateObject private var accountManager = AccountManager.shared
     @State private var showingLogoutConfirm = false
     @State private var hubURL = HubAPIClient.shared.hubBaseURL
+    @State private var cloudAPIURL = HubAPIClient.shared.cloudAPIBaseURL
+    @State private var cloudAPIEmail = HubAPIClient.shared.cloudAPIEmail
+    @State private var cloudAPIPassword = ""
     @State private var isCheckingHub = false
     @State private var hubCheckResult: String?
+    @State private var isCheckingCloud = false
+    @State private var cloudCheckResult: String?
     @State private var showingSetPasscode = false
     @State private var showingRemovePasscode = false
     
@@ -43,6 +48,22 @@ struct SettingsView: View {
                         }
                     }
                     .padding(.vertical, 4)
+
+                    if hubClient.isCloudConfigured {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Label("Profilo utente sincronizzato tramite backend cloud", systemImage: "person.crop.circle.badge.checkmark")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            if let profile = session.currentCloudProfile {
+                                Text("Ruoli: \(profile.roles.joined(separator: ", "))")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                                Text("Firma email: \((profile.email_signature_html?.isEmpty == false || profile.email_signature_text?.isEmpty == false) ? "configurata" : "non configurata")")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
                     
                     Button(role: .destructive) {
                         showingLogoutConfirm = true
@@ -88,6 +109,65 @@ struct SettingsView: View {
                         Text(result)
                             .font(.caption)
                             .foregroundColor(hubClient.isConnected ? .green : .red)
+                    }
+                }
+
+                Section("Cloud API") {
+                    TextField("URL Backend (es: https://api.example.com)", text: $cloudAPIURL)
+                        .textContentType(.URL)
+                        .keyboardType(.URL)
+                        .autocapitalization(.none)
+                        .autocorrectionDisabled()
+                        .onChange(of: cloudAPIURL) { newValue in
+                            hubClient.cloudAPIBaseURL = newValue
+                        }
+
+                    TextField("Email backend", text: $cloudAPIEmail)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .onChange(of: cloudAPIEmail) { newValue in
+                            hubClient.cloudAPIEmail = newValue.lowercased()
+                        }
+
+                    SecureField("Password backend", text: $cloudAPIPassword)
+
+                    HStack {
+                        Button("Salva credenziali") {
+                            hubClient.saveCloudPassword(cloudAPIPassword)
+                            let normalizedEmail = cloudAPIEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                            if !normalizedEmail.isEmpty {
+                                accountManager.savePassword(cloudAPIPassword, for: normalizedEmail)
+                                if session.currentUserEmail == normalizedEmail {
+                                    accountManager.saveAccount(
+                                        email: normalizedEmail,
+                                        displayName: session.currentUserName ?? normalizedEmail,
+                                        password: cloudAPIPassword
+                                    )
+                                }
+                            }
+                            cloudCheckResult = "Credenziali backend salvate"
+                        }
+                        .disabled(cloudAPIPassword.isEmpty)
+
+                        Spacer()
+
+                        Button {
+                            Task { await checkCloudConnection() }
+                        } label: {
+                            if isCheckingCloud {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                            } else {
+                                Text("Testa login")
+                            }
+                        }
+                        .disabled(cloudAPIURL.isEmpty || cloudAPIEmail.isEmpty || cloudAPIPassword.isEmpty || isCheckingCloud)
+                    }
+
+                    if let result = cloudCheckResult {
+                        Text(result)
+                            .font(.caption)
+                            .foregroundColor(result.hasPrefix("✓") ? .green : .secondary)
                     }
                 }
                 
@@ -211,6 +291,23 @@ struct SettingsView: View {
         }
         
         isCheckingHub = false
+    }
+
+    private func checkCloudConnection() async {
+        isCheckingCloud = true
+        cloudCheckResult = nil
+        hubClient.cloudAPIBaseURL = cloudAPIURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        hubClient.cloudAPIEmail = cloudAPIEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        hubClient.saveCloudPassword(cloudAPIPassword)
+
+        do {
+            _ = try await hubClient.cloudLogin(forceRefresh: true)
+            cloudCheckResult = "✓ Login backend riuscito"
+        } catch {
+            cloudCheckResult = "Backend non raggiungibile: \(error.localizedDescription)"
+        }
+
+        isCheckingCloud = false
     }
     
     @ViewBuilder

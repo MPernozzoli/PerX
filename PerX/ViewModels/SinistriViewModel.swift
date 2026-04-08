@@ -813,15 +813,23 @@ final class SinistriViewModel: ObservableObject {
             return sinistro.dataRevoca
         case .sopralluogoFissato, .sopralluogoRestituito:
             return sinistro.dataSopralluogo
+        case .sopralluogoDaFissare, .sopralluogoDaConcordare:
+            return sinistro.dataIncarico ?? sinistro.dataCreazione
             
         // Stati di gestione usano dataAssegnazione
         case .inGestione, .inGestioneDocumentale, .inGestioneVideoperizia:
             return sinistro.dataAssegnazione ?? sinistro.dataAperturaGestione
             
         // Stati di ingresso usano dataIncarico
-        case .daScaricare:
+        case .daScaricare, .istruzione:
             return sinistro.dataIncarico ?? sinistro.dataCreazione
+        case .primoContatto, .secondoContatto, .inAttesaAssegnazione, .sopralluogoAssegnato,
+             .videoperiziaDaEseguire, .daGestireVideoperizia, .daGestireTradizionale,
+             .daGestireDocumentale, .daGestireNoResidui, .attesaPassiva:
+            return sinistro.dataAssegnazione ?? sinistro.dataIncarico ?? sinistro.dataCreazione
         case .inAttesaDocumentale, .inAttesaDaAssicurato, .inAttesaDaAgenzia:
+            return sinistro.dataAssegnazione ?? sinistro.dataIncarico
+        case .inAttesaDaTerzi:
             return sinistro.dataAssegnazione ?? sinistro.dataIncarico
         case .periziaDaEseguire, .periziaDaEseguireDocumentale, .periziaDaEseguireNoResidui:
             return sinistro.dataAssegnazione ?? sinistro.dataIncarico
@@ -829,14 +837,14 @@ final class SinistriViewModel: ObservableObject {
             return sinistro.dataAssegnazione ?? sinistro.dataIncarico
             
         // Stati di controllo: cerca nel ciclo aperto o nel diario
-        case .inControllo, .controllata, .richiestaAutorizzazione, .supervisioneNonConcordata:
+        case .inControllo, .controllata, .richiestaAutorizzazione, .supervisioneNonConcordata, .daControllare:
             if let cicloAperto = sinistro.cicloControlloAperto {
                 return cicloAperto.dataEntrata
             }
             return getDataStatoDaDiario(sinistro: sinistro, statoCorrente: stato.descrizione)
             
         // Altri stati: fallback al diario
-        case .attoDaInviare, .esitoDaComunicare, .richiestaRevisione, .annullata:
+        case .attoDaInviare, .esitoDaComunicare, .richiestaRevisione, .daRevisionare, .daChiudereASistema, .annullata:
             return getDataStatoDaDiario(sinistro: sinistro, statoCorrente: stato.descrizione)
         }
     }

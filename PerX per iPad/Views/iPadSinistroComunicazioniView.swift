@@ -140,13 +140,15 @@ struct EmailRow: View {
                 Spacer()
                 
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text(email.date, style: .date)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                    
-                    Text(email.date, style: .time)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
+                    if let date = email.date {
+                        Text(date, style: .date)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+
+                        Text(date, style: .time)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
                 }
             }
             
@@ -200,19 +202,5 @@ struct WhatsAppRow: View {
             }
         }
         .padding(.vertical, 4)
-    }
-}
-
-// MARK: - Extended Compose Views
-
-extension ComposeEmailView {
-    init(prefilledRiferimento: String) {
-        self.init()
-    }
-}
-
-extension ComposeWhatsAppView {
-    init(prefilledRiferimento: String) {
-        self.init()
     }
 }

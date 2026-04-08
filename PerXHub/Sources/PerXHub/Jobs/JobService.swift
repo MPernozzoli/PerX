@@ -10,8 +10,9 @@ public actor JobService {
     // MARK: - Create Jobs
     
     /// Crea job di import cartella sinistro
-    public func createImportFolderJob(sinistroRef: String, legacyPath: String, priority: Int = 0) async throws -> Job {
+    public func createImportFolderJob(sinistroRef: String, legacyPath: String, priority: Int = 0, tenantSlug: String = "default") async throws -> Job {
         let job = Job(
+            tenantSlug: tenantSlug,
             type: .importFolder,
             priority: priority,
             payload: .importFolder(ImportFolderPayload(sinistroRef: sinistroRef, legacyPath: legacyPath))
@@ -21,14 +22,15 @@ public actor JobService {
         print("[JobService] Created import folder job: \(job.id) for \(sinistroRef)")
         
         // Aggiorna stato cartella
-        try await DatabaseManager.shared.updateSinistroFolderStatus(sinistroRef: sinistroRef, status: .importing)
+        try await DatabaseManager.shared.updateSinistroFolderStatus(sinistroRef: sinistroRef, status: .importing, tenantSlug: tenantSlug)
         
         return job
     }
     
     /// Crea job di import singolo file
-    public func createImportFileJob(sinistroRef: String, legacyPath: String, targetFolder: String, priority: Int = 0) async throws -> Job {
+    public func createImportFileJob(sinistroRef: String, legacyPath: String, targetFolder: String, priority: Int = 0, tenantSlug: String = "default") async throws -> Job {
         let job = Job(
+            tenantSlug: tenantSlug,
             type: .importFile,
             priority: priority,
             payload: .importFile(ImportFilePayload(sinistroRef: sinistroRef, legacyPath: legacyPath, targetFolder: targetFolder))
@@ -41,8 +43,9 @@ public actor JobService {
     }
     
     /// Crea job di export file
-    public func createExportFileJob(vaultFileId: String, legacyPath: String, priority: Int = 0) async throws -> Job {
+    public func createExportFileJob(vaultFileId: String, legacyPath: String, priority: Int = 0, tenantSlug: String = "default") async throws -> Job {
         let job = Job(
+            tenantSlug: tenantSlug,
             type: .exportFile,
             priority: priority,
             payload: .exportFile(ExportFilePayload(vaultFileId: vaultFileId, legacyPath: legacyPath))
@@ -55,8 +58,9 @@ public actor JobService {
     }
     
     /// Crea job di delete file
-    public func createDeleteFileJob(legacyPath: String, priority: Int = 0) async throws -> Job {
+    public func createDeleteFileJob(legacyPath: String, priority: Int = 0, tenantSlug: String = "default") async throws -> Job {
         let job = Job(
+            tenantSlug: tenantSlug,
             type: .deleteFile,
             priority: priority,
             payload: .deleteFile(DeleteFilePayload(legacyPath: legacyPath))
@@ -69,8 +73,9 @@ public actor JobService {
     }
     
     /// Crea job di rename file
-    public func createRenameFileJob(oldPath: String, newPath: String, priority: Int = 0) async throws -> Job {
+    public func createRenameFileJob(oldPath: String, newPath: String, priority: Int = 0, tenantSlug: String = "default") async throws -> Job {
         let job = Job(
+            tenantSlug: tenantSlug,
             type: .renameFile,
             priority: priority,
             payload: .renameFile(RenameFilePayload(oldPath: oldPath, newPath: newPath))
@@ -83,8 +88,9 @@ public actor JobService {
     }
     
     /// Crea job di scan legacy
-    public func createScanLegacyJob(sinistroRef: String, legacyPath: String, priority: Int = 5) async throws -> Job {
+    public func createScanLegacyJob(sinistroRef: String, legacyPath: String, priority: Int = 5, tenantSlug: String = "default") async throws -> Job {
         let job = Job(
+            tenantSlug: tenantSlug,
             type: .scanLegacy,
             priority: priority,
             payload: .scanLegacy(ScanLegacyPayload(sinistroRef: sinistroRef, legacyPath: legacyPath))
@@ -97,11 +103,12 @@ public actor JobService {
     }
     
     /// Crea job di aggiornamento sync agent
-    public func createUpdateSyncAgentJob(changedFiles: [String], priority: Int = 10) async throws -> Job {
+    public func createUpdateSyncAgentJob(changedFiles: [String], priority: Int = 10, tenantSlug: String = "default") async throws -> Job {
         let sourceBasePath = HubConfiguration.repoBasePath
         let targetInstallPath = HubConfiguration.syncAgentInstallPath
         
         let job = Job(
+            tenantSlug: tenantSlug,
             type: .updateSyncAgent,
             priority: priority,
             payload: .updateSyncAgent(UpdateSyncAgentPayload(
@@ -120,22 +127,22 @@ public actor JobService {
     // MARK: - Query Jobs
     
     /// Ottiene job pendenti
-    public func getPendingJobs(limit: Int = 10) async throws -> [Job] {
-        return try await DatabaseManager.shared.getPendingJobs(limit: limit)
+    public func getPendingJobs(limit: Int = 10, tenantSlug: String = "default") async throws -> [Job] {
+        return try await DatabaseManager.shared.getPendingJobs(limit: limit, tenantSlug: tenantSlug)
     }
     
     /// Ottiene un job per ID
-    public func getJob(id: String) async throws -> Job? {
-        return try await DatabaseManager.shared.getJob(id: id)
+    public func getJob(id: String, tenantSlug: String = "default") async throws -> Job? {
+        return try await DatabaseManager.shared.getJob(id: id, tenantSlug: tenantSlug)
     }
     
     // MARK: - Update Jobs
     
     /// Marca job come in progress
-    public func startJob(id: String) async throws -> Job {
-        try await DatabaseManager.shared.updateJobStatus(id: id, status: .inProgress)
+    public func startJob(id: String, tenantSlug: String = "default") async throws -> Job {
+        try await DatabaseManager.shared.updateJobStatus(id: id, status: .inProgress, tenantSlug: tenantSlug)
         
-        guard let job = try await DatabaseManager.shared.getJob(id: id) else {
+        guard let job = try await DatabaseManager.shared.getJob(id: id, tenantSlug: tenantSlug) else {
             throw JobServiceError.jobNotFound(id)
         }
         
@@ -144,21 +151,21 @@ public actor JobService {
     }
     
     /// Marca job come completato
-    public func completeJob(id: String) async throws -> Job {
-        guard let job = try await DatabaseManager.shared.getJob(id: id) else {
+    public func completeJob(id: String, tenantSlug: String = "default") async throws -> Job {
+        guard let job = try await DatabaseManager.shared.getJob(id: id, tenantSlug: tenantSlug) else {
             throw JobServiceError.jobNotFound(id)
         }
         
-        try await DatabaseManager.shared.updateJobStatus(id: id, status: .completed)
+        try await DatabaseManager.shared.updateJobStatus(id: id, status: .completed, tenantSlug: tenantSlug)
         
         // Se era un import folder, aggiorna stato cartella
         if case .importFolder(let payload) = job.payload {
-            try await DatabaseManager.shared.updateSinistroFolderStatus(sinistroRef: payload.sinistroRef, status: .ready)
+            try await DatabaseManager.shared.updateSinistroFolderStatus(sinistroRef: payload.sinistroRef, status: .ready, tenantSlug: tenantSlug)
         }
         
         print("[JobService] Completed job: \(id)")
         
-        guard let updatedJob = try await DatabaseManager.shared.getJob(id: id) else {
+        guard let updatedJob = try await DatabaseManager.shared.getJob(id: id, tenantSlug: tenantSlug) else {
             throw JobServiceError.jobNotFound(id)
         }
         
@@ -166,21 +173,21 @@ public actor JobService {
     }
     
     /// Marca job come fallito
-    public func failJob(id: String, errorMessage: String) async throws -> Job {
-        guard let job = try await DatabaseManager.shared.getJob(id: id) else {
+    public func failJob(id: String, errorMessage: String, tenantSlug: String = "default") async throws -> Job {
+        guard let job = try await DatabaseManager.shared.getJob(id: id, tenantSlug: tenantSlug) else {
             throw JobServiceError.jobNotFound(id)
         }
         
-        try await DatabaseManager.shared.updateJobStatus(id: id, status: .failed, errorMessage: errorMessage)
+        try await DatabaseManager.shared.updateJobStatus(id: id, status: .failed, errorMessage: errorMessage, tenantSlug: tenantSlug)
         
         // Se era un import folder, aggiorna stato cartella
         if case .importFolder(let payload) = job.payload {
-            try await DatabaseManager.shared.updateSinistroFolderStatus(sinistroRef: payload.sinistroRef, status: .error, errorMessage: errorMessage)
+            try await DatabaseManager.shared.updateSinistroFolderStatus(sinistroRef: payload.sinistroRef, status: .error, errorMessage: errorMessage, tenantSlug: tenantSlug)
         }
         
         print("[JobService] Failed job: \(id) - \(errorMessage)")
         
-        guard let updatedJob = try await DatabaseManager.shared.getJob(id: id) else {
+        guard let updatedJob = try await DatabaseManager.shared.getJob(id: id, tenantSlug: tenantSlug) else {
             throw JobServiceError.jobNotFound(id)
         }
         
@@ -188,10 +195,10 @@ public actor JobService {
     }
     
     /// Annulla un job
-    public func cancelJob(id: String) async throws -> Job {
-        try await DatabaseManager.shared.updateJobStatus(id: id, status: .cancelled)
+    public func cancelJob(id: String, tenantSlug: String = "default") async throws -> Job {
+        try await DatabaseManager.shared.updateJobStatus(id: id, status: .cancelled, tenantSlug: tenantSlug)
         
-        guard let job = try await DatabaseManager.shared.getJob(id: id) else {
+        guard let job = try await DatabaseManager.shared.getJob(id: id, tenantSlug: tenantSlug) else {
             throw JobServiceError.jobNotFound(id)
         }
         

@@ -22,7 +22,6 @@ class GoogleAuthService: ObservableObject {
     private let clientSecret = "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"
     private let redirectUri = "http://127.0.0.1:3000"
     private let scope = "email https://mail.google.com/ https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/userinfo.email openid"
-    private let hostedDomain = "actsrl.it"
     
     /// Flag per evitare che il check venga rieseguito in loop
     private var hasCompletedInitialCheck = false
@@ -310,8 +309,7 @@ class GoogleAuthService: ObservableObject {
             "&response_type=code" +
             "&scope=\(scope.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")" +
             "&access_type=offline" +
-            "&prompt=consent" +
-            "&hd=\(hostedDomain)"
+            "&prompt=consent"
         
         if let url = URL(string: urlString) {
             print("🔐 Apertura URL di autenticazione: \(url.absoluteString)")

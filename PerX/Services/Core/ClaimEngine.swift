@@ -166,7 +166,7 @@ class ClaimEngine: ObservableObject {
     private func determineDecision(for event: any ClaimEvent, sinistro: Sinistro) async -> ClaimEngineDecision {
         let currentStateDesc = sinistro.stato ?? ""
         let currentState = StatoManager.StatoSinistro.allCases.first { $0.descrizione == currentStateDesc }
-            ?? .daScaricare
+            ?? .istruzione
         
         switch event {
         case let emailEvent as EmailClaimEvent:
@@ -344,9 +344,7 @@ class ClaimEngine: ObservableObject {
         case .folderDownloaded:
             // Aggiorna stato se era "da scaricare"
             if currentState == .daScaricare {
-                let nextState: StatoManager.StatoSinistro = sinistro.sopralluogo
-                    ? .periziaDaEseguire
-                    : .inAttesaDocumentale
+                let nextState = StatoManager.shared.operationalEntryState(for: sinistro)
                 
                 return ClaimEngineDecision(
                     actionType: .autoStateChange,
@@ -612,7 +610,7 @@ class ClaimEngine: ObservableObject {
             sinistro.riferimento = riferimento
             sinistro.setDataAssegnazione(assignmentDate)
             sinistro.dataAperturaGestione = assignmentDate
-            sinistro.stato = StatoManager.StatoSinistro.daScaricare.descrizione
+            sinistro.stato = StatoManager.StatoSinistro.istruzione.descrizione
             if let newOwnerEmail {
                 sinistro.ownerEmail = newOwnerEmail
                 sinistro.assignedToUserEmail = newOwnerEmail
@@ -750,14 +748,14 @@ class ClaimEngine: ObservableObject {
 
         let currentStateDesc = existingSinistro.stato ?? ""
         let currentState = StatoManager.StatoSinistro.allCases.first { $0.descrizione == currentStateDesc }
-            ?? .daScaricare
+            ?? .istruzione
         
         if currentState == .revocata {
-            // Se è revocato: aggiorna a "da scaricare" con dettaglio "reincaricato"
+            // Se è revocato: aggiorna a "istruzione" con dettaglio "reincaricato"
             print("[ClaimEngine] 🔄 Sinistro \(riferimento) reincaricato (era revocato)")
             
-            // Per sinistri revocati, la transizione a daScaricare è sempre permessa (reincarico)
-            existingSinistro.stato = StatoManager.StatoSinistro.daScaricare.descrizione
+            // Per sinistri revocati, la transizione a istruzione è sempre permessa (reincarico)
+            existingSinistro.stato = StatoManager.StatoSinistro.istruzione.descrizione
             existingSinistro.dataAssegnazione = assignmentDate
             existingSinistro.dataAperturaGestione = assignmentDate
             
@@ -1534,4 +1532,3 @@ class ClaimEngine: ObservableObject {
         return averageDays > 20.0 // Obiettivo: 20 giorni
     }
 }
-

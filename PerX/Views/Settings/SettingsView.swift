@@ -8,6 +8,7 @@ struct SettingsView: View {
     @AppStorage("activeDirectory") private var activeDirectory = ""
     @AppStorage("closedDirectory") private var closedDirectory = ""
     @ObservedObject private var authService = GoogleAuthService.shared
+    @StateObject private var currentUserService = CurrentUserService.shared
     @StateObject private var whatsNewService = WhatsNewService.shared
     @StateObject private var onboardingService = OnboardingService.shared
     @State private var showWhatsNew = false
@@ -15,6 +16,7 @@ struct SettingsView: View {
     
     enum SettingsSection: String, CaseIterable {
         case account = "Account e Mail"
+        case tenant = "Tenant"
         case sinistri = "Sinistri"
         case compagnie = "Compagnie"
         case billing = "Fatturazione"
@@ -29,7 +31,7 @@ struct SettingsView: View {
         VStack(spacing: 0) {
             // Menu superiore
             Picker("", selection: $selectedSection) {
-                ForEach(SettingsSection.allCases, id: \.self) { section in
+                ForEach(availableSections, id: \.self) { section in
                     Text(section.title)
                         .tag(section)
                 }
@@ -46,6 +48,9 @@ struct SettingsView: View {
                     switch selectedSection {
                     case .account:
                         AccountSettingsView()
+
+                    case .tenant:
+                        TenantSettingsView()
                         
                     case .sinistri:
                         SinistriSettingsView()
@@ -166,6 +171,25 @@ struct SettingsView: View {
         .sheet(isPresented: $showOnboarding) {
             OnboardingView(isPresented: $showOnboarding)
                 .frame(minWidth: 800, minHeight: 600)
+        }
+        .onAppear {
+            if !availableSections.contains(selectedSection) {
+                selectedSection = availableSections.first ?? .account
+            }
+        }
+        .onChange(of: currentUserService.canManageTenantSettings) { _, _ in
+            if !availableSections.contains(selectedSection) {
+                selectedSection = availableSections.first ?? .account
+            }
+        }
+    }
+
+    private var availableSections: [SettingsSection] {
+        SettingsSection.allCases.filter { section in
+            if section == .tenant {
+                return currentUserService.canManageTenantSettings
+            }
+            return true
         }
     }
 } 

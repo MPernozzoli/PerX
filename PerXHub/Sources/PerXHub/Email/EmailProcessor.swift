@@ -13,19 +13,7 @@ public actor EmailProcessor {
     
     private let db: DatabaseManager
     private let vaultManager: VaultManager
-    
-    // MARK: - Configuration (identico a EmailClassifier client)
-    
-    /// Domini email dello studio (noi)
-    private let studioDomains = [
-        "manivaperizie.it",
-        "studioperizie.it"
-    ]
-    
-    /// Email della compagnia mandante
-    private let companyEmails = [
-        "info@actsrl.it"
-    ]
+    private let tenantMailSettings = TenantMailSettingsProvider.shared
     
     /// Domini agenzie
     private let agencyDomainPatterns = [
@@ -141,11 +129,9 @@ public actor EmailProcessor {
             return .outbound
         }
         
-        // PRIORITÀ 2: Se il mittente è uno dei nostri domini, è outbound
-        for domain in studioDomains {
-            if senderEmail.contains(domain) {
-                return .outbound
-            }
+        // PRIORITÀ 2: Se il mittente è interno al tenant, è outbound
+        if tenantMailSettings.isInternalEmail(senderEmail) {
+            return .outbound
         }
         
         return .inbound
@@ -154,9 +140,8 @@ public actor EmailProcessor {
     // MARK: - Sender Type Detection
     
     private func determineSenderType(senderEmail: String, subject: String, body: String) -> EmailSenderType {
-        // Compagnia mandante
-        if companyEmails.contains(senderEmail) {
-            return .company
+        if tenantMailSettings.isInternalEmail(senderEmail) {
+            return .studio
         }
         
         // Verifica pattern nel dominio
@@ -184,7 +169,7 @@ public actor EmailProcessor {
         }
         
         // Studio (noi)
-        for studioDomain in studioDomains {
+        for studioDomain in tenantMailSettings.allInternalDomains() {
             if domain.contains(studioDomain) {
                 return .studio
             }
@@ -223,48 +208,25 @@ public actor EmailProcessor {
         
         var matchedPatterns: [String] = []
         
-        // MARK: - Inbound from Company (alta priorità)
-        
-        if senderType == .company || companyEmails.contains(senderEmail) || senderEmail.lowercased() == "info@actsrl.it" {
-            // Assegnazione perito
+        if subject.contains("perizia controllata") {
             let subjectLower = subject.lowercased()
-            if subjectLower.contains("assegnazione perito") || 
-               (subjectLower.contains("assegnazione") && subjectLower.hasSuffix(":")) {
-                matchedPatterns.append("assegnazione")
-                return (.assignment, 0.95, matchedPatterns)
-            }
-            
-            // Revoca
-            if subjectLower.contains("revoca incarico") || 
-               subjectLower.contains("revoca videoperizia") ||
-               (subjectLower.contains("sinistro") && subjectLower.contains("revoca incarico")) {
-                matchedPatterns.append("revoca incarico")
-                return (.revocation, 0.95, matchedPatterns)
-            }
-            
-            // Perizia controllata
-            if subject.contains("perizia controllata") {
-                let subjectLower = subject.lowercased()
-                if subjectLower.contains("perizia controllata:") || 
-                   (subjectLower.contains("perizia controllata") && subjectLower.contains("-")) {
-                    matchedPatterns.append("perizia controllata")
-                    return (.controlled, 0.95, matchedPatterns)
-                }
+            if subjectLower.contains("perizia controllata:") ||
+               (subjectLower.contains("perizia controllata") && subjectLower.contains("-")) {
                 matchedPatterns.append("perizia controllata")
-                return (.controlled, 0.9, matchedPatterns)
+                return (.controlled, 0.95, matchedPatterns)
             }
-            
-            // Richiesta revisione - pattern specifico prioritario
-            if subject.contains("perizia da revisionare") {
-                matchedPatterns.append("perizia da revisionare")
-                return (.revisionRequested, 0.98, matchedPatterns)
-            }
-            
-            // Richiesta revisione (pattern generico)
-            if subject.contains("richiesta revisione") || subject.contains("revisione perizia") {
-                matchedPatterns.append("richiesta revisione")
-                return (.revisionRequested, 0.9, matchedPatterns)
-            }
+            matchedPatterns.append("perizia controllata")
+            return (.controlled, 0.9, matchedPatterns)
+        }
+
+        if subject.contains("perizia da revisionare") {
+            matchedPatterns.append("perizia da revisionare")
+            return (.revisionRequested, 0.98, matchedPatterns)
+        }
+
+        if subject.contains("richiesta revisione") || subject.contains("revisione perizia") {
+            matchedPatterns.append("richiesta revisione")
+            return (.revisionRequested, 0.9, matchedPatterns)
         }
         
         // MARK: - Acts (Atti)
@@ -587,15 +549,7 @@ public actor EmailProcessor {
     
     /// Verifica se il mittente è interno dato l'indirizzo email
     private func isInternalSender(senderEmail: String) -> Bool {
-        let senderDomain = senderEmail.lowercased().components(separatedBy: "@").last ?? ""
-        
-        // Domini considerati interni
-        let internalDomains = [
-            "actsrl.it",
-            "allconsulting.org"
-        ]
-        
-        return internalDomains.contains(senderDomain)
+        tenantMailSettings.isInternalEmail(senderEmail)
     }
     
     /// Analizza email con IA per determinare se parla di file caricati
@@ -642,26 +596,7 @@ public actor EmailProcessor {
     // MARK: - Studio Domain Check
     
     private func isFromStudio(senderEmail: String) -> Bool {
-        let senderLower = senderEmail.lowercased()
-        
-        for domain in studioDomains {
-            if senderLower.contains(domain) {
-                return true
-            }
-        }
-        
-        let partnerDomains = [
-            "actsrl.it",
-            "allconsulting.org"
-        ]
-        
-        for domain in partnerDomains {
-            if senderLower.contains(domain) {
-                return true
-            }
-        }
-        
-        return false
+        tenantMailSettings.isInternalEmail(senderEmail.lowercased())
     }
     
     // MARK: - Reference Extraction
@@ -828,12 +763,9 @@ public actor EmailProcessor {
         let email = classified.originalEmail
         
         switch classified.category {
-        case .assignment:
-            return handleAssignment(classified)
-            
-        case .revocation:
-            return handleRevocation(classified)
-            
+        case .assignment, .revocation:
+            return nil
+
         case .actReceived:
             return HubEmailEvent.signedActReceived(
                 emailId: email.id,
@@ -959,141 +891,6 @@ public actor EmailProcessor {
             // Categorie non-sinistro: non generano eventi per ClaimEngine
             return nil
         }
-    }
-    
-    // MARK: - Assignment Handler Logic
-    
-    private func handleAssignment(_ classified: ClassifiedEmail) -> HubEmailEvent? {
-        let email = classified.originalEmail
-        
-        // Verifica mittente (sempre info@actsrl.it)
-        guard email.sender.email.lowercased() == "info@actsrl.it" else {
-            print("[EmailProcessor] ⚠️ Assignment: mittente non valido")
-            return nil
-        }
-        
-        // Verifica oggetto
-        guard email.subject.lowercased().contains("assegnazione") else {
-            print("[EmailProcessor] ⚠️ Assignment: oggetto non valido")
-            return nil
-        }
-        
-        // Estrai riferimento dal corpo
-        guard let body = email.body else {
-            print("[EmailProcessor] ⚠️ Assignment: corpo mancante")
-            return nil
-        }
-        
-        // Pattern per formato standard assegnazioni
-        let pattern = #"per\s+il\s+sinistro\s+\[?([0-9]{7})\]?"#
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else {
-            return nil
-        }
-        
-        let range = NSRange(location: 0, length: body.utf16.count)
-        guard let match = regex.firstMatch(in: body, range: range),
-              match.range(at: 1).location != NSNotFound else {
-            print("[EmailProcessor] ⚠️ Assignment: riferimento non trovato")
-            return nil
-        }
-        
-        let riferimento = (body as NSString).substring(with: match.range(at: 1))
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        guard !riferimento.isEmpty, riferimento.count == 7 else {
-            print("[EmailProcessor] ⚠️ Assignment: riferimento non valido")
-            return nil
-        }
-        
-        // Determina assegnatario: chi riceve la mail
-        let recipientEmail = email.recipients.first?.email
-        let recipientName = email.recipients.first?.name
-        
-        // Estrai dati aggiuntivi
-        let extractedData = extractDataFromBody(body)
-        
-        print("[EmailProcessor] ✅ Assignment: riferimento \(riferimento)")
-        
-        return HubEmailEvent.assignmentReceived(
-            emailId: email.id,
-            riferimento: riferimento,
-            assignmentDate: email.date,
-            assigneeEmail: recipientEmail,
-            assigneeName: recipientName,
-            extractedData: extractedData
-        )
-    }
-    
-    // MARK: - Revocation Handler Logic
-    
-    private func handleRevocation(_ classified: ClassifiedEmail) -> HubEmailEvent? {
-        let email = classified.originalEmail
-        
-        // Verifica mittente
-        guard email.sender.email.lowercased() == "info@actsrl.it" else {
-            print("[EmailProcessor] ⚠️ Revocation: mittente non valido")
-            return nil
-        }
-        
-        // Estrai riferimento
-        guard let riferimento = extractRevocationReference(from: email.subject) else {
-            print("[EmailProcessor] ⚠️ Revocation: riferimento non trovato")
-            return nil
-        }
-        
-        // Estrai motivo se presente
-        let reason = extractRevocationReason(from: email.body ?? "")
-        
-        print("[EmailProcessor] ✅ Revocation: riferimento \(riferimento)")
-        
-        return HubEmailEvent.revocationReceived(
-            emailId: email.id,
-            riferimento: riferimento,
-            reason: reason
-        )
-    }
-    
-    private func extractRevocationReference(from subject: String) -> String? {
-        let patterns = [
-            #"revoca\s+incarico\s+(?:videoperizia\s+)?per\s+sinistro\s+([0-9]{7})"#,
-            #"ns[.]?\s*rif[.]?\s+([0-9]{7})\s+REVOCA\s+INCARICO"#
-        ]
-        
-        for pattern in patterns {
-            if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) {
-                let range = NSRange(location: 0, length: subject.utf16.count)
-                if let match = regex.firstMatch(in: subject, range: range),
-                   match.range(at: 1).location != NSNotFound {
-                    let riferimento = (subject as NSString).substring(with: match.range(at: 1))
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !riferimento.isEmpty && riferimento.count == 7 {
-                        return riferimento
-                    }
-                }
-            }
-        }
-        
-        return nil
-    }
-    
-    private func extractRevocationReason(from body: String) -> String? {
-        let patterns = [
-            "motivo[:\\s]+(.+?)(?:\\n|\\.|$)",
-            "causa[:\\s]+(.+?)(?:\\n|\\.|$)",
-            "perch[eé][:\\s]+(.+?)(?:\\n|\\.|$)"
-        ]
-        
-        for pattern in patterns {
-            if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) {
-                let range = NSRange(body.startIndex..<body.endIndex, in: body)
-                if let match = regex.firstMatch(in: body, options: [], range: range),
-                   let reasonRange = Range(match.range(at: 1), in: body) {
-                    return String(body[reasonRange]).trimmingCharacters(in: .whitespacesAndNewlines)
-                }
-            }
-        }
-        
-        return nil
     }
     
     // MARK: - Data Extraction Helpers

@@ -1,6 +1,8 @@
 import Foundation
 import Combine
 
+private struct EmptyBody: Encodable {}
+
 // ============================================================================
 // MARK: - TaskAdapter
 // Adapter per task con routing locale/Hub
@@ -22,7 +24,9 @@ final class TaskAdapter: ObservableObject {
     
     /// Recupera task per utente (passare currentUsername da CurrentUserService)
     func getTasks(userId: String, userEmail: String? = nil) async throws -> [TaskListItem] {
-        if hubMode.shouldUseHub(for: .task) {
+        if hubClient.isCloudConfigured {
+            return try await fetchFromCloud()
+        } else if hubMode.shouldUseHub(for: .task) {
             return try await fetchFromHub(userId: userId, userEmail: userEmail)
         } else {
             return try await fetchFromLocal(userId: userId, userEmail: userEmail)
@@ -31,7 +35,9 @@ final class TaskAdapter: ObservableObject {
     
     /// Recupera task per sinistro
     func getTasks(sinistroRef: String) async throws -> [TaskListItem] {
-        if hubMode.shouldUseHub(for: .task) {
+        if hubClient.isCloudConfigured {
+            return try await fetchFromCloud(sinistroRef: sinistroRef)
+        } else if hubMode.shouldUseHub(for: .task) {
             return try await fetchFromHub(sinistroRef: sinistroRef)
         } else {
             return try await fetchFromLocal(sinistroRef: sinistroRef)
@@ -50,7 +56,17 @@ final class TaskAdapter: ObservableObject {
         dueDate: Date?,
         assignedTo: String?
     ) async throws -> TaskListItem {
-        if hubMode.shouldUseHub(for: .task) {
+        if hubClient.isCloudConfigured {
+            return try await createOnCloud(
+                title: title,
+                description: description,
+                type: type,
+                priority: priority,
+                sinistroRef: sinistroRef,
+                dueDate: dueDate,
+                assignedTo: assignedTo
+            )
+        } else if hubMode.shouldUseHub(for: .task) {
             return try await createOnHub(
                 title: title,
                 description: description,
@@ -75,7 +91,9 @@ final class TaskAdapter: ObservableObject {
     
     /// Completa task
     func completeTask(id: String) async throws {
-        if hubMode.shouldUseHub(for: .task) {
+        if hubClient.isCloudConfigured {
+            let _: TaskDTO = try await hubClient.cloudPost("/api/v1/tasks/\(id)/complete", body: EmptyBody())
+        } else if hubMode.shouldUseHub(for: .task) {
             try await hubClient.completeTask(id: id)
         } else {
             // Logica locale esistente
@@ -92,7 +110,16 @@ final class TaskAdapter: ObservableObject {
         dueDate: Date?,
         status: TaskStatus?
     ) async throws -> TaskListItem {
-        if hubMode.shouldUseHub(for: .task) {
+        if hubClient.isCloudConfigured {
+            return try await updateOnCloud(
+                id: id,
+                title: title,
+                description: description,
+                priority: priority,
+                dueDate: dueDate,
+                status: status
+            )
+        } else if hubMode.shouldUseHub(for: .task) {
             return try await updateOnHub(
                 id: id,
                 title: title,
@@ -114,7 +141,62 @@ final class TaskAdapter: ObservableObject {
     }
     
     // MARK: - Hub Implementation
-    
+
+    private func fetchFromCloud() async throws -> [TaskListItem] {
+        let response: [TaskDTO] = try await hubClient.cloudGet("/api/v1/tasks")
+        return response.map { TaskListItem(from: $0) }
+    }
+
+    private func fetchFromCloud(sinistroRef: String) async throws -> [TaskListItem] {
+        let encoded = sinistroRef.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? sinistroRef
+        let response: [TaskDTO] = try await hubClient.cloudGet("/api/v1/tasks?sinistroRef=\(encoded)")
+        return response.map { TaskListItem(from: $0) }
+    }
+
+    private func createOnCloud(
+        title: String,
+        description: String?,
+        type: TaskType,
+        priority: Double,
+        sinistroRef: String?,
+        dueDate: Date?,
+        assignedTo: String?
+    ) async throws -> TaskListItem {
+        let request = CreateTaskRequest(
+            title: title,
+            description: description,
+            type: type.rawValue,
+            priority: priorityToString(priority),
+            sinistroRef: sinistroRef,
+            dueDate: dueDate,
+            assignedTo: assignedTo,
+            createdBy: CurrentUserService.shared.currentEmail ?? "unknown"
+        )
+
+        let response: TaskDTO = try await hubClient.cloudPost("/api/v1/tasks", body: request)
+        return TaskListItem(from: response)
+    }
+
+    private func updateOnCloud(
+        id: String,
+        title: String?,
+        description: String?,
+        priority: Double?,
+        dueDate: Date?,
+        status: TaskStatus?
+    ) async throws -> TaskListItem {
+        let request = UpdateTaskRequest(
+            title: title,
+            description: description,
+            priority: priority.map { priorityToString($0) },
+            dueDate: dueDate,
+            status: status?.rawValue
+        )
+
+        let response: TaskDTO = try await hubClient.cloudPut("/api/v1/tasks/\(id)", body: request)
+        return TaskListItem(from: response)
+    }
+
     private func fetchFromHub(userId: String, userEmail: String? = nil) async throws -> [TaskListItem] {
         var path = "/tasks?user=\(userId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? userId)"
         if let email = userEmail, !email.isEmpty {
@@ -317,4 +399,3 @@ struct TaskListItem: Identifiable {
         self.createdAt = task.createdAt
     }
 }
-

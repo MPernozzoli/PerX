@@ -15,7 +15,8 @@ Questa repo è strutturata come **monorepo** e contiene sia l’applicazione des
 - **`PerXHubMonitor/`**: tool di monitoraggio e diagnostica per l’hub.
 - **`perx_sync_agent/`**: agent dedicato alla sincronizzazione/sorveglianza di directory e file locali.
 - **`perx_chrome_extension/`**: estensione browser per integrazioni lato web.
-- **`backend/`**: backend FastAPI per servizi cloud (API sinistri, autenticazione, ecc.) -- attualmente non in uso e non in sviluppo.
+- **`backend/`**: backend FastAPI per servizi cloud (API sinistri, autenticazione, portale assicurati, ecc.).
+- **`portal-web/`**: nuova applicazione web dedicata agli assicurati per monitorare e gestire il proprio sinistro.
 - **Altri moduli/tools**: cartelle ausiliarie per test, varianti “lite” (iPhone), script e materiali di supporto.
 
 Ogni componente più complesso ha (o può avere) un proprio `README` locale con dettagli specifici.
@@ -47,6 +48,9 @@ La configurazione dettagliata di schemi, bundle id, profili di provisioning e am
 - **`perx_chrome_extension/`**  
   Estensione Chrome per catturare contenuti dal browser e collegarli alle pratiche PerX (dettagli nel relativo `README`).
   Pensata come bridge tra il gestionale legacy dello studio e la versione BETA di PerX.
+
+- **`portal-web/`**  
+  Portale web self-service per gli assicurati, collegato al backend cloud e predisposto per magic link, timeline del sinistro, upload documenti, documentale guidata, firma atto e chat instradata verso i flussi interni.
 
 ---
 

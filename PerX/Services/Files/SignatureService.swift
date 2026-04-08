@@ -32,6 +32,7 @@ final class SignatureService: ObservableObject {
         container = CKContainer(identifier: "iCloud.it.pernozzoli.PerX")
         loadIndividualSignature()
         Task {
+            await refreshIndividualSignatureFromCloud()
             await loadStudioSignature()
         }
     }
@@ -42,6 +43,15 @@ final class SignatureService: ObservableObject {
         guard let image = image else {
             defaults.removeObject(forKey: individualSignatureKey)
             individualSignature = nil
+            if BackendAPIClient.shared.isConfigured && BackendAPIClient.shared.hasAccessToken {
+                Task {
+                    do {
+                        try await BackendAPIClient.shared.delete("profiles/me/assets/signature_image")
+                    } catch {
+                        print("[SignatureService] ⚠️ Rimozione firma cloud fallita: \(error)")
+                    }
+                }
+            }
             print("[SignatureService] 🗑️ Firma individuale rimossa")
             return
         }
@@ -57,6 +67,20 @@ final class SignatureService: ObservableObject {
         
         defaults.set(pngData, forKey: individualSignatureKey)
         individualSignature = image
+        if BackendAPIClient.shared.isConfigured && BackendAPIClient.shared.hasAccessToken {
+            Task {
+                do {
+                    let _: SignatureAssetUploadResponse = try await BackendAPIClient.shared.upload(
+                        "profiles/me/assets/signature_image",
+                        data: pngData,
+                        fileName: "signature.png",
+                        mimeType: "image/png"
+                    )
+                } catch {
+                    print("[SignatureService] ⚠️ Upload firma cloud fallito: \(error)")
+                }
+            }
+        }
         print("[SignatureService] ✅ Firma individuale salvata (dimensione: \(pngData.count) bytes)")
     }
     
@@ -67,6 +91,19 @@ final class SignatureService: ObservableObject {
             return
         }
         individualSignature = image
+    }
+
+    private func refreshIndividualSignatureFromCloud() async {
+        guard BackendAPIClient.shared.isConfigured && BackendAPIClient.shared.hasAccessToken else { return }
+        do {
+            let data = try await BackendAPIClient.shared.download("profiles/me/assets/signature_image")
+            if let image = NSImage(data: data) {
+                defaults.set(data, forKey: individualSignatureKey)
+                individualSignature = image
+            }
+        } catch {
+            print("[SignatureService] ℹ️ Nessuna firma cloud utente disponibile: \(error)")
+        }
     }
     
     // MARK: - Firma Studio (CloudKit)
@@ -236,4 +273,12 @@ final class SignatureService: ObservableObject {
         }
         return signatures
     }
+}
+
+private struct SignatureAssetUploadResponse: Decodable {
+    let asset_type: String
+    let file_name: String
+    let mime_type: String?
+    let size_bytes: Int
+    let asset_url: String
 }

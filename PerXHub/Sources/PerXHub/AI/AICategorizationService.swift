@@ -93,10 +93,7 @@ public actor AICategorizationService {
         var category: EmailCategory? = nil
         var confidence: Double = 0.0
         
-        if lowered.contains("incarico") && lowered.contains("conferimento") {
-            category = .assignment
-            confidence = 0.8
-        } else if lowered.contains("urgente") || lowered.contains("sollecito") {
+        if lowered.contains("urgente") || lowered.contains("sollecito") {
             category = .reminderReceived
             confidence = 0.7
         } else if lowered.contains("fattura") {

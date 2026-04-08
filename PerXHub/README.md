@@ -131,6 +131,14 @@ Variabili d'ambiente:
 | PERX_HUB_PATH | /opt/perx-hub | Path base |
 | PERX_HUB_HOST | 0.0.0.0 | Host binding |
 | PERX_HUB_PORT | 8080 | Porta HTTP |
+| SUPABASE_URL | - | URL progetto Supabase |
+| SUPABASE_SERVICE_ROLE_KEY | - | Chiave server-side per accesso service role |
+
+### Direzione architetturale
+
+- `Supabase/Postgres` e' il source of truth dei dati applicativi.
+- `PerXHub` resta il nodo operativo per vault documentale, file system, AI locale e bridge WhatsApp.
+- Le credenziali Supabase dell'Hub devono restare solo lato server e non vanno condivise con i client.
 
 ---
 
@@ -177,4 +185,3 @@ L'Hub traccia gli utenti connessi e li espone in `/stats`:
 GET /stats
 → { ..., "connectedUsers": 3 }
 ```
-

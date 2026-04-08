@@ -37,13 +37,20 @@ async def list_claims(
     stato: str = Query(None),
     assignee_id: str = Query(None),
     search: str = Query(None),
+    tenant_id: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
     """List claims with filters and pagination"""
+    effective_tenant_id = current_user.tenant_id
+    if current_user.is_platform_admin:
+        effective_tenant_id = tenant_id
+    elif tenant_id and tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=403, detail="Tenant access denied")
+
     skip = (page - 1) * page_size
     claims, total = await ClaimService.list_claims(
-        db, current_user.tenant_id, skip, page_size, stato, assignee_id, search
+        db, effective_tenant_id, skip, page_size, stato, assignee_id, search
     )
     return ClaimListResponse(
         items=[ClaimResponse.model_validate(c) for c in claims],
@@ -56,11 +63,18 @@ async def list_claims(
 @router.get("/{claim_id}", response_model=ClaimResponse)
 async def get_claim(
     claim_id: str,
+    tenant_id: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
     """Get a claim by ID"""
-    claim = await ClaimService.get_claim(db, current_user.tenant_id, claim_id)
+    effective_tenant_id = current_user.tenant_id
+    if current_user.is_platform_admin:
+        effective_tenant_id = tenant_id
+    elif tenant_id and tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=403, detail="Tenant access denied")
+
+    claim = await ClaimService.get_claim(db, effective_tenant_id, claim_id)
     if not claim:
         raise HTTPException(status_code=404, detail="Claim not found")
     return ClaimResponse.model_validate(claim)
@@ -105,6 +119,7 @@ async def get_claim_events(
     claim_id: str,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
+    tenant_id: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
@@ -112,17 +127,19 @@ async def get_claim_events(
     from sqlalchemy import select
     from app.models.claim_event import ClaimEvent
     
+    effective_tenant_id = current_user.tenant_id
+    if current_user.is_platform_admin:
+        effective_tenant_id = tenant_id
+    elif tenant_id and tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=403, detail="Tenant access denied")
+
     skip = (page - 1) * page_size
+    query = select(ClaimEvent).where(ClaimEvent.claim_id == claim_id)
+    if effective_tenant_id:
+        query = query.where(ClaimEvent.tenant_id == effective_tenant_id)
+
     result = await db.execute(
-        select(ClaimEvent)
-        .where(
-            (ClaimEvent.claim_id == claim_id) &
-            (ClaimEvent.tenant_id == current_user.tenant_id)
-        )
-        .order_by(ClaimEvent.event_time.desc())
-        .offset(skip)
-        .limit(page_size)
+        query.order_by(ClaimEvent.event_time.desc()).offset(skip).limit(page_size)
     )
     events = result.scalars().all()
     return [ClaimEventResponse.model_validate(e) for e in events]
-

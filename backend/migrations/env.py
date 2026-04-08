@@ -8,8 +8,9 @@ from alembic import context
 import asyncio
 
 # Import all models for autogenerate
+from app.core.config import settings
 from app.core.database import Base
-from app.models import tenant, user, role, claim, claim_assignment, claim_state, claim_event, email, attachment, case_task, audit_log
+from app.models import tenant, user, role, claim, claim_assignment, claim_state, claim_event, email, attachment, case_task, audit_log, inspection
 
 # this is the Alembic Config object
 config = context.config
@@ -20,6 +21,9 @@ if config.config_file_name is not None:
 
 # Set target metadata
 target_metadata = Base.metadata
+
+# Reuse the application database URL so migrations target the same database.
+config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 
 
 def run_migrations_offline() -> None:
@@ -64,4 +68,3 @@ if context.is_offline_mode():
     run_migrations_offline()
 else:
     asyncio.run(run_migrations_online())
-

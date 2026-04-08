@@ -22,7 +22,9 @@ final class ClaimAdapter: ObservableObject {
     
     /// Recupera sinistri per utente (passare currentUsername da CurrentUserService)
     func getSinistri(userId: String, userEmail: String? = nil) async throws -> [SinistroListItem] {
-        if hubMode.shouldUseHub(for: .claim) {
+        if hubClient.isCloudConfigured {
+            return try await fetchFromCloud()
+        } else if hubMode.shouldUseHub(for: .claim) {
             return try await fetchFromHub(userId: userId, userEmail: userEmail)
         } else {
             return try await fetchFromLocal(userId: userId, userEmail: userEmail)
@@ -31,7 +33,9 @@ final class ClaimAdapter: ObservableObject {
     
     /// Recupera dettaglio sinistro
     func getSinistro(riferimento: String) async throws -> SinistroDetail? {
-        if hubMode.shouldUseHub(for: .claim) {
+        if hubClient.isCloudConfigured {
+            return try await fetchDetailFromCloud(riferimento: riferimento)
+        } else if hubMode.shouldUseHub(for: .claim) {
             return try await fetchDetailFromHub(riferimento: riferimento)
         } else {
             return try await fetchDetailFromLocal(riferimento: riferimento)
@@ -47,7 +51,13 @@ final class ClaimAdapter: ObservableObject {
         reason: String?,
         changedBy: String
     ) async throws {
-        if hubMode.shouldUseHub(for: .claim) {
+        if hubClient.isCloudConfigured {
+            try await changeStateOnCloud(
+                riferimento: riferimento,
+                newState: newState,
+                reason: reason
+            )
+        } else if hubMode.shouldUseHub(for: .claim) {
             try await changeStateOnHub(
                 riferimento: riferimento,
                 newState: newState,
@@ -65,7 +75,42 @@ final class ClaimAdapter: ObservableObject {
     }
     
     // MARK: - Hub Implementation
-    
+
+    private func fetchFromCloud() async throws -> [SinistroListItem] {
+        let response: CloudClaimListResponse = try await hubClient.cloudGet("/api/v1/claims")
+        return response.items.map { SinistroListItem(from: $0) }
+    }
+
+    private func fetchDetailFromCloud(riferimento: String) async throws -> SinistroDetail? {
+        let response: CloudClaimResponse = try await hubClient.cloudGet("/api/v1/claims/\(riferimento)")
+        return SinistroDetail(from: response)
+    }
+
+    private func changeStateOnCloud(
+        riferimento: String,
+        newState: StatoSinistro,
+        reason: String?
+    ) async throws {
+        struct CloudStateChangeRequest: Codable {
+            let to_state: String
+            let reason: String?
+            let payload: [String: String]?
+        }
+
+        struct CloudStateChangeResponse: Codable {
+            let status: String
+        }
+
+        let _: CloudStateChangeResponse = try await hubClient.cloudPost(
+            "/api/v1/claims/\(riferimento)/state-transitions",
+            body: CloudStateChangeRequest(
+                to_state: newState.rawValue,
+                reason: reason,
+                payload: nil
+            )
+        )
+    }
+
     private func fetchFromHub(userId: String, userEmail: String? = nil) async throws -> [SinistroListItem] {
         var path = "/sinistri?user=\(userId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? userId)"
         if let email = userEmail, !email.isEmpty {
@@ -163,6 +208,7 @@ final class ClaimAdapter: ObservableObject {
 struct SinistroListItem: Identifiable {
     let id: String
     let riferimento: String
+    let garanzia: String?
     let stato: StatoSinistro
     let nomeAssicurato: String?
     let nomeCompagnia: String?
@@ -172,7 +218,8 @@ struct SinistroListItem: Identifiable {
     init(from dto: SinistroDTO) {
         self.id = dto.id
         self.riferimento = dto.riferimento
-        self.stato = StatoSinistro(rawValue: dto.stato) ?? .daScaricare
+        self.garanzia = dto.garanzia
+        self.stato = StatoSinistro(rawValue: dto.stato) ?? .istruzione
         self.nomeAssicurato = dto.nomeAssicurato
         self.nomeCompagnia = dto.nomeCompagnia
         self.dataAssegnazione = dto.dataAssegnazione
@@ -182,17 +229,30 @@ struct SinistroListItem: Identifiable {
     init(from sinistro: Sinistro) {
         self.id = sinistro.riferimento ?? UUID().uuidString
         self.riferimento = sinistro.riferimento ?? ""
-        self.stato = StatoSinistro(rawValue: sinistro.stato ?? "") ?? .daScaricare
+        self.garanzia = sinistro.garanzia ?? sinistro.fulminazione
+        self.stato = StatoSinistro(rawValue: sinistro.stato ?? "") ?? .istruzione
         self.nomeAssicurato = sinistro.nomeAssicurato
         self.nomeCompagnia = sinistro.nomeCompagnia
         self.dataAssegnazione = sinistro.dataAssegnazione
         self.assignedToUserEmail = sinistro.assignedToUserEmail
+    }
+
+    init(from dto: CloudClaimResponse) {
+        self.id = dto.id
+        self.riferimento = dto.external_ref ?? dto.id
+        self.garanzia = dto.garanzia
+        self.stato = StatoSinistro(rawValue: dto.stato_corrente) ?? .istruzione
+        self.nomeAssicurato = dto.nome_assicurato
+        self.nomeCompagnia = dto.compagnia
+        self.dataAssegnazione = dto.created_at
+        self.assignedToUserEmail = nil
     }
 }
 
 struct SinistroDetail: Identifiable {
     let id: String
     let riferimento: String
+    let garanzia: String?
     let stato: StatoSinistro
     let numeroSinistroCompagnia: String?
     let nomeAssicurato: String?
@@ -205,7 +265,8 @@ struct SinistroDetail: Identifiable {
     init(from dto: SinistroDTO) {
         self.id = dto.id
         self.riferimento = dto.riferimento
-        self.stato = StatoSinistro(rawValue: dto.stato) ?? .daScaricare
+        self.garanzia = dto.garanzia
+        self.stato = StatoSinistro(rawValue: dto.stato) ?? .istruzione
         self.numeroSinistroCompagnia = dto.numeroSinistroCompagnia
         self.nomeAssicurato = dto.nomeAssicurato
         self.nomeCompagnia = dto.nomeCompagnia
@@ -218,7 +279,8 @@ struct SinistroDetail: Identifiable {
     init(from sinistro: Sinistro) {
         self.id = sinistro.riferimento ?? UUID().uuidString
         self.riferimento = sinistro.riferimento ?? ""
-        self.stato = StatoSinistro(rawValue: sinistro.stato ?? "") ?? .daScaricare
+        self.garanzia = sinistro.garanzia ?? sinistro.fulminazione
+        self.stato = StatoSinistro(rawValue: sinistro.stato ?? "") ?? .istruzione
         self.numeroSinistroCompagnia = sinistro.numeroSinistroCompagnia
         self.nomeAssicurato = sinistro.nomeAssicurato
         self.nomeCompagnia = sinistro.nomeCompagnia
@@ -226,6 +288,20 @@ struct SinistroDetail: Identifiable {
         self.dataChiusura = sinistro.dataChiusura
         self.assignedToUserEmail = sinistro.assignedToUserEmail
         self.assignedToUserName = sinistro.assignedToUserName
+    }
+
+    init(from dto: CloudClaimResponse) {
+        self.id = dto.id
+        self.riferimento = dto.external_ref ?? dto.id
+        self.garanzia = dto.garanzia
+        self.stato = StatoSinistro(rawValue: dto.stato_corrente) ?? .istruzione
+        self.numeroSinistroCompagnia = dto.numero_sinistro
+        self.nomeAssicurato = dto.nome_assicurato
+        self.nomeCompagnia = dto.compagnia
+        self.dataAssegnazione = dto.created_at
+        self.dataChiusura = dto.closed_at
+        self.assignedToUserEmail = nil
+        self.assignedToUserName = nil
     }
 }
 

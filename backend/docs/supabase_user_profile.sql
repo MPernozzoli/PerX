@@ -1,0 +1,18 @@
+alter table public.users add column if not exists first_name text;
+alter table public.users add column if not exists last_name text;
+alter table public.users add column if not exists job_title text;
+alter table public.users add column if not exists phone_number text;
+alter table public.users add column if not exists birth_date timestamptz;
+alter table public.users add column if not exists birthday_visibility text not null default 'everyone';
+alter table public.users add column if not exists notify_birthday boolean not null default true;
+alter table public.users add column if not exists contract_type text;
+alter table public.users add column if not exists avatar_type text not null default 'generated';
+alter table public.users add column if not exists avatar_photo_base64 text;
+alter table public.users add column if not exists generated_avatar_color text;
+alter table public.users add column if not exists generated_avatar_icon text;
+alter table public.users add column if not exists avatar_gif_url text;
+alter table public.users add column if not exists enable_badges boolean not null default false;
+alter table public.users add column if not exists send_read_receipts boolean not null default true;
+alter table public.users add column if not exists email_signature_html text;
+alter table public.users add column if not exists email_signature_text text;
+alter table public.users add column if not exists settings_json jsonb default '{}'::jsonb;

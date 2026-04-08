@@ -54,6 +54,7 @@ struct iPadContentView: View {
         case chat = "Chat AI"
         case consuntivo = "Consuntivo"
         case programmazione = "Programmazione"
+        case routes = "Route"
         case impostazioni = "Impostazioni"
         
         var id: String { rawValue }
@@ -67,18 +68,26 @@ struct iPadContentView: View {
             case .chat: return "bubble.left.and.bubble.right.fill"
             case .consuntivo: return "chart.bar.fill"
             case .programmazione: return "calendar.badge.clock"
+            case .routes: return "point.topleft.down.curvedto.point.bottomright.up"
             case .impostazioni: return "gear"
             }
         }
         
         var isSettings: Bool { self == .impostazioni }
     }
+
+    private var availableSections: [NavigationSection] {
+        if session.isCATUser {
+            return [.dashboard, .programmazione, .routes, .impostazioni]
+        }
+        return [.dashboard, .sinistri, .mail, .whatsapp, .chat, .consuntivo, .programmazione, .impostazioni]
+    }
     
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             // Sidebar
             List {
-                ForEach(NavigationSection.allCases.filter { !$0.isSettings }, id: \.self) { section in
+                ForEach(availableSections.filter { !$0.isSettings }, id: \.self) { section in
                     Button {
                         selectedSection = section
                     } label: {
@@ -88,12 +97,14 @@ struct iPadContentView: View {
                 }
                 
                 Section {
-                    Button {
-                        selectedSection = .impostazioni
-                    } label: {
-                        Label(NavigationSection.impostazioni.rawValue, systemImage: NavigationSection.impostazioni.icon)
+                    if availableSections.contains(.impostazioni) {
+                        Button {
+                            selectedSection = .impostazioni
+                        } label: {
+                            Label(NavigationSection.impostazioni.rawValue, systemImage: NavigationSection.impostazioni.icon)
+                        }
+                        .listRowBackground(selectedSection == .impostazioni ? Color.accentColor.opacity(0.2) : Color.clear)
                     }
-                    .listRowBackground(selectedSection == .impostazioni ? Color.accentColor.opacity(0.2) : Color.clear)
                 }
             }
             .listStyle(.sidebar)
@@ -119,13 +130,23 @@ struct iPadContentView: View {
             detailView
         }
         .navigationSplitViewStyle(.balanced)
+        .onAppear {
+            clampSelectionIfNeeded()
+        }
+        .onChange(of: session.isCATUser) {
+            clampSelectionIfNeeded()
+        }
     }
     
     @ViewBuilder
     private var detailView: some View {
         switch selectedSection {
         case .dashboard:
-            iPadDashboardView()
+            if session.isCATUser {
+                iPadCATDashboardView()
+            } else {
+                iPadDashboardView()
+            }
         case .sinistri:
             SinistriListView()
         case .mail:
@@ -137,9 +158,22 @@ struct iPadContentView: View {
         case .consuntivo:
             iPadConsuntivoView()
         case .programmazione:
-            iPadProgrammazioneView()
+            if session.isCATUser {
+                iPadCATProgrammazioneView()
+            } else {
+                iPadProgrammazioneView()
+            }
+        case .routes:
+            iPadCATRoutesView()
         case .impostazioni:
             SettingsView()
+        }
+    }
+
+    private func clampSelectionIfNeeded() {
+        guard availableSections.contains(selectedSection) else {
+            selectedSection = .dashboard
+            return
         }
     }
 }
