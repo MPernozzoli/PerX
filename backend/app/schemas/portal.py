@@ -90,6 +90,28 @@ class PortalExpertContactResponse(BaseModel):
     availability_note: Optional[str] = None
 
 
+class PortalDocumentCollectionDraftInfoResponse(BaseModel):
+    available: bool = False
+    status: str = "not_started"
+    current_step: Optional[str] = None
+    updated_at: Optional[datetime] = None
+    submitted_at: Optional[datetime] = None
+
+
+class PortalActFlowResponse(BaseModel):
+    status: str
+    label: str
+    provider: Optional[str] = None
+    signing_url: Optional[str] = None
+    provider_reference: Optional[str] = None
+    request_id: Optional[str] = None
+    act_document_id: Optional[str] = None
+    signed_document_id: Optional[str] = None
+    countersigned_document_id: Optional[str] = None
+    signed_at: Optional[datetime] = None
+    countersigned_at: Optional[datetime] = None
+
+
 class PortalClaimSummaryResponse(BaseModel):
     claim_id: str
     tenant_id: str
@@ -105,6 +127,34 @@ class PortalClaimSummaryResponse(BaseModel):
     chat_enabled: bool = True
     document_upload_enabled: bool = True
     act_signature_enabled: bool = True
+    inspection_scheduling_enabled: bool = False
+    requested_amount: Optional[float] = None
+    liquidated_amount: Optional[float] = None
+    estimated_damage_amount: Optional[float] = None
+    act_sent_at: Optional[datetime] = None
+    act_signed_at: Optional[datetime] = None
+    contraente_name: Optional[str] = None
+    iban_value_masked: Optional[str] = None
+    iban_required_for_progress: bool = True
+    document_collection_draft: PortalDocumentCollectionDraftInfoResponse = Field(default_factory=PortalDocumentCollectionDraftInfoResponse)
+    additional_document_requests: list[str] = Field(default_factory=list)
+    act_flow: Optional[PortalActFlowResponse] = None
+
+
+class PortalAccessibleClaimResponse(BaseModel):
+    claim_id: str
+    tenant_id: str
+    external_ref: Optional[str] = None
+    numero_sinistro: Optional[str] = None
+    compagnia: Optional[str] = None
+    nome_assicurato: Optional[str] = None
+    data_sinistro: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    macro_state: PortalMacroStateResponse
+    has_pending_actions: bool = False
+    requested_amount: Optional[float] = None
+    liquidated_amount: Optional[float] = None
+    estimated_damage_amount: Optional[float] = None
 
 
 class PortalTimelineEventResponse(BaseModel):
@@ -114,6 +164,92 @@ class PortalTimelineEventResponse(BaseModel):
     label: str
     description: Optional[str] = None
     source: str
+
+
+class PortalInspectionLocationUpdateRequest(BaseModel):
+    address_line: Optional[str] = None
+    municipality: Optional[str] = None
+    province: Optional[str] = None
+    region: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+
+
+class PortalInspectionSelectedSlotInput(BaseModel):
+    date: str
+    start_time: str
+    end_time: str
+    label: Optional[str] = None
+
+
+class PortalInspectionPreferencesUpdateRequest(BaseModel):
+    selected_slots: list[PortalInspectionSelectedSlotInput] = Field(default_factory=list)
+    notes: Optional[str] = None
+    requested_duration_minutes: Optional[int] = Field(default=None, ge=60, le=240)
+
+
+class PortalInspectionLocationResponse(BaseModel):
+    address_line: Optional[str] = None
+    municipality: Optional[str] = None
+    province: Optional[str] = None
+    region: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    confirmed_at: Optional[datetime] = None
+
+
+class PortalInspectionSelectedSlotResponse(BaseModel):
+    id: str
+    date: str
+    start_at: datetime
+    end_at: datetime
+    label: str
+
+
+class PortalInspectionAvailabilitySlotResponse(BaseModel):
+    id: str
+    date: str
+    start_at: datetime
+    end_at: datetime
+    label: str
+    available_cat_count: int
+    candidate_user_ids: list[str]
+
+
+class PortalInspectionAvailabilityDayResponse(BaseModel):
+    date: str
+    weekday_label: str
+    is_available: bool
+    slot_count: int
+    slots: list[PortalInspectionAvailabilitySlotResponse] = Field(default_factory=list)
+
+
+class PortalInspectionCandidateResponse(BaseModel):
+    user_id: str
+    full_name: str
+    email: Optional[str] = None
+    phone_number: Optional[str] = None
+    job_title: Optional[str] = None
+    comune: Optional[str] = None
+    provincia: Optional[str] = None
+    regione: Optional[str] = None
+    distance_km: Optional[float] = None
+    is_primary_zone: bool = False
+
+
+class PortalInspectionSchedulingOverviewResponse(BaseModel):
+    enabled: bool
+    status: str
+    workflow_stage: Optional[str] = None
+    instructions: str
+    pending_confirmation_message: Optional[str] = None
+    address_confirmed: bool
+    location: PortalInspectionLocationResponse
+    selected_slots: list[PortalInspectionSelectedSlotResponse] = Field(default_factory=list)
+    availability_days: list[PortalInspectionAvailabilityDayResponse] = Field(default_factory=list)
+    candidate_cats: list[PortalInspectionCandidateResponse] = Field(default_factory=list)
+    route_review_deadline: Optional[datetime] = None
+    route_proposal_event_id: Optional[str] = None
 
 
 class PortalDocumentResponse(BaseModel):
@@ -137,6 +273,14 @@ class PortalUploadIntentResponse(BaseModel):
     upload_url: Optional[str] = None
     storage_path: str
     expires_in: int
+
+
+class PortalUploadedDocumentResponse(BaseModel):
+    document_id: str
+    file_name: str
+    status: str
+    storage_path: str
+    uploaded_at: datetime
 
 
 class PortalConversationMessageCreate(BaseModel):
@@ -176,6 +320,16 @@ class PortalDocumentCollectionSubmissionResponse(BaseModel):
     id: str
     status: str
     submitted_at: datetime
+
+
+class PortalDocumentCollectionDraftUpdateRequest(BaseModel):
+    draft_json: dict = Field(default_factory=dict)
+
+
+class PortalDocumentCollectionDraftResponse(BaseModel):
+    status: str
+    draft_json: dict = Field(default_factory=dict)
+    updated_at: Optional[datetime] = None
 
 
 class PortalBankAccountSubmissionCreate(BaseModel):
@@ -223,3 +377,45 @@ class PortalSignatureConfirmResponse(BaseModel):
     id: str
     status: str
     signed_at: Optional[datetime] = None
+
+
+class PortalAdditionalDocumentSubmissionCreate(BaseModel):
+    note: Optional[str] = None
+    document_ids: list[str] = Field(default_factory=list)
+    requested_items: list[str] = Field(default_factory=list)
+
+
+class PortalAdditionalDocumentSubmissionResponse(BaseModel):
+    status: str
+    submitted_at: datetime
+    document_count: int
+
+
+class PortalAdditionalDocumentRequestsUpdate(BaseModel):
+    items: list[str] = Field(default_factory=list)
+
+
+class PortalActFlowUpdateRequest(BaseModel):
+    provider: str
+    signing_url: Optional[str] = None
+    provider_reference: Optional[str] = None
+    request_id: Optional[str] = None
+    act_document_id: Optional[str] = None
+    status: str = "pending_external_signature"
+    signed_document_id: Optional[str] = None
+    countersigned_document_id: Optional[str] = None
+    signed_at: Optional[datetime] = None
+    countersigned_at: Optional[datetime] = None
+
+
+class PortalSignatureProviderWebhookRequest(BaseModel):
+    claim_id: Optional[str] = None
+    request_id: Optional[str] = None
+    provider_reference: Optional[str] = None
+    status: str
+    signing_url: Optional[str] = None
+    act_document_id: Optional[str] = None
+    signed_document_id: Optional[str] = None
+    countersigned_document_id: Optional[str] = None
+    signed_at: Optional[datetime] = None
+    countersigned_at: Optional[datetime] = None

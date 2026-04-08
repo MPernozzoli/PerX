@@ -1,15 +1,15 @@
 import type { Metadata } from "next";
-import { Fraunces, Space_Grotesk } from "next/font/google";
+import { Inter, Plus_Jakarta_Sans } from "next/font/google";
 import type { ReactNode } from "react";
 
 import "./globals.css";
 
-const displayFont = Fraunces({
+const displayFont = Plus_Jakarta_Sans({
   subsets: ["latin"],
   variable: "--font-display"
 });
 
-const bodyFont = Space_Grotesk({
+const bodyFont = Inter({
   subsets: ["latin"],
   variable: "--font-body"
 });

@@ -2,7 +2,7 @@
 //  CATPlanningStore.swift
 //  PerX per iPad
 //
-//  Store mock condiviso per dashboard, programmazione e route CAT.
+//  Store CAT collegato al backend per route, disponibilità e territorio.
 //
 
 import Foundation
@@ -17,25 +17,86 @@ final class CATPlanningStore: ObservableObject {
     @Published private(set) var territory: CATTenantTerritorySnapshot = .empty
     @Published private(set) var schedulingRules: CATSchedulingRules = .default
     @Published private(set) var lastGeneratedAt: Date?
+    @Published private(set) var isLoading = false
+    @Published private(set) var isSavingAvailability = false
+    @Published private(set) var isSubmittingRouteDecision = false
+    @Published private(set) var syncError: String?
 
+    private let apiClient = HubAPIClient.shared
+    private let calendar = Calendar(identifier: .gregorian)
     private var availabilityByMonth: [String: [CATAvailabilityDay]] = [:]
+    private var currentTenantName: String?
 
     private init() {}
 
     func configure(for email: String?) {
-        let normalizedEmail = email?.lowercased()
+        let normalizedEmail = email?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard configuredEmail != normalizedEmail else { return }
 
         configuredEmail = normalizedEmail
-        territory = Self.mockTerritory(for: normalizedEmail)
-        routePlans = Self.mockRoutes()
-        lastGeneratedAt = routePlans.map(\.generatedAt).max()
+        routePlans = []
+        territory = .empty
+        schedulingRules = .default
+        lastGeneratedAt = nil
+        syncError = nil
+        availabilityByMonth = [:]
+    }
 
-        _ = availability(for: Date())
+    func refresh(for month: Date = Date()) async {
+        guard let configuredEmail, !configuredEmail.isEmpty else {
+            applyMockState(reason: "Account CAT non configurato")
+            return
+        }
+
+        guard apiClient.isCloudConfigured else {
+            applyMockState(reason: "Backend cloud non configurato sull'iPad")
+            return
+        }
+
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            let monthString = Self.monthFormatter.string(from: month)
+            async let tenantSettings = apiClient.getTenantSettingsFromCloud()
+            async let routeResponse = apiClient.getInspectionRoutesFromCloud()
+            async let availabilityResponse = apiClient.getInspectionAvailabilityFromCloud(month: monthString)
+
+            let tenantDTO = try await tenantSettings
+            let routesDTO = try await routeResponse
+            let monthDTO = try await availabilityResponse
+
+            currentTenantName = tenantDTO.tenant_name
+            schedulingRules = Self.mapSchedulingRules(tenantDTO.cat_settings.planner)
+            territory = Self.mapTerritory(
+                tenantDTO: tenantDTO,
+                configuredEmail: configuredEmail
+            )
+            routePlans = routesDTO.items.compactMap { route in
+                Self.mapRoute(route, fallbackTenantName: tenantDTO.tenant_name)
+            }
+            lastGeneratedAt = routePlans.compactMap(\.generatedAt).max()
+            availabilityByMonth[monthKey(for: month)] = monthDTO.items.compactMap(Self.mapAvailabilityDay)
+            syncError = nil
+            objectWillChange.send()
+        } catch {
+            if routePlans.isEmpty && territory.municipalities.isEmpty {
+                applyMockState(reason: error.localizedDescription)
+            } else {
+                syncError = error.localizedDescription
+            }
+        }
+    }
+
+    func ensureAvailability(for month: Date) async {
+        let key = monthKey(for: month)
+        if availabilityByMonth[key] != nil {
+            return
+        }
+        await refresh(for: month)
     }
 
     func dashboardSnapshot(for date: Date = Date()) -> CATDashboardSnapshot {
-        let calendar = Calendar.current
         let todayRoutes = routePlans.filter { calendar.isDate($0.routeDate, inSameDayAs: date) }
         let pendingRoutes = routePlans.filter { $0.status == .pendingApproval }
         let confirmedRoutes = routePlans.filter { $0.status == .confirmed }
@@ -53,47 +114,91 @@ final class CATPlanningStore: ObservableObject {
     }
 
     func availability(for month: Date) -> [CATAvailabilityDay] {
-        let key = monthKey(for: month)
-        if let cached = availabilityByMonth[key] {
-            return cached
-        }
-
-        let loaded = loadAvailability(for: month)
-        availabilityByMonth[key] = loaded
-        return loaded
+        availabilityByMonth[monthKey(for: month)] ?? []
     }
 
     func availabilityDay(for date: Date) -> CATAvailabilityDay? {
-        availability(for: date).first { Calendar.current.isDate($0.date, inSameDayAs: date) }
+        availability(for: date).first { calendar.isDate($0.date, inSameDayAs: date) }
     }
 
-    func updateAvailability(_ day: CATAvailabilityDay, for month: Date) {
-        let key = monthKey(for: month)
-        var current = availability(for: month)
-
-        if let index = current.firstIndex(where: { $0.id == day.id }) {
-            current[index] = day
-        } else {
-            current.append(day)
+    func updateAvailability(_ day: CATAvailabilityDay, for month: Date) async {
+        guard apiClient.isCloudConfigured else {
+            cache(day, for: month)
+            syncError = "Disponibilità salvata solo localmente: backend non configurato"
+            return
         }
 
-        current.sort { $0.date < $1.date }
-        availabilityByMonth[key] = current
-        persistAvailability(current, for: month)
-        objectWillChange.send()
-    }
+        isSavingAvailability = true
+        defer { isSavingAvailability = false }
 
-    func approveRoute(_ routeID: String) {
-        updateRoute(routeID) { route in
-            route.status = .confirmed
-            route.rejectionReason = nil
+        do {
+            let payload = CloudInspectionAvailabilityOverrideRequestDTO(
+                is_available: day.isAvailable,
+                note: day.note.isEmpty ? nil : day.note,
+                windows: day.windows.map {
+                    CloudInspectionAvailabilityWindowDTO(
+                        start_time: Self.timeFormatter.string(from: $0.startDate),
+                        end_time: Self.timeFormatter.string(from: $0.endDate)
+                    )
+                }
+            )
+            let response = try await apiClient.upsertInspectionAvailabilityOnCloud(
+                date: Self.dayFormatter.string(from: day.date),
+                payload: payload
+            )
+            if let mapped = Self.mapAvailabilityDay(response) {
+                cache(mapped, for: month)
+            }
+            syncError = nil
+        } catch {
+            cache(day, for: month)
+            syncError = "Disponibilità salvata solo localmente: \(error.localizedDescription)"
         }
     }
 
-    func rejectRoute(_ routeID: String, reason: CATRouteRejectionReason) {
-        updateRoute(routeID) { route in
-            route.status = .needsRecalculation
-            route.rejectionReason = reason
+    func approveRoute(_ routeID: String, month: Date = Date()) async {
+        guard apiClient.isCloudConfigured else {
+            updateRoute(routeID) { route in
+                route.status = .confirmed
+                route.rejectionReason = nil
+            }
+            syncError = "Route aggiornata solo localmente: backend non configurato"
+            return
+        }
+
+        isSubmittingRouteDecision = true
+        defer { isSubmittingRouteDecision = false }
+
+        do {
+            _ = try await apiClient.acceptInspectionRouteOnCloud(eventID: routeID)
+            await refresh(for: month)
+        } catch {
+            syncError = error.localizedDescription
+        }
+    }
+
+    func rejectRoute(_ routeID: String, reason: CATRouteRejectionReason, month: Date = Date()) async {
+        guard apiClient.isCloudConfigured else {
+            updateRoute(routeID) { route in
+                route.status = .needsRecalculation
+                route.rejectionReason = reason
+            }
+            syncError = "Route aggiornata solo localmente: backend non configurato"
+            return
+        }
+
+        isSubmittingRouteDecision = true
+        defer { isSubmittingRouteDecision = false }
+
+        do {
+            _ = try await apiClient.rejectInspectionRouteOnCloud(
+                eventID: routeID,
+                reasonCode: reason.backendCode,
+                reason: reason.title
+            )
+            await refresh(for: month)
+        } catch {
+            syncError = error.localizedDescription
         }
     }
 
@@ -108,39 +213,241 @@ final class CATPlanningStore: ObservableObject {
         routePlans[index] = route
     }
 
-    private func monthKey(for date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM"
-        return formatter.string(from: date)
-    }
-
-    private func storageKey(for month: Date) -> String {
-        let email = configuredEmail ?? "anonymous"
-        return "cat_availability_\(email)_\(monthKey(for: month))"
-    }
-
-    private func loadAvailability(for month: Date) -> [CATAvailabilityDay] {
-        let key = storageKey(for: month)
-        if let data = UserDefaults.standard.data(forKey: key),
-           let decoded = try? JSONDecoder().decode([CATAvailabilityDay].self, from: data) {
-            return decoded
+    private func cache(_ day: CATAvailabilityDay, for month: Date) {
+        let key = monthKey(for: month)
+        var current = availabilityByMonth[key] ?? []
+        if let index = current.firstIndex(where: { $0.id == day.id }) {
+            current[index] = day
+        } else {
+            current.append(day)
         }
-
-        let generated = Self.defaultAvailability(for: month, routes: routePlans)
-        persistAvailability(generated, for: month)
-        return generated
+        current.sort { $0.date < $1.date }
+        availabilityByMonth[key] = current
+        objectWillChange.send()
     }
 
-    private func persistAvailability(_ days: [CATAvailabilityDay], for month: Date) {
-        let key = storageKey(for: month)
-        guard let data = try? JSONEncoder().encode(days) else { return }
-        UserDefaults.standard.set(data, forKey: key)
+    private func monthKey(for date: Date) -> String {
+        Self.monthFormatter.string(from: date)
+    }
+
+    private func applyMockState(reason: String) {
+        syncError = reason
+        territory = Self.mockTerritory(for: configuredEmail)
+        routePlans = Self.mockRoutes()
+        schedulingRules = .default
+        lastGeneratedAt = routePlans.compactMap(\.generatedAt).max()
+        availabilityByMonth[monthKey(for: Date())] = Self.defaultAvailability(for: Date(), routes: routePlans)
+        objectWillChange.send()
     }
 }
 
 private extension CATPlanningStore {
+    static let monthFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM"
+        return formatter
+    }()
+
+    static let dayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+
+    static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "HH:mm"
+        return formatter
+    }()
+
+    static func mapSchedulingRules(_ dto: CloudTenantCATPlannerDTO) -> CATSchedulingRules {
+        CATSchedulingRules(
+            routeGenerationHour: dto.route_generation_hour,
+            routeReviewWindowMinutes: dto.route_review_window_minutes,
+            availabilitySlotMinutes: dto.availability_slot_minutes,
+            availabilityTolerancePercent: Double(dto.availability_tolerance_percent) / 100.0,
+            maxOutsideZoneKilometers: Double(dto.max_outside_zone_kilometers)
+        )
+    }
+
+    static func mapTerritory(
+        tenantDTO: CloudTenantSettingsDTO,
+        configuredEmail: String
+    ) -> CATTenantTerritorySnapshot {
+        let matchedTechnician = tenantDTO.cat_settings.technicians.first {
+            $0.email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == configuredEmail
+        } ?? tenantDTO.cat_settings.technicians.first
+
+        let poi = CATTechnicianPOI(
+            id: matchedTechnician?.id ?? "cat-base",
+            displayName: matchedTechnician?.display_name ?? "CAT",
+            latitude: matchedTechnician?.latitude ?? 44.6471,
+            longitude: matchedTechnician?.longitude ?? 10.9252,
+            tenantNames: [tenantDTO.tenant_name]
+        )
+
+        let municipalities = tenantDTO.cat_settings.municipalities.map {
+            CATMunicipalityCoverage(
+                id: $0.id,
+                comune: $0.comune,
+                provincia: $0.provincia,
+                regione: $0.regione,
+                latitude: $0.latitude,
+                longitude: $0.longitude,
+                priority: $0.priority
+            )
+        }
+
+        return CATTenantTerritorySnapshot(
+            poi: poi,
+            municipalities: municipalities,
+            provinces: Array(Set(municipalities.map(\.provincia))).sorted(),
+            regions: Array(Set(municipalities.map(\.regione))).sorted()
+        )
+    }
+
+    static func mapAvailabilityDay(_ dto: CloudInspectionAvailabilityDayDTO) -> CATAvailabilityDay? {
+        guard let date = dayFormatter.date(from: dto.date) else { return nil }
+        let windows = dto.windows.compactMap { window -> CATTimeWindow? in
+            guard
+                let start = timeComponents(from: window.start_time),
+                let end = timeComponents(from: window.end_time)
+            else { return nil }
+            return CATTimeWindow(
+                startHour: start.hour,
+                startMinute: start.minute,
+                endHour: end.hour,
+                endMinute: end.minute
+            )
+        }
+
+        let commitments = dto.external_commitments.compactMap { commitment -> CATExternalCommitment? in
+            guard
+                let start = timeComponents(from: commitment.start_time),
+                let end = timeComponents(from: commitment.end_time)
+            else { return nil }
+            return CATExternalCommitment(
+                id: commitment.id,
+                tenantName: commitment.tenant_name ?? "Tenant corrente",
+                label: commitment.label,
+                window: CATTimeWindow(
+                    startHour: start.hour,
+                    startMinute: start.minute,
+                    endHour: end.hour,
+                    endMinute: end.minute
+                )
+            )
+        }
+
+        return CATAvailabilityDay(
+            date: date,
+            isAvailable: dto.is_available,
+            windows: windows,
+            note: dto.note ?? "",
+            externalCommitments: commitments,
+            hasConfirmedRoute: dto.has_confirmed_route
+        )
+    }
+
+    static func mapRoute(
+        _ dto: CloudInspectionRouteDTO,
+        fallbackTenantName: String
+    ) -> CATRoutePlan? {
+        guard let routeDate = dayFormatter.date(from: dto.plan_date) else { return nil }
+        let stops = dto.stops.compactMap(mapStop)
+        let totalSpanMinutes = max(Int(dto.ends_at.timeIntervalSince(dto.starts_at) / 60), dto.total_duration_minutes)
+        let driveMinutes = max(totalSpanMinutes - dto.total_duration_minutes, 0)
+        let uniqueMunicipalities = Array(Set(stops.map { "\($0.municipality) (\($0.province))" })).sorted()
+        let tenantNames = dto.tenant_names.isEmpty ? [fallbackTenantName] : dto.tenant_names
+
+        return CATRoutePlan(
+            id: dto.event_id,
+            title: dto.title,
+            tenantNames: tenantNames,
+            generatedAt: dto.generated_at ?? dto.starts_at,
+            reviewDeadline: dto.review_deadline ?? dto.starts_at,
+            routeDate: routeDate,
+            status: CATRoutePlanStatus(cloudStatus: dto.status),
+            rejectionReason: CATRouteRejectionReason(backendCode: dto.rejection_reason_code),
+            totalKilometers: dto.total_distance_km,
+            driveMinutes: driveMinutes,
+            visitMinutes: dto.total_duration_minutes,
+            coverageSummary: uniqueMunicipalities.joined(separator: ", "),
+            constraints: CATRouteConstraintSummary(
+                fixedManualStops: stops.filter(\.manuallyFixed).count,
+                outsideZoneStops: stops.filter(\.outsideZone).count,
+                respectedWindowsPercent: stops.isEmpty ? 0 : 100,
+                crossTenantCommitments: max(tenantNames.count - 1, 0)
+            ),
+            stops: stops
+        )
+    }
+
+    static func mapStop(_ dto: CloudInspectionRouteStopDTO) -> CATRouteStop? {
+        let plannedWindow = CATTimeWindow(
+            startHour: calendarHour(from: dto.starts_at),
+            startMinute: calendarMinute(from: dto.starts_at),
+            endHour: calendarHour(from: dto.ends_at),
+            endMinute: calendarMinute(from: dto.ends_at)
+        )
+        let preferredWindows = dto.preferred_windows.compactMap { window -> CATTimeWindow? in
+            guard
+                let start = timeComponents(from: window.start_time),
+                let end = timeComponents(from: window.end_time)
+            else { return nil }
+            return CATTimeWindow(
+                startHour: start.hour,
+                startMinute: start.minute,
+                endHour: end.hour,
+                endMinute: end.minute
+            )
+        }
+
+        return CATRouteStop(
+            id: dto.claim_id,
+            claimReference: dto.claim_reference ?? dto.claim_id,
+            municipality: dto.municipality ?? "",
+            province: dto.province ?? "",
+            region: dto.region ?? "",
+            latitude: dto.latitude ?? 44.6471,
+            longitude: dto.longitude ?? 10.9252,
+            plannedWindow: plannedWindow,
+            preferredWindows: preferredWindows,
+            durationMinutes: dto.duration_minutes,
+            assetCount: max(dto.asset_count, 1),
+            complexity: CATClaimComplexity(rawValue: (dto.complexity ?? "").lowercased()) ?? .medium,
+            outsideZone: dto.outside_zone,
+            manuallyFixed: dto.manually_fixed,
+            redactedLocation: dto.masked_location ?? [dto.municipality, dto.province].compactMap { $0 }.joined(separator: " • "),
+            workflow: CATWorkflowStep.defaultInspectionFlow,
+            note: dto.note ?? ""
+        )
+    }
+
+    static func timeComponents(from rawValue: String) -> (hour: Int, minute: Int)? {
+        let parts = rawValue.split(separator: ":")
+        guard parts.count >= 2,
+              let hour = Int(parts[0]),
+              let minute = Int(parts[1]) else {
+            return nil
+        }
+        return (hour, minute)
+    }
+
+    static func calendarHour(from date: Date) -> Int {
+        Calendar.current.component(.hour, from: date)
+    }
+
+    static func calendarMinute(from date: Date) -> Int {
+        Calendar.current.component(.minute, from: date)
+    }
+
     static func defaultAvailability(for month: Date, routes: [CATRoutePlan]) -> [CATAvailabilityDay] {
         let calendar = Calendar.current
         guard let monthStart = calendar.date(from: calendar.dateComponents([.year, .month], from: month)),
@@ -152,52 +459,20 @@ private extension CATPlanningStore {
             guard let date = calendar.date(byAdding: .day, value: day - 1, to: monthStart) else { return nil }
             let weekday = calendar.component(.weekday, from: date)
             let isWeekend = weekday == 1 || weekday == 7
-
-            let commitments: [CATExternalCommitment]
-            switch day % 5 {
-            case 0:
-                commitments = [
-                    CATExternalCommitment(
-                        id: "studio-\(day)",
-                        tenantName: "Tenant Alfa",
-                        label: "Appuntamento manuale",
-                        window: CATTimeWindow(startHour: 16, endHour: 18)
-                    )
-                ]
-            case 2:
-                commitments = [
-                    CATExternalCommitment(
-                        id: "studio-beta-\(day)",
-                        tenantName: "Tenant Beta",
-                        label: "Verifica già confermata",
-                        window: CATTimeWindow(startHour: 11, endHour: 13)
-                    )
-                ]
-            default:
-                commitments = []
-            }
-
-            let windows: [CATTimeWindow]
-            if isWeekend {
-                windows = []
-            } else {
-                windows = [
-                    CATTimeWindow(startHour: 9, endHour: 11),
-                    CATTimeWindow(startHour: 11, endHour: 13),
-                    CATTimeWindow(startHour: 14, endHour: 16)
-                ]
-            }
-
+            let windows = isWeekend ? [] : [
+                CATTimeWindow(startHour: 9, endHour: 11),
+                CATTimeWindow(startHour: 11, endHour: 13),
+                CATTimeWindow(startHour: 14, endHour: 16)
+            ]
             let dayHasConfirmedRoute = routes.contains {
                 $0.status == .confirmed && calendar.isDate($0.routeDate, inSameDayAs: date)
             }
-
             return CATAvailabilityDay(
                 date: date,
                 isAvailable: !isWeekend,
                 windows: windows,
                 note: isWeekend ? "Giorno non disponibile" : "",
-                externalCommitments: commitments,
+                externalCommitments: [],
                 hasConfirmedRoute: dayHasConfirmedRoute
             )
         }
@@ -220,42 +495,10 @@ private extension CATPlanningStore {
         )
 
         let municipalities = [
-            CATMunicipalityCoverage(
-                id: "modena",
-                comune: "Modena",
-                provincia: "MO",
-                regione: "Emilia-Romagna",
-                latitude: 44.6471,
-                longitude: 10.9252,
-                priority: 1
-            ),
-            CATMunicipalityCoverage(
-                id: "carpi",
-                comune: "Carpi",
-                provincia: "MO",
-                regione: "Emilia-Romagna",
-                latitude: 44.7824,
-                longitude: 10.8777,
-                priority: 1
-            ),
-            CATMunicipalityCoverage(
-                id: "sassuolo",
-                comune: "Sassuolo",
-                provincia: "MO",
-                regione: "Emilia-Romagna",
-                latitude: 44.5432,
-                longitude: 10.7841,
-                priority: 2
-            ),
-            CATMunicipalityCoverage(
-                id: "rubiera",
-                comune: "Rubiera",
-                provincia: "RE",
-                regione: "Emilia-Romagna",
-                latitude: 44.6511,
-                longitude: 10.7812,
-                priority: 2
-            )
+            CATMunicipalityCoverage(id: "modena", comune: "Modena", provincia: "MO", regione: "Emilia-Romagna", latitude: 44.6471, longitude: 10.9252, priority: 1),
+            CATMunicipalityCoverage(id: "carpi", comune: "Carpi", provincia: "MO", regione: "Emilia-Romagna", latitude: 44.7824, longitude: 10.8777, priority: 1),
+            CATMunicipalityCoverage(id: "sassuolo", comune: "Sassuolo", provincia: "MO", regione: "Emilia-Romagna", latitude: 44.5432, longitude: 10.7841, priority: 2),
+            CATMunicipalityCoverage(id: "rubiera", comune: "Rubiera", provincia: "RE", regione: "Emilia-Romagna", latitude: 44.6511, longitude: 10.7812, priority: 2)
         ]
 
         return CATTenantTerritorySnapshot(
@@ -276,107 +519,6 @@ private extension CATPlanningStore {
         let generatedTomorrow = calendar.date(bySettingHour: 9, minute: 0, second: 0, of: tomorrow) ?? Date()
         let deadlineTomorrow = calendar.date(byAdding: .minute, value: CATSchedulingRules.default.routeReviewWindowMinutes, to: generatedTomorrow) ?? generatedTomorrow
 
-        let todayStops = [
-            CATRouteStop(
-                id: "stop-1",
-                claimReference: "SIN-26-0412",
-                municipality: "Modena",
-                province: "MO",
-                region: "Emilia-Romagna",
-                latitude: 44.6519,
-                longitude: 10.9187,
-                plannedWindow: CATTimeWindow(startHour: 9, startMinute: 30, endHour: 10, endMinute: 15),
-                preferredWindows: [CATTimeWindow(startHour: 10, endHour: 12)],
-                durationMinutes: 30,
-                assetCount: 4,
-                complexity: .medium,
-                outsideZone: false,
-                manuallyFixed: false,
-                redactedLocation: "Area centro nord",
-                workflow: CATWorkflowStep.defaultInspectionFlow,
-                note: "Richiesta fascia mattutina."
-            ),
-            CATRouteStop(
-                id: "stop-2",
-                claimReference: "SIN-26-0418",
-                municipality: "Carpi",
-                province: "MO",
-                region: "Emilia-Romagna",
-                latitude: 44.7832,
-                longitude: 10.8794,
-                plannedWindow: CATTimeWindow(startHour: 11, startMinute: 10, endHour: 11, endMinute: 50),
-                preferredWindows: [CATTimeWindow(startHour: 11, endHour: 13)],
-                durationMinutes: 40,
-                assetCount: 7,
-                complexity: .high,
-                outsideZone: false,
-                manuallyFixed: true,
-                redactedLocation: "Quadrante est",
-                workflow: CATWorkflowStep.defaultInspectionFlow,
-                note: "Fissato manualmente dal personale studio."
-            ),
-            CATRouteStop(
-                id: "stop-3",
-                claimReference: "SIN-26-0423",
-                municipality: "Rubiera",
-                province: "RE",
-                region: "Emilia-Romagna",
-                latitude: 44.6511,
-                longitude: 10.7812,
-                plannedWindow: CATTimeWindow(startHour: 14, startMinute: 20, endHour: 15, endMinute: 0),
-                preferredWindows: [CATTimeWindow(startHour: 14, endHour: 16)],
-                durationMinutes: 40,
-                assetCount: 3,
-                complexity: .low,
-                outsideZone: true,
-                manuallyFixed: false,
-                redactedLocation: "Area produttiva sud",
-                workflow: CATWorkflowStep.defaultInspectionFlow,
-                note: "Fuori zona entro soglia +50 km."
-            )
-        ]
-
-        let tomorrowStops = [
-            CATRouteStop(
-                id: "stop-4",
-                claimReference: "SIN-26-0429",
-                municipality: "Sassuolo",
-                province: "MO",
-                region: "Emilia-Romagna",
-                latitude: 44.5432,
-                longitude: 10.7841,
-                plannedWindow: CATTimeWindow(startHour: 10, startMinute: 0, endHour: 10, endMinute: 45),
-                preferredWindows: [CATTimeWindow(startHour: 10, endHour: 12), CATTimeWindow(startHour: 11, endHour: 13)],
-                durationMinutes: 45,
-                assetCount: 5,
-                complexity: .medium,
-                outsideZone: false,
-                manuallyFixed: false,
-                redactedLocation: "Periferia ovest",
-                workflow: CATWorkflowStep.defaultInspectionFlow,
-                note: "Due finestre indicate dall'assicurato."
-            ),
-            CATRouteStop(
-                id: "stop-5",
-                claimReference: "SIN-26-0431",
-                municipality: "Modena",
-                province: "MO",
-                region: "Emilia-Romagna",
-                latitude: 44.6405,
-                longitude: 10.9410,
-                plannedWindow: CATTimeWindow(startHour: 12, startMinute: 10, endHour: 12, endMinute: 40),
-                preferredWindows: [CATTimeWindow(startHour: 12, endHour: 14)],
-                durationMinutes: 30,
-                assetCount: 2,
-                complexity: .low,
-                outsideZone: false,
-                manuallyFixed: false,
-                redactedLocation: "Asse tangenziale",
-                workflow: CATWorkflowStep.defaultInspectionFlow,
-                note: "Sopralluogo breve."
-            )
-        ]
-
         return [
             CATRoutePlan(
                 id: "route-today",
@@ -391,13 +533,8 @@ private extension CATPlanningStore {
                 driveMinutes: 142,
                 visitMinutes: 110,
                 coverageSummary: "Modena, Carpi, Rubiera",
-                constraints: CATRouteConstraintSummary(
-                    fixedManualStops: 1,
-                    outsideZoneStops: 1,
-                    respectedWindowsPercent: 83,
-                    crossTenantCommitments: 2
-                ),
-                stops: todayStops
+                constraints: CATRouteConstraintSummary(fixedManualStops: 1, outsideZoneStops: 1, respectedWindowsPercent: 83, crossTenantCommitments: 2),
+                stops: []
             ),
             CATRoutePlan(
                 id: "route-tomorrow",
@@ -412,15 +549,61 @@ private extension CATPlanningStore {
                 driveMinutes: 68,
                 visitMinutes: 75,
                 coverageSummary: "Sassuolo, Modena",
-                constraints: CATRouteConstraintSummary(
-                    fixedManualStops: 0,
-                    outsideZoneStops: 0,
-                    respectedWindowsPercent: 100,
-                    crossTenantCommitments: 1
-                ),
-                stops: tomorrowStops
+                constraints: CATRouteConstraintSummary(fixedManualStops: 0, outsideZoneStops: 0, respectedWindowsPercent: 100, crossTenantCommitments: 1),
+                stops: []
             )
         ]
+    }
+}
+
+private extension CATTimeWindow {
+    var startDate: Date {
+        Calendar.current.date(bySettingHour: startHour, minute: startMinute, second: 0, of: Date()) ?? Date()
+    }
+
+    var endDate: Date {
+        Calendar.current.date(bySettingHour: endHour, minute: endMinute, second: 0, of: Date()) ?? Date()
+    }
+}
+
+private extension CATRoutePlanStatus {
+    init(cloudStatus: String) {
+        switch cloudStatus.lowercased() {
+        case "accepted":
+            self = .confirmed
+        case "rejected":
+            self = .rejected
+        case "expired", "superseded":
+            self = .needsRecalculation
+        default:
+            self = .pendingApproval
+        }
+    }
+}
+
+private extension CATRouteRejectionReason {
+    init?(backendCode: String?) {
+        switch backendCode?.lowercased() {
+        case "route_too_long":
+            self = .tooLong
+        case "outside_zone":
+            self = .outsideZone
+        case "unavailable", "review_window_expired":
+            self = .unavailable
+        case "impossible":
+            self = .impossible
+        default:
+            return nil
+        }
+    }
+
+    var backendCode: String {
+        switch self {
+        case .tooLong: return "route_too_long"
+        case .outsideZone: return "outside_zone"
+        case .unavailable: return "unavailable"
+        case .impossible: return "impossible"
+        }
     }
 }
 

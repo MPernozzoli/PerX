@@ -10,7 +10,7 @@ import asyncio
 # Import all models for autogenerate
 from app.core.config import settings
 from app.core.database import Base
-from app.models import tenant, user, role, claim, claim_assignment, claim_state, claim_event, email, attachment, case_task, audit_log
+from app.models import tenant, user, role, claim, claim_assignment, claim_state, claim_event, email, attachment, case_task, audit_log, inspection
 
 # this is the Alembic Config object
 config = context.config

@@ -35,6 +35,7 @@ struct iPadCATRoutesView: View {
         .navigationTitle("Route")
         .task {
             store.configure(for: session.currentUserEmail)
+            await store.refresh()
             if selectedRouteID == nil {
                 selectedRouteID = store.routePlans.first?.id
             }
@@ -57,7 +58,9 @@ struct iPadCATRoutesView: View {
             ForEach(CATRouteRejectionReason.allCases) { reason in
                 Button(reason.title) {
                     guard let routeID = rejectionRouteID else { return }
-                    store.rejectRoute(routeID, reason: reason)
+                    Task {
+                        await store.rejectRoute(routeID, reason: reason)
+                    }
                     rejectionRouteID = nil
                 }
             }
@@ -152,6 +155,11 @@ struct iPadCATRoutesView: View {
                     Text("Tenant coinvolti: \(route.tenantNames.joined(separator: ", "))")
                         .font(.caption)
                         .foregroundColor(.secondary)
+                    if let syncError = store.syncError {
+                        Text(syncError)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                 }
 
                 Spacer()
@@ -177,11 +185,14 @@ struct iPadCATRoutesView: View {
             HStack(spacing: 12) {
                 if route.status == .pendingApproval {
                     Button {
-                        store.approveRoute(route.id)
+                        Task {
+                            await store.approveRoute(route.id, month: route.routeDate)
+                        }
                     } label: {
                         Label("Approva", systemImage: "checkmark.circle.fill")
                     }
                     .buttonStyle(.borderedProminent)
+                    .disabled(store.isSubmittingRouteDecision)
 
                     Button {
                         rejectionRouteID = route.id
@@ -189,6 +200,7 @@ struct iPadCATRoutesView: View {
                         Label("Rifiuta", systemImage: "xmark.circle")
                     }
                     .buttonStyle(.bordered)
+                    .disabled(store.isSubmittingRouteDecision)
                 } else if route.status == .confirmed {
                     Label("Percorso confermato e pronto per l’esecuzione", systemImage: "checkmark.seal.fill")
                         .font(.subheadline)

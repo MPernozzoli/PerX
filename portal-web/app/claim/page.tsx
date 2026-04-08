@@ -1,9 +1,10 @@
 import { ClaimDashboard } from "@/components/claim-dashboard";
+import { PortalShell } from "@/components/portal-shell";
 
 export default function ClaimPage() {
   return (
-    <main className="app-shell">
+    <PortalShell>
       <ClaimDashboard />
-    </main>
+    </PortalShell>
   );
 }

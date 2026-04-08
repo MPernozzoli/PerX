@@ -46,6 +46,7 @@ struct iPadCATDashboardView: View {
         .navigationTitle("Dashboard CAT")
         .task {
             store.configure(for: session.currentUserEmail)
+            await store.refresh()
             updateMapRegion()
         }
         .onChange(of: store.territory.municipalities.count) {
@@ -72,10 +73,16 @@ struct iPadCATDashboardView: View {
                     Text(session.currentUserName ?? session.currentCloudProfile?.displayName ?? "Tecnico CAT")
                         .font(.headline)
                         .foregroundColor(.secondary)
-                    Text("Le route vengono proposte alle 09:00, con revisione entro 1 ora e dati sensibili oscurati fino alla conferma.")
+                Text("Le route vengono proposte alle 09:00, con revisione entro 1 ora e dati sensibili oscurati fino alla conferma.")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
+
+                    if let syncError = store.syncError {
+                        Text(syncError)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                 }
 
                 Spacer()
@@ -194,18 +201,24 @@ struct iPadCATDashboardView: View {
 
                     HStack(spacing: 12) {
                         Button {
-                            store.approveRoute(route.id)
+                            Task {
+                                await store.approveRoute(route.id, month: route.routeDate)
+                            }
                         } label: {
                             Label("Approva proposta", systemImage: "checkmark.circle.fill")
                         }
                         .buttonStyle(.borderedProminent)
+                        .disabled(store.isSubmittingRouteDecision)
 
                         Button {
-                            store.rejectRoute(route.id, reason: .tooLong)
+                            Task {
+                                await store.rejectRoute(route.id, reason: .tooLong, month: route.routeDate)
+                            }
                         } label: {
                             Label("Ricalcola", systemImage: "arrow.triangle.2.circlepath")
                         }
                         .buttonStyle(.bordered)
+                        .disabled(store.isSubmittingRouteDecision)
                     }
 
                     Text("Fino all’approvazione vengono mostrati solo comune e area indicativa; nome assicurato e indirizzo restano nascosti.")

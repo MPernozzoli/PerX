@@ -71,6 +71,7 @@ class Claim(Base):
     
     # Flags
     iban = Column(Boolean, default=False, nullable=False)
+    iban_value = Column(String, nullable=True)
     sinistro_collegato = Column(Boolean, default=False, nullable=False)
     id_sinistro_collegato = Column(String, nullable=True)
     sopralluogo = Column(Boolean, default=False, nullable=False)

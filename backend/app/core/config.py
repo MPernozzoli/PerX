@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     PORTAL_CHALLENGE_EXPIRE_MINUTES: int = 30
     PORTAL_APP_URL: str = "http://localhost:3001"
     PORTAL_DEBUG_PREVIEW_LINKS: bool = True
+    PORTAL_DEV_CLAIM_REFERENCE_ONLY_AUTH: bool = True
+    PORTAL_SIGNATURE_WEBHOOK_SECRET: Optional[str] = None
 
     # Platform admin / multi-tenant bootstrap
     APP_ADMIN_EMAIL: str = "info@pynkstudio.it"
@@ -41,7 +43,7 @@ class Settings(BaseSettings):
     PLATFORM_TENANT_SLUG: str = "pynkstudio"
     
     # CORS
-    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:8080"]
+    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:3001", "http://localhost:8080"]
     
     # Storage
     STORAGE_BUCKET_NAME: str = "perx-attachments"

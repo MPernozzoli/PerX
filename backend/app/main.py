@@ -17,6 +17,7 @@ from app.api.v1 import (
     routes_documents,
     routes_emails,
     routes_internal_chat,
+    routes_inspections,
     routes_ai_chat,
     routes_planning,
     routes_portal,
@@ -26,6 +27,7 @@ from app.api.v1 import (
     routes_tenants,
     routes_whatsapp,
 )
+from app.services.inspection_workflow_service import InspectionAutomationRuntime
 
 
 @asynccontextmanager
@@ -35,9 +37,10 @@ async def lifespan(app: FastAPI):
     setup_logging()
     # Create tables (in production, use migrations)
     # Base.metadata.create_all(bind=engine)
+    await InspectionAutomationRuntime.start()
     yield
     # Shutdown
-    pass
+    await InspectionAutomationRuntime.stop()
 
 
 app = FastAPI(
@@ -69,6 +72,7 @@ app.include_router(routes_attachments.router, prefix="/api/v1/attachments", tags
 app.include_router(routes_whatsapp.router, prefix="/api/v1/whatsapp", tags=["whatsapp"])
 app.include_router(routes_internal_chat.router, prefix="/api/v1/internal-chat", tags=["internal-chat"])
 app.include_router(routes_ai_chat.router, prefix="/api/v1/ai-chat", tags=["ai-chat"])
+app.include_router(routes_inspections.router, prefix="/api/v1", tags=["inspections"])
 app.include_router(routes_planning.router, prefix="/api/v1", tags=["planning"])
 app.include_router(routes_portal.router, prefix="/api/v1/portal", tags=["portal"])
 app.include_router(routes_admin.router, prefix="/api/v1/admin", tags=["admin"])

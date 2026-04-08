@@ -1,27 +1,31 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { exchangePortalToken } from "@/lib/api";
+import { PortalShell } from "@/components/portal-shell";
 import { setStoredPortalSession } from "@/lib/session";
 
-export default function AccessTokenPage({
-  params
-}: {
-  params: { token: string };
-}) {
+export default function AccessTokenPage() {
+  const params = useParams<{ token: string }>();
   const router = useRouter();
   const [status, setStatus] = useState("Validazione link in corso...");
   const [error, setError] = useState<string | null>(null);
+  const token = typeof params?.token === "string" ? params.token : "";
 
   useEffect(() => {
+    if (!token) {
+      setError("Il link non contiene un token valido.");
+      return;
+    }
+
     let active = true;
 
     void (async () => {
       try {
-        const session = await exchangePortalToken(params.token);
+        const session = await exchangePortalToken(token);
         if (!active) {
           return;
         }
@@ -35,7 +39,9 @@ export default function AccessTokenPage({
         setError(
           requestError instanceof Error
             ? requestError.message
-            : "Il link non e piu valido o e scaduto."
+            : typeof requestError === "string"
+              ? requestError
+              : "Il link non e piu valido o e scaduto."
         );
       }
     })();
@@ -43,10 +49,10 @@ export default function AccessTokenPage({
     return () => {
       active = false;
     };
-  }, [params.token, router]);
+  }, [router, token]);
 
   return (
-    <main className="app-shell app-shell--centered">
+    <PortalShell centered>
       <section className="entry-card entry-card--narrow">
         <div className="entry-card__header">
           <p className="entry-card__eyebrow">Magic link</p>
@@ -59,6 +65,6 @@ export default function AccessTokenPage({
           </Link>
         ) : null}
       </section>
-    </main>
+    </PortalShell>
   );
 }

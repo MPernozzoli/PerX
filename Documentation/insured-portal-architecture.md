@@ -32,19 +32,39 @@ Per ora il canale outbound reale non viene inviato: il backend genera challenge 
 
 ### 2. Dashboard assicurato
 
+- `GET /api/v1/portal/claims`
 - `GET /api/v1/portal/claim`
 - `GET /api/v1/portal/claim/timeline`
 - `GET /api/v1/portal/claim/documents`
 
 La dashboard restituisce:
 
+- elenco di tutti i sinistri accessibili allo stesso assicurato, anche senza azioni pendenti;
 - macrostato assicurato derivato dallo stato interno `SVxxx`;
 - dati essenziali del sinistro;
 - perito assegnato e finestra di disponibilita;
 - requisiti pendenti;
-- prossimo appuntamento noto.
+- prossimo appuntamento noto;
+- quadro economico di base e stato atto.
 
-### 3. Interazioni
+### 3. Fissazione sopralluogo
+
+- Stato di ingresso:
+  - `SV052` sopralluogo da fissare
+  - `SV053` sopralluogo da concordare
+- Endpoint portale:
+  - `GET /api/v1/portal/claim/inspection-scheduling`
+  - `PUT /api/v1/portal/claim/inspection-scheduling/location`
+  - `PUT /api/v1/portal/claim/inspection-scheduling/preferences`
+
+Il flusso lato assicurato e strutturato in due passaggi:
+
+- conferma indirizzo sopralluogo con punto esatto di incontro, coordinate e dati territoriali;
+- selezione di una o piu finestre da due ore calcolate sui CAT compatibili con quell'area, filtrando disponibilita, sopralluoghi fissati e appuntamenti gia in pending.
+
+Il sistema salva le preferenze nel metadata workflow del sinistro, registra eventi dedicati in timeline (`inspection_scheduling_requested`, `inspection_location_confirmed`, `inspection_preferences_confirmed`) e rimane in stato pending fino alla conferma dell'appuntamento da parte del motore appuntamenti.
+
+### 4. Interazioni
 
 - Upload intent documenti:
   - `POST /api/v1/portal/claim/upload-intents`
@@ -75,6 +95,7 @@ La dashboard restituisce:
 - Sessione portale separata dalla sessione utenti interni.
 - Chat assicurato separata dalla chat interna, con instradamento verso thread interno dedicato.
 - Stato assicurato basato su mapping a macrostati, non sugli `SVxxx` grezzi.
+- Schedulazione sopralluogo portale agganciata al workflow CAT esistente e ai calendari interni.
 - Upload firmati storage predisposti ma non ancora collegati.
 
 ## Stato attuale
@@ -83,6 +104,7 @@ La dashboard restituisce:
 
 - backend `portal` con modelli, API, token flow e migration;
 - web app dedicata con pagine, sessione locale e integrazione API;
+- schedulazione sopralluogo con conferma posizione, pin interattivo e selezione multi-slot;
 - typecheck frontend completato;
 - audit frontend pulito.
 

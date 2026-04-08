@@ -22,6 +22,7 @@ struct TenantSettingsView: View {
     @State private var isLoading = false
     @State private var isSaving = false
     @State private var isPopulating = false
+    @State private var isRunningInspectionAutomation = false
 
     var body: some View {
         Group {
@@ -36,6 +37,7 @@ struct TenantSettingsView: View {
                         mailCard
                         claimsCard
                         catPlannerCard
+                        inspectionAutomationCard
                         catTerritoryMapCard
                         catTechniciansCard
                         catMunicipalitiesCard
@@ -75,6 +77,84 @@ struct TenantSettingsView: View {
                 )
                 .padding()
             }
+        }
+    }
+
+    private var inspectionAutomationCard: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Automazioni sopralluoghi")
+                            .font(.headline)
+                        Text("Esecuzione planner, controllo scadenze review e panoramica route già generate per il tenant.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+
+                    Spacer()
+
+                    if isRunningInspectionAutomation {
+                        ProgressView()
+                    }
+                }
+
+                HStack(spacing: 12) {
+                    Button {
+                        Task { await runInspectionPlanner(force: true) }
+                    } label: {
+                        Label("Genera route ora", systemImage: "play.circle.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isRunningInspectionAutomation)
+
+                    Button {
+                        Task { await processExpiredInspectionRoutes() }
+                    } label: {
+                        Label("Processa scadenze", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(isRunningInspectionAutomation)
+                }
+
+                if apiService.latestInspectionRoutes.isEmpty {
+                    Text("Nessuna route presente al momento per il tenant selezionato.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                } else {
+                    ForEach(apiService.latestInspectionRoutes.prefix(6)) { route in
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text(route.title)
+                                    .font(.headline)
+                                Spacer()
+                                routeStatusChip(route.status)
+                            }
+
+                            Text("CAT: \(route.owner_name ?? route.owner_email ?? route.owner_user_id)")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+
+                            Text("Data piano: \(route.plan_date) • \(route.stops.count) stop • \(Int(route.total_distance_km)) km")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+
+                            if let rejectionReason = route.rejection_reason {
+                                Text("Motivo: \(rejectionReason)")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding()
+                        .background(Color(NSColor.controlBackgroundColor).opacity(0.45))
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                }
+            }
+            .padding()
+        } label: {
+            Label("Orchestrazione Route CAT", systemImage: "point.topleft.down.curvedto.point.bottomright.up")
         }
     }
 
@@ -618,6 +698,24 @@ struct TenantSettingsView: View {
             .clipShape(Capsule())
     }
 
+    private func routeStatusChip(_ status: String) -> some View {
+        let color: Color
+        switch status.lowercased() {
+        case "accepted": color = .green
+        case "rejected": color = .red
+        case "expired", "superseded": color = .orange
+        default: color = .blue
+        }
+
+        return Text(status.capitalized)
+            .font(.caption.bold())
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(color.opacity(0.14))
+            .foregroundColor(color)
+            .clipShape(Capsule())
+    }
+
     private func mailField(
         title: String,
         text: Binding<String>,
@@ -791,6 +889,7 @@ struct TenantSettingsView: View {
             }
         }
         await loadSettingsFromBackend()
+        _ = await apiService.loadInspectionRoutes(targetTenantId: selectedTenantId.isEmpty ? nil : selectedTenantId)
     }
 
     private func loadSettingsFromBackend() async {
@@ -802,10 +901,37 @@ struct TenantSettingsView: View {
         tenantSettings = loaded
         TenantMailSettingsService.shared.settings = loaded
         loadSettings()
+        _ = await apiService.loadInspectionRoutes(targetTenantId: targetTenantId)
         if apiService.lastSyncError == nil {
             saveMessage = "Configurazione tenant caricata dal backend"
         } else {
             saveMessage = "Uso configurazione locale: \(apiService.lastSyncError ?? "")"
+        }
+    }
+
+    private func runInspectionPlanner(force: Bool) async {
+        isRunningInspectionAutomation = true
+        defer { isRunningInspectionAutomation = false }
+
+        let targetTenantId = selectedTenantId.isEmpty ? nil : selectedTenantId
+        let result = await apiService.runInspectionPlanner(targetTenantId: targetTenantId, force: force)
+        if let result {
+            saveMessage = "Planner eseguito: \(result.generated_routes_count) route, \(result.claims_fallback_manual) fallback manuali"
+        } else {
+            saveMessage = "Planner non eseguito: \(apiService.lastSyncError ?? "errore sconosciuto")"
+        }
+    }
+
+    private func processExpiredInspectionRoutes() async {
+        isRunningInspectionAutomation = true
+        defer { isRunningInspectionAutomation = false }
+
+        let targetTenantId = selectedTenantId.isEmpty ? nil : selectedTenantId
+        let result = await apiService.processInspectionRouteExpirations(targetTenantId: targetTenantId)
+        if let result {
+            saveMessage = "Scadenze processate: \(result.expired_routes_count) route scadute, \(result.manual_fallback_claims) fallback manuali"
+        } else {
+            saveMessage = "Processo scadenze fallito: \(apiService.lastSyncError ?? "errore sconosciuto")"
         }
     }
 

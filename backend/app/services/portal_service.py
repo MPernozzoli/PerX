@@ -3,7 +3,9 @@ Business logic for the insured portal.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
+import hashlib
+from pathlib import Path
 import uuid
 
 from sqlalchemy import and_, func, or_, select
@@ -23,6 +25,7 @@ from app.core.portal_security import (
 from app.models.claim import Claim
 from app.models.claim_assignment import ClaimAssignment
 from app.models.claim_event import ClaimEvent
+from app.models.claim_folder import ClaimFolder
 from app.models.document import Document
 from app.models.internal_chat import InternalChatMember, InternalChatMessage, InternalChatThread
 from app.models.planning import CalendarEvent, UserWorkSchedule
@@ -42,15 +45,418 @@ from app.schemas.portal import (
     PortalBankAccountSubmissionCreate,
     PortalConversationMessageCreate,
     PortalDocumentCollectionSubmissionCreate,
+    PortalInspectionLocationUpdateRequest,
+    PortalInspectionPreferencesUpdateRequest,
     PortalSignatureRequestCreate,
     PortalUploadIntentCreate,
 )
 from app.services.iban_service import IbanService
+from app.services.inspection_workflow_service import InspectionWorkflowService
 from app.services.portal_status_service import PortalStatusService
 from app.services.state_service import StateService
+from app.schemas.inspection import InspectionPreferredSlotInput
 
 
 class PortalService:
+    PORTAL_UPLOAD_ROOT = Path(__file__).resolve().parents[2] / "runtime" / "portal_uploads"
+    REQUIRED_DOCUMENT_COLLECTION_CONFIRMATIONS = {
+        "authentic_photos",
+        "photos_match_insured_property",
+        "photos_clear_for_damage_assessment",
+        "preserve_damaged_goods_until_claim_closed",
+        "no_additional_damaged_goods",
+    }
+
+    @staticmethod
+    def _amount_to_float(value: object | None) -> float | None:
+        if value is None:
+            return None
+
+    @staticmethod
+    def _mask_iban_value(value: str | None) -> str | None:
+        compact = (value or "").replace(" ", "").upper()
+        if len(compact) < 8:
+            return None
+        return f"{compact[:4]} •••• •••• •••• {compact[-4:]}"
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _merge_metadata(base: dict | None, **updates) -> dict:
+        metadata = dict(base or {})
+        for key, value in updates.items():
+            if value is None:
+                metadata.pop(key, None)
+            else:
+                metadata[key] = value
+        return metadata
+
+    @staticmethod
+    def _document_collection_draft_payload(claim: Claim) -> dict:
+        metadata = claim.metadata_json or {}
+        draft = metadata.get("portal_document_collection_draft")
+        return draft if isinstance(draft, dict) else {}
+
+    @staticmethod
+    def _document_collection_draft_info(claim: Claim) -> dict:
+        draft = PortalService._document_collection_draft_payload(claim)
+        submitted = (claim.metadata_json or {}).get("portal_document_collection") or {}
+        submitted_at = submitted.get("submitted_at")
+        updated_at = draft.get("updated_at")
+        return {
+            "available": bool(draft),
+            "status": str(draft.get("status") or ("submitted" if submitted_at else "not_started")),
+            "current_step": draft.get("step_kind"),
+            "updated_at": PortalService._parse_iso_datetime(updated_at) if isinstance(updated_at, str) else None,
+            "submitted_at": PortalService._parse_iso_datetime(submitted_at) if isinstance(submitted_at, str) else None,
+        }
+
+    @staticmethod
+    def _merge_uploaded_refs(existing: list[dict] | None, incoming: list[dict] | None) -> list[dict]:
+        merged: list[dict] = []
+        seen: set[str] = set()
+        for source in (existing or [], incoming or []):
+            for item in source:
+                if not isinstance(item, dict):
+                    continue
+                document_id = str(item.get("document_id") or "").strip()
+                key = document_id or str(item)
+                if key in seen:
+                    continue
+                merged.append(item)
+                seen.add(key)
+        return merged
+
+    @staticmethod
+    def _merge_document_collection_item_draft(existing: dict | None, incoming: dict | None) -> dict:
+        existing = existing or {}
+        incoming = incoming or {}
+        merged = dict(existing)
+        for key in [
+            "itemType",
+            "brand",
+            "model",
+            "purchaseYear",
+            "purchaseYearApproximate",
+            "damageType",
+            "damageDynamics",
+            "hasDamagedComponents",
+            "damagedComponents",
+        ]:
+            if key in incoming:
+                merged[key] = incoming.get(key)
+        merged["wholeItemUploads"] = PortalService._merge_uploaded_refs(
+            existing.get("wholeItemUploads"),
+            incoming.get("wholeItemUploads"),
+        )
+        merged["optionalVideosUploads"] = PortalService._merge_uploaded_refs(
+            existing.get("optionalVideosUploads"),
+            incoming.get("optionalVideosUploads"),
+        )
+        merged["optionalSupportingDocsUploads"] = PortalService._merge_uploaded_refs(
+            existing.get("optionalSupportingDocsUploads"),
+            incoming.get("optionalSupportingDocsUploads"),
+        )
+        existing_components = existing.get("componentUploads") if isinstance(existing.get("componentUploads"), dict) else {}
+        incoming_components = incoming.get("componentUploads") if isinstance(incoming.get("componentUploads"), dict) else {}
+        component_keys = set(existing_components.keys()) | set(incoming_components.keys())
+        merged["componentUploads"] = {
+            component: PortalService._merge_uploaded_refs(
+                existing_components.get(component),
+                incoming_components.get(component),
+            )
+            for component in component_keys
+        }
+        return merged
+
+    @staticmethod
+    def _merge_document_collection_draft(existing: dict | None, incoming: dict | None) -> dict:
+        existing = existing or {}
+        incoming = incoming or {}
+        merged = dict(existing)
+        for key in ["step_kind", "step_item_index", "inventory_count", "notes", "confirmations"]:
+            if key in incoming:
+                merged[key] = incoming.get(key)
+        merged["buildingUploads"] = PortalService._merge_uploaded_refs(
+            existing.get("buildingUploads"),
+            incoming.get("buildingUploads"),
+        )
+        merged["repairReceiptUploads"] = PortalService._merge_uploaded_refs(
+            existing.get("repairReceiptUploads"),
+            incoming.get("repairReceiptUploads"),
+        )
+        existing_items = existing.get("items") if isinstance(existing.get("items"), list) else []
+        incoming_items = incoming.get("items") if isinstance(incoming.get("items"), list) else []
+        item_count = max(len(existing_items), len(incoming_items), int(incoming.get("inventory_count") or 0))
+        merged["items"] = [
+            PortalService._merge_document_collection_item_draft(
+                existing_items[index] if index < len(existing_items) and isinstance(existing_items[index], dict) else None,
+                incoming_items[index] if index < len(incoming_items) and isinstance(incoming_items[index], dict) else None,
+            )
+            for index in range(item_count)
+        ]
+        return merged
+
+    @staticmethod
+    def _portal_additional_document_requests(claim: Claim) -> list[str]:
+        metadata = claim.metadata_json or {}
+        raw = metadata.get("portal_additional_document_requests")
+        if not isinstance(raw, list):
+            return []
+        return [str(item).strip() for item in raw if str(item).strip()]
+
+    @staticmethod
+    def _build_act_flow(claim: Claim) -> dict | None:
+        metadata = claim.metadata_json or {}
+        raw = metadata.get("portal_act_flow")
+        if not isinstance(raw, dict):
+            if claim.data_invio_atto:
+                return {
+                    "status": "awaiting_publication",
+                    "label": "Atto in preparazione",
+                    "provider": None,
+                    "signing_url": None,
+                    "provider_reference": None,
+                    "request_id": None,
+                    "act_document_id": None,
+                    "signed_document_id": None,
+                    "countersigned_document_id": None,
+                    "signed_at": claim.data_ritorno_atto,
+                    "countersigned_at": None,
+                }
+            return None
+        status = str(raw.get("status") or "pending_external_signature")
+        label_map = {
+            "pending_external_signature": "Atto pronto da firmare",
+            "signed_by_insured": "Atto firmato dall'assicurato",
+            "countersigned": "Atto controfirmato disponibile",
+            "completed": "Atto completato",
+        }
+        return {
+            "status": status,
+            "label": label_map.get(status, "Firma atto"),
+            "provider": raw.get("provider"),
+            "signing_url": raw.get("signing_url"),
+            "provider_reference": raw.get("provider_reference"),
+            "request_id": raw.get("request_id"),
+            "act_document_id": raw.get("act_document_id"),
+            "signed_document_id": raw.get("signed_document_id"),
+            "countersigned_document_id": raw.get("countersigned_document_id"),
+            "signed_at": PortalService._parse_iso_datetime(raw.get("signed_at")) if isinstance(raw.get("signed_at"), str) else raw.get("signed_at"),
+            "countersigned_at": PortalService._parse_iso_datetime(raw.get("countersigned_at")) if isinstance(raw.get("countersigned_at"), str) else raw.get("countersigned_at"),
+        }
+
+    @staticmethod
+    def _claim_reference_for_paths(claim: Claim) -> str:
+        candidate = claim.external_ref or claim.numero_sinistro or claim.id
+        return "".join(char if char.isalnum() or char in {"-", "_"} else "_" for char in candidate).strip("_") or claim.id
+
+    @staticmethod
+    def _safe_filename(filename: str | None, fallback: str) -> str:
+        candidate = Path(filename or "").name.strip()
+        return candidate or fallback
+
+    @staticmethod
+    async def _ensure_claim_folder(
+        db: AsyncSession,
+        tenant_id: str,
+        claim: Claim,
+        *,
+        name: str,
+        folder_type: str,
+        parent_id: str | None = None,
+        path: str,
+        metadata_json: dict | None = None,
+    ) -> ClaimFolder:
+        result = await db.execute(
+            select(ClaimFolder).where(
+                ClaimFolder.tenant_id == tenant_id,
+                ClaimFolder.path == path,
+            )
+        )
+        existing = result.scalar_one_or_none()
+        if existing:
+            return existing
+
+        folder = ClaimFolder(
+            id=str(uuid.uuid4()),
+            tenant_id=tenant_id,
+            claim_id=claim.id,
+            parent_id=parent_id,
+            name=name,
+            folder_type=folder_type,
+            path=path,
+            source="portal",
+            external_ref=claim.external_ref or claim.numero_sinistro,
+            metadata_json=metadata_json,
+        )
+        db.add(folder)
+        await db.flush()
+        return folder
+
+    @staticmethod
+    async def _ensure_insured_claim_folder(
+        db: AsyncSession,
+        tenant_id: str,
+        claim: Claim,
+    ) -> ClaimFolder:
+        root_path = f"/claims/{claim.external_ref or claim.id}"
+        root_folder = await PortalService._ensure_claim_folder(
+            db,
+            tenant_id,
+            claim,
+            name=claim.external_ref or claim.numero_sinistro or "Sinistro",
+            folder_type="claim_root",
+            path=root_path,
+            metadata_json={"created_via": "portal"},
+        )
+        insured_path = f"{root_path}/da assicurato"
+        return await PortalService._ensure_claim_folder(
+            db,
+            tenant_id,
+            claim,
+            name="da assicurato",
+            folder_type="insured_uploads",
+            parent_id=root_folder.id,
+            path=insured_path,
+            metadata_json={"created_via": "portal", "audience": "insured"},
+        )
+
+    @staticmethod
+    def _build_insured_storage_path(
+        claim: Claim,
+        tenant_id: str,
+        document_id: str,
+        filename: str,
+    ) -> Path:
+        safe_reference = PortalService._claim_reference_for_paths(claim)
+        safe_name = PortalService._safe_filename(filename, f"{document_id}.bin")
+        target_dir = PortalService.PORTAL_UPLOAD_ROOT / tenant_id / safe_reference / "da_assicurato"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        return target_dir / f"{document_id}_{safe_name}"
+
+    @staticmethod
+    def _build_document_collection_tags(registration: dict) -> list[str]:
+        tags = ["da assicurato"]
+        kind = (registration.get("kind") or "").strip()
+        item_label = (registration.get("item_label") or registration.get("item_type") or "").strip()
+        component_name = (registration.get("component_name") or "").strip()
+
+        if kind == "building_photo":
+            tags.append("foto ubicazione")
+        elif kind == "whole_item_photo" and item_label:
+            tags.append(f"foto bene {item_label}")
+        elif kind == "component_photo":
+            if item_label:
+                tags.append(f"foto componente {item_label}")
+            if component_name:
+                tags.append(component_name)
+        elif kind == "video" and item_label:
+            tags.append(f"video bene {item_label}")
+        elif kind == "supporting_document":
+            tags.append("documentazione utile")
+            if item_label:
+                tags.append(f"bene {item_label}")
+        elif kind == "repair_receipt":
+            tags.append("giustificativi riparazione o sostituzione")
+
+        return list(dict.fromkeys(tags))
+
+    @staticmethod
+    def _validate_document_collection_confirmations(metadata_json: dict | None) -> dict:
+        metadata = metadata_json or {}
+        confirmations = metadata.get("confirmations")
+        if not isinstance(confirmations, dict):
+            raise ValueError("Conferma tutte le dichiarazioni richieste prima di inviare.")
+        missing = [
+            key
+            for key in PortalService.REQUIRED_DOCUMENT_COLLECTION_CONFIRMATIONS
+            if confirmations.get(key) is not True
+        ]
+        if missing:
+            raise ValueError("Conferma tutte le dichiarazioni richieste prima di inviare.")
+        return confirmations
+
+    @staticmethod
+    async def upload_document_file(
+        db: AsyncSession,
+        session: PortalSessionContext,
+        *,
+        document_id: str,
+        file_name: str,
+        mime_type: str | None,
+        content: bytes,
+        claim_id: str | None = None,
+    ) -> dict:
+        if not content:
+            raise ValueError("File vuoto.")
+
+        claim, access = await PortalService.resolve_claim_for_session(db, session, claim_id)
+        result = await db.execute(
+            select(Document).where(
+                Document.id == document_id,
+                Document.tenant_id == session.tenant_id,
+                Document.claim_id == claim.id,
+            )
+        )
+        document = result.scalar_one_or_none()
+        if not document:
+            raise ValueError("Documento non trovato.")
+
+        insured_folder = await PortalService._ensure_insured_claim_folder(db, session.tenant_id, claim)
+        previous_path = Path(document.storage_path) if document.storage_path else None
+        storage_path = PortalService._build_insured_storage_path(
+            claim,
+            session.tenant_id,
+            document.id,
+            file_name or document.file_name,
+        )
+        storage_path.write_bytes(content)
+        if previous_path and previous_path != storage_path and previous_path.exists():
+            previous_path.unlink(missing_ok=True)
+
+        checksum_sha256 = hashlib.sha256(content).hexdigest()
+        safe_name = PortalService._safe_filename(file_name or document.file_name, storage_path.name)
+        document.file_name = safe_name
+        document.original_file_name = safe_name
+        document.mime_type = mime_type or document.mime_type
+        document.extension = Path(safe_name).suffix.lstrip(".") or None
+        document.size_bytes = len(content)
+        document.storage_provider = "local"
+        document.storage_bucket = None
+        document.storage_path = str(storage_path)
+        document.folder_id = insured_folder.id
+        document.logical_path = f"{insured_folder.path}/{safe_name}"
+        document.status = "uploaded"
+        document.checksum_sha256 = checksum_sha256
+        document.uploaded_at = datetime.now(timezone.utc)
+        document.metadata_json = PortalService._merge_metadata(
+            document.metadata_json,
+            portal_access_id=access.id,
+            uploaded_via="portal",
+            audience="insured",
+        )
+
+        await PortalService._create_claim_event(
+            db,
+            session.tenant_id,
+            claim.id,
+            "portal_document_uploaded",
+            "portal",
+            {"document_id": document.id, "file_name": document.file_name},
+        )
+        await db.commit()
+        await db.refresh(document)
+        return {
+            "document_id": document.id,
+            "file_name": document.file_name,
+            "status": document.status,
+            "storage_path": document.storage_path,
+            "uploaded_at": document.uploaded_at,
+        }
+
     @staticmethod
     def mask_email(email: str | None) -> str | None:
         if not email or "@" not in email:
@@ -209,10 +615,95 @@ class PortalService:
         return access, challenge, raw_token
 
     @staticmethod
+    async def _find_claim_by_reference(
+        db: AsyncSession,
+        claim_reference: str,
+    ) -> Claim | None:
+        normalized_reference = claim_reference.strip()
+        if not normalized_reference:
+            return None
+        result = await db.execute(
+            select(Claim)
+            .where(
+                or_(
+                    Claim.external_ref == normalized_reference,
+                    Claim.numero_sinistro == normalized_reference,
+                )
+            )
+            .order_by(Claim.updated_at.desc(), Claim.created_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def _ensure_dev_access_for_claim(
+        db: AsyncSession,
+        claim: Claim,
+    ) -> PortalClaimAccess:
+        email = normalize_email(claim.email_assicurato) or normalize_email(claim.email_contraente)
+        if not email:
+            email = f"dev-portal+{claim.id}@local.invalid"
+
+        full_name = (
+            claim.nome_assicurato
+            or claim.nome_contraente
+            or claim.nome_danneggiato
+            or "Assicurato"
+        )
+        phone_number = (
+            claim.telefono_assicurato
+            or claim.telefono_contraente
+            or claim.telefono_danneggiato
+        )
+
+        payload = PortalAccessInviteRequest(
+            full_name=full_name,
+            email=email,
+            phone_number=phone_number,
+            tax_code=None,
+            role="insured",
+            is_primary=True,
+            preferred_channel="email",
+            metadata_json={
+                "provisioned_via": "dev_claim_reference_only_auth",
+                "claim_reference": claim.external_ref or claim.numero_sinistro,
+            },
+        )
+        return await PortalService.create_or_update_access(
+            db,
+            claim.tenant_id,
+            claim.id,
+            payload,
+        )
+
+    @staticmethod
     async def start_public_auth(
         db: AsyncSession,
         payload: PortalAuthStartRequest,
     ) -> tuple[PortalClaimAccess | None, PortalAuthChallenge | None, str | None]:
+        if (
+            settings.PORTAL_DEV_CLAIM_REFERENCE_ONLY_AUTH
+            and payload.claim_reference
+            and not payload.tax_code
+            and not payload.full_name
+            and not payload.phone_number
+        ):
+            claim = await PortalService._find_claim_by_reference(db, payload.claim_reference)
+            if not claim:
+                return None, None, None
+
+            access = await PortalService._ensure_dev_access_for_claim(db, claim)
+            challenge, raw_token = await PortalService.create_magic_link_challenge(
+                db,
+                access,
+                delivery_channel="email",
+                metadata_json={"issued_via": "dev_claim_reference_only_auth"},
+            )
+            access.last_delivery_status = "development_preview_only"
+            await db.commit()
+            await db.refresh(challenge)
+            return access, challenge, raw_token
+
         conditions = [PortalClaimAccess.status == "active"]
         if payload.claim_reference:
             conditions.append(
@@ -295,7 +786,33 @@ class PortalService:
     async def get_access(
         db: AsyncSession,
         session: PortalSessionContext,
+        claim_id: str | None = None,
     ) -> PortalClaimAccess:
+        target_claim_id = claim_id or session.claim_id
+        if target_claim_id == session.claim_id:
+            result = await db.execute(
+                select(PortalClaimAccess).where(
+                    PortalClaimAccess.id == session.portal_access_id,
+                    PortalClaimAccess.tenant_id == session.tenant_id,
+                    PortalClaimAccess.claim_id == session.claim_id,
+                )
+            )
+            anchor_access = result.scalar_one_or_none()
+            if anchor_access:
+                return anchor_access
+
+        accessible_accesses = await PortalService.list_accessible_claim_accesses(db, session)
+        for access in accessible_accesses:
+            if access.claim_id == target_claim_id:
+                return access
+
+        raise ValueError("Claim not accessible from portal session")
+
+    @staticmethod
+    async def list_accessible_claim_accesses(
+        db: AsyncSession,
+        session: PortalSessionContext,
+    ) -> list[PortalClaimAccess]:
         result = await db.execute(
             select(PortalClaimAccess).where(
                 PortalClaimAccess.id == session.portal_access_id,
@@ -303,7 +820,104 @@ class PortalService:
                 PortalClaimAccess.claim_id == session.claim_id,
             )
         )
-        return result.scalar_one()
+        anchor_access = result.scalar_one()
+
+        identity_clauses = []
+        if anchor_access.tax_code_hash:
+            identity_clauses.append(PortalClaimAccess.tax_code_hash == anchor_access.tax_code_hash)
+        if anchor_access.email:
+            identity_clauses.append(PortalClaimAccess.email == anchor_access.email)
+        if anchor_access.normalized_full_name and anchor_access.normalized_phone_number:
+            identity_clauses.append(
+                and_(
+                    PortalClaimAccess.normalized_full_name == anchor_access.normalized_full_name,
+                    PortalClaimAccess.normalized_phone_number == anchor_access.normalized_phone_number,
+                )
+            )
+
+        if not identity_clauses:
+            return [anchor_access]
+
+        result = await db.execute(
+            select(PortalClaimAccess)
+            .where(
+                PortalClaimAccess.tenant_id == session.tenant_id,
+                PortalClaimAccess.status == "active",
+                PortalClaimAccess.role == anchor_access.role,
+                or_(*identity_clauses),
+            )
+            .order_by(
+                PortalClaimAccess.is_primary.desc(),
+                PortalClaimAccess.last_authenticated_at.desc().nullslast(),
+                PortalClaimAccess.created_at.desc(),
+            )
+        )
+        unique_by_claim: dict[str, PortalClaimAccess] = {}
+        for access in result.scalars().all():
+            unique_by_claim.setdefault(access.claim_id, access)
+        return list(unique_by_claim.values())
+
+    @staticmethod
+    async def resolve_claim_for_session(
+        db: AsyncSession,
+        session: PortalSessionContext,
+        claim_id: str | None = None,
+    ) -> tuple[Claim, PortalClaimAccess]:
+        access = await PortalService.get_access(db, session, claim_id)
+        claim = await PortalService.get_claim_for_tenant(db, access.tenant_id, access.claim_id)
+        if not claim:
+            raise ValueError("Claim not found")
+        return claim, access
+
+    @staticmethod
+    async def list_accessible_claims(
+        db: AsyncSession,
+        session: PortalSessionContext,
+    ) -> list[dict]:
+        accesses = await PortalService.list_accessible_claim_accesses(db, session)
+        claim_ids = [access.claim_id for access in accesses]
+        if not claim_ids:
+            return []
+
+        claims_result = await db.execute(
+            select(Claim)
+            .where(Claim.tenant_id == session.tenant_id, Claim.id.in_(claim_ids))
+            .order_by(Claim.updated_at.desc(), Claim.created_at.desc())
+        )
+        claims_by_id = {claim.id: claim for claim in claims_result.scalars().all()}
+
+        items: list[dict] = []
+        for access in accesses:
+            claim = claims_by_id.get(access.claim_id)
+            if not claim:
+                continue
+            macro_state = PortalStatusService.build_macro_state(claim.stato_corrente)
+            items.append(
+                {
+                    "claim_id": claim.id,
+                    "tenant_id": claim.tenant_id,
+                    "external_ref": claim.external_ref,
+                    "numero_sinistro": claim.numero_sinistro,
+                    "compagnia": claim.compagnia,
+                    "nome_assicurato": claim.nome_assicurato,
+                    "data_sinistro": claim.data_sinistro,
+                    "updated_at": claim.updated_at,
+                    "macro_state": macro_state,
+                    "has_pending_actions": bool(macro_state.get("needs_action")),
+                    "requested_amount": PortalService._amount_to_float(claim.richiesta),
+                    "liquidated_amount": PortalService._amount_to_float(claim.liquidato),
+                    "estimated_damage_amount": PortalService._amount_to_float(claim.stima_danno),
+                }
+            )
+
+        items.sort(
+            key=lambda item: (
+                not item["has_pending_actions"],
+                item["updated_at"] or datetime.min.replace(tzinfo=timezone.utc),
+            ),
+            reverse=False,
+        )
+        return items
 
     @staticmethod
     async def get_assigned_expert(
@@ -368,6 +982,8 @@ class PortalService:
     @staticmethod
     def build_requirements(claim: Claim) -> list[dict]:
         requirements: list[dict] = []
+        inspection_preferences = InspectionWorkflowService._preferences_metadata(claim)
+        inspection_selected_slots = InspectionWorkflowService._selected_slot_payload(inspection_preferences)
         if claim.stato_corrente in {"SV002", "SV022", "SV023"}:
             requirements.append(
                 {
@@ -392,7 +1008,20 @@ class PortalService:
                     "key": "iban",
                     "label": "Coordinate bancarie",
                     "status": "missing",
-                    "description": "Inserisci l'IBAN per eventuale liquidazione.",
+                    "description": "Per proseguire con la perizia e arrivare alla liquidazione servirà l'IBAN intestato al contraente di polizza.",
+                }
+            )
+        if claim.stato_corrente in {"SV052", "SV053"}:
+            requirements.append(
+                {
+                    "key": "inspection_scheduling",
+                    "label": "Sopralluogo da organizzare",
+                    "status": "pending_confirmation" if inspection_selected_slots else "required",
+                    "description": (
+                        "Abbiamo registrato le tue preferenze: il sopralluogo resta in attesa di conferma."
+                        if inspection_selected_slots
+                        else "Conferma posizione e scegli una o piu fasce orarie per il sopralluogo."
+                    ),
                 }
             )
         if claim.stato_corrente in {"SV020", "SV030", "SV031"}:
@@ -410,10 +1039,9 @@ class PortalService:
     async def build_claim_summary(
         db: AsyncSession,
         session: PortalSessionContext,
+        claim_id: str | None = None,
     ) -> dict:
-        claim = await PortalService.get_claim_for_tenant(db, session.tenant_id, session.claim_id)
-        if not claim:
-            raise ValueError("Claim not found")
+        claim, _ = await PortalService.resolve_claim_for_session(db, session, claim_id)
 
         expert, is_available_now, availability_note = await PortalService.get_assigned_expert(
             db,
@@ -458,30 +1086,55 @@ class PortalService:
             "chat_enabled": True,
             "document_upload_enabled": True,
             "act_signature_enabled": True,
+            "inspection_scheduling_enabled": claim.stato_corrente in {"SV052", "SV053", "SV050"},
+            "requested_amount": PortalService._amount_to_float(claim.richiesta),
+            "liquidated_amount": PortalService._amount_to_float(claim.liquidato),
+            "estimated_damage_amount": PortalService._amount_to_float(claim.stima_danno),
+            "act_sent_at": claim.data_invio_atto,
+            "act_signed_at": claim.data_ritorno_atto,
+            "contraente_name": claim.nome_contraente,
+            "iban_value_masked": PortalService._mask_iban_value(claim.iban_value),
+            "iban_required_for_progress": True,
+            "document_collection_draft": PortalService._document_collection_draft_info(claim),
+            "additional_document_requests": PortalService._portal_additional_document_requests(claim),
+            "act_flow": PortalService._build_act_flow(claim),
         }
 
     @staticmethod
     async def list_timeline(
         db: AsyncSession,
         session: PortalSessionContext,
+        claim_id: str | None = None,
         limit: int = 25,
     ) -> list[dict]:
+        claim, _ = await PortalService.resolve_claim_for_session(db, session, claim_id)
+        event_labels = {
+            "inspection_scheduling_requested": "Richiesta fissazione sopralluogo",
+            "inspection_location_confirmed": "Posizione sopralluogo confermata",
+            "inspection_preferences_confirmed": "Preferenze sopralluogo inviate",
+            "inspection_route_proposed": "Proposta CAT in revisione",
+            "inspection_appointment_confirmed": "Sopralluogo confermato",
+        }
         result = await db.execute(
             select(ClaimEvent)
             .where(
                 ClaimEvent.tenant_id == session.tenant_id,
-                ClaimEvent.claim_id == session.claim_id,
+                ClaimEvent.claim_id == claim.id,
             )
             .order_by(ClaimEvent.event_time.desc())
             .limit(limit)
         )
         items = []
         for event in result.scalars().all():
-            label = event.event_type.replace("_", " ").capitalize()
+            label = event_labels.get(event.event_type, event.event_type.replace("_", " ").capitalize())
             description = None
             if event.event_type == "state_changed":
                 data = event.data_json or {}
                 description = f"{data.get('from', 'n/d')} -> {data.get('to', 'n/d')}"
+            elif event.event_type == "inspection_scheduling_requested":
+                description = "Conferma il punto di incontro e scegli una o piu fasce da due ore."
+            elif event.event_type == "inspection_preferences_confirmed":
+                description = "Le tue finestre preferite sono state inoltrate al sistema appuntamenti."
             items.append(
                 {
                     "id": event.id,
@@ -498,13 +1151,15 @@ class PortalService:
     async def list_documents(
         db: AsyncSession,
         session: PortalSessionContext,
+        claim_id: str | None = None,
         limit: int = 100,
     ) -> list[dict]:
+        claim, _ = await PortalService.resolve_claim_for_session(db, session, claim_id)
         result = await db.execute(
             select(Document)
             .where(
                 Document.tenant_id == session.tenant_id,
-                Document.claim_id == session.claim_id,
+                Document.claim_id == claim.id,
             )
             .order_by(Document.uploaded_at.desc())
             .limit(limit)
@@ -521,17 +1176,110 @@ class PortalService:
         ]
 
     @staticmethod
+    async def get_claim_document_file(
+        db: AsyncSession,
+        session: PortalSessionContext,
+        document_id: str,
+        claim_id: str | None = None,
+    ) -> Document:
+        claim, _ = await PortalService.resolve_claim_for_session(db, session, claim_id)
+        result = await db.execute(
+            select(Document).where(
+                Document.id == document_id,
+                Document.tenant_id == session.tenant_id,
+                Document.claim_id == claim.id,
+            )
+        )
+        document = result.scalar_one_or_none()
+        if not document:
+            raise ValueError("Documento non trovato.")
+        return document
+
+    @staticmethod
+    def _parse_iso_date(raw_value: str) -> date:
+        return date.fromisoformat(raw_value)
+
+    @staticmethod
+    def _parse_iso_time(raw_value: str) -> time:
+        return time.fromisoformat(raw_value)
+
+    @staticmethod
+    async def get_inspection_scheduling_overview(
+        db: AsyncSession,
+        session: PortalSessionContext,
+        claim_id: str | None = None,
+    ) -> dict:
+        claim, _ = await PortalService.resolve_claim_for_session(db, session, claim_id)
+        return await InspectionWorkflowService.get_portal_scheduling_overview(
+            db,
+            session.tenant_id,
+            claim.id,
+        )
+
+    @staticmethod
+    async def update_inspection_location(
+        db: AsyncSession,
+        session: PortalSessionContext,
+        payload: PortalInspectionLocationUpdateRequest,
+        claim_id: str | None = None,
+    ) -> dict:
+        claim, _ = await PortalService.resolve_claim_for_session(db, session, claim_id)
+        await InspectionWorkflowService.upsert_portal_location(
+            db,
+            session.tenant_id,
+            claim.id,
+            address_line=payload.address_line,
+            municipality=payload.municipality,
+            province=payload.province,
+            region=payload.region,
+            latitude=payload.latitude,
+            longitude=payload.longitude,
+        )
+        return await PortalService.get_inspection_scheduling_overview(db, session, claim.id)
+
+    @staticmethod
+    async def submit_inspection_preferences(
+        db: AsyncSession,
+        session: PortalSessionContext,
+        payload: PortalInspectionPreferencesUpdateRequest,
+        claim_id: str | None = None,
+    ) -> dict:
+        claim, _ = await PortalService.resolve_claim_for_session(db, session, claim_id)
+        selected_slots: list[InspectionPreferredSlotInput] = []
+        for raw_slot in payload.selected_slots:
+            selected_slots.append(
+                InspectionPreferredSlotInput(
+                    date=PortalService._parse_iso_date(raw_slot.date),
+                    start_time=PortalService._parse_iso_time(raw_slot.start_time),
+                    end_time=PortalService._parse_iso_time(raw_slot.end_time),
+                    label=raw_slot.label,
+                )
+            )
+
+        await InspectionWorkflowService.submit_portal_preferences(
+            db,
+            session.tenant_id,
+            claim.id,
+            selected_slots=selected_slots,
+            notes=payload.notes,
+            requested_duration_minutes=payload.requested_duration_minutes,
+        )
+        return await PortalService.get_inspection_scheduling_overview(db, session, claim.id)
+
+    @staticmethod
     async def create_upload_intent(
         db: AsyncSession,
         session: PortalSessionContext,
         payload: PortalUploadIntentCreate,
+        claim_id: str | None = None,
     ) -> dict:
+        claim, access = await PortalService.resolve_claim_for_session(db, session, claim_id)
         document_id = str(uuid.uuid4())
-        storage_path = f"portal/{session.tenant_id}/{session.claim_id}/{document_id}/{payload.file_name}"
+        storage_path = f"portal/{session.tenant_id}/{claim.id}/{document_id}/{payload.file_name}"
         document = Document(
             id=document_id,
             tenant_id=session.tenant_id,
-            claim_id=session.claim_id,
+            claim_id=claim.id,
             source_type="portal",
             file_name=payload.file_name,
             original_file_name=payload.file_name,
@@ -542,13 +1290,13 @@ class PortalService:
             storage_path=storage_path,
             status="pending_upload",
             category=payload.category,
-            metadata_json={"portal_access_id": session.portal_access_id},
+            metadata_json={"portal_access_id": access.id},
         )
         db.add(document)
         await PortalService._create_claim_event(
             db,
             session.tenant_id,
-            session.claim_id,
+            claim.id,
             "portal_upload_intent_created",
             "portal",
             {"document_id": document.id, "file_name": document.file_name},
@@ -563,34 +1311,178 @@ class PortalService:
         }
 
     @staticmethod
+    async def get_document_collection_draft(
+        db: AsyncSession,
+        session: PortalSessionContext,
+        claim_id: str | None = None,
+    ) -> dict:
+        claim, _ = await PortalService.resolve_claim_for_session(db, session, claim_id)
+        draft = PortalService._document_collection_draft_payload(claim)
+        return {
+            "status": str(draft.get("status") or "not_started"),
+            "draft_json": draft,
+            "updated_at": PortalService._parse_iso_datetime(draft.get("updated_at"))
+            if isinstance(draft.get("updated_at"), str)
+            else None,
+        }
+
+    @staticmethod
+    async def save_document_collection_draft(
+        db: AsyncSession,
+        session: PortalSessionContext,
+        draft_json: dict,
+        claim_id: str | None = None,
+    ) -> dict:
+        claim, access = await PortalService.resolve_claim_for_session(db, session, claim_id)
+        existing_draft = PortalService._document_collection_draft_payload(claim)
+        merged = PortalService._merge_document_collection_draft(existing_draft, draft_json or {})
+        merged["status"] = "draft"
+        merged["updated_at"] = datetime.now(timezone.utc).isoformat()
+        merged["portal_access_id"] = access.id
+        claim.metadata_json = PortalService._merge_metadata(
+            claim.metadata_json,
+            portal_document_collection_draft=merged,
+        )
+        claim.updated_at = datetime.now(timezone.utc)
+        await PortalService._create_claim_event(
+            db,
+            session.tenant_id,
+            claim.id,
+            "portal_document_collection_draft_saved",
+            "portal",
+            {
+                "step_kind": merged.get("step_kind"),
+                "inventory_count": merged.get("inventory_count"),
+            },
+        )
+        await db.commit()
+        return {
+            "status": "draft",
+            "draft_json": merged,
+            "updated_at": PortalService._parse_iso_datetime(merged.get("updated_at")),
+        }
+
+    @staticmethod
     async def submit_document_collection(
         db: AsyncSession,
         session: PortalSessionContext,
         payload: PortalDocumentCollectionSubmissionCreate,
+        claim_id: str | None = None,
     ) -> PortalDocumentCollectionSubmission:
+        claim, access = await PortalService.resolve_claim_for_session(db, session, claim_id)
+        confirmations = PortalService._validate_document_collection_confirmations(payload.metadata_json)
+        insured_folder = await PortalService._ensure_insured_claim_folder(db, session.tenant_id, claim)
         submission = PortalDocumentCollectionSubmission(
             id=str(uuid.uuid4()),
             tenant_id=session.tenant_id,
-            claim_id=session.claim_id,
-            portal_access_id=session.portal_access_id,
+            claim_id=claim.id,
+            portal_access_id=access.id,
             status="submitted",
             payload_json=payload.model_dump(),
             metadata_json=payload.metadata_json,
         )
         db.add(submission)
 
-        claim = await PortalService.get_claim_for_tenant(db, session.tenant_id, session.claim_id)
-        if claim:
-            claim.foto = payload.photos_count > 0 or claim.foto
-            claim.updated_at = datetime.now(timezone.utc)
+        metadata = dict(payload.metadata_json or {})
+        raw_upload_registrations = metadata.get("upload_intents")
+        upload_registrations = raw_upload_registrations if isinstance(raw_upload_registrations, list) else []
+        uploaded_documents: list[dict] = []
+        if upload_registrations:
+            document_ids = [
+                str(item.get("document_id"))
+                for item in upload_registrations
+                if isinstance(item, dict) and item.get("document_id")
+            ]
+            if document_ids:
+                result = await db.execute(
+                    select(Document).where(
+                        Document.tenant_id == session.tenant_id,
+                        Document.claim_id == claim.id,
+                        Document.id.in_(document_ids),
+                    )
+                )
+                documents_by_id = {document.id: document for document in result.scalars().all()}
+                for registration in upload_registrations:
+                    if not isinstance(registration, dict):
+                        continue
+                    document = documents_by_id.get(str(registration.get("document_id")))
+                    if not document:
+                        continue
+                    tags = PortalService._build_document_collection_tags(registration)
+                    document.folder_id = insured_folder.id
+                    document.logical_path = f"{insured_folder.path}/{document.file_name}"
+                    document.tags_json = tags
+                    document.metadata_json = PortalService._merge_metadata(
+                        document.metadata_json,
+                        portal_access_id=access.id,
+                        audience="insured",
+                        workflow="documentale_guidata",
+                        insured_document_kind=registration.get("kind"),
+                        insured_item_label=registration.get("item_label"),
+                        insured_component_name=registration.get("component_name"),
+                    )
+                    uploaded_documents.append(
+                        {
+                            "document_id": document.id,
+                            "file_name": document.file_name,
+                            "category": document.category,
+                            "status": document.status,
+                            "tags": tags,
+                            "kind": registration.get("kind"),
+                        }
+                    )
+
+        claim.foto = payload.photos_count > 0 or claim.foto
+        claim.giustificativi = any(
+            item.get("kind") == "repair_receipt"
+            for item in upload_registrations
+            if isinstance(item, dict)
+        ) or claim.giustificativi
+        claim.oltre_dieci_beni = len(payload.items) > 10
+        claim.updated_at = datetime.now(timezone.utc)
+        claim.metadata_json = PortalService._merge_metadata(
+            claim.metadata_json,
+            portal_document_collection={
+                "submitted_at": datetime.now(timezone.utc).isoformat(),
+                "status": "documentazione_ricevuta",
+                "folder_id": insured_folder.id,
+                "folder_path": insured_folder.path,
+                "confirmations": confirmations,
+                "items": [item.model_dump() for item in payload.items],
+                "notes": payload.notes,
+                "photos_count": payload.photos_count,
+                "uploaded_documents": uploaded_documents,
+                "wizard_metadata": {
+                    key: value
+                    for key, value in metadata.items()
+                    if key not in {"upload_intents"}
+                },
+            },
+            document_collection_status="documentazione_ricevuta",
+            numero_beni=len(payload.items),
+            portal_document_collection_draft={
+                **PortalService._merge_document_collection_draft(
+                    PortalService._document_collection_draft_payload(claim),
+                    metadata.get("draft_snapshot") if isinstance(metadata.get("draft_snapshot"), dict) else {},
+                ),
+                "status": "submitted",
+                "submitted_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            },
+        )
 
         await PortalService._create_claim_event(
             db,
             session.tenant_id,
-            session.claim_id,
+            claim.id,
             "portal_document_collection_submitted",
             "portal",
-            {"submission_id": submission.id, "photos_count": payload.photos_count},
+            {
+                "submission_id": submission.id,
+                "photos_count": payload.photos_count,
+                "document_count": len(uploaded_documents),
+                "folder_path": insured_folder.path,
+            },
         )
         await db.flush()
 
@@ -598,12 +1490,16 @@ class PortalService:
             await StateService.transition_state(
                 db,
                 session.tenant_id,
-                session.claim_id,
+                claim.id,
                 claim.stato_corrente,
                 "SV010",
                 None,
                 "Portal document collection submitted",
-                {"submission_id": submission.id},
+                {
+                    "submission_id": submission.id,
+                    "document_collection_status": "documentazione_ricevuta",
+                    "workflow_label": "perizia da eseguire (documentale)",
+                },
             )
         else:
             await db.commit()
@@ -616,15 +1512,17 @@ class PortalService:
         db: AsyncSession,
         session: PortalSessionContext,
         payload: PortalBankAccountSubmissionCreate,
+        claim_id: str | None = None,
     ) -> tuple[PortalBankAccountSubmission, dict]:
+        claim, access = await PortalService.resolve_claim_for_session(db, session, claim_id)
         validation = IbanService.validate(payload.iban)
         submission = PortalBankAccountSubmission(
             id=str(uuid.uuid4()),
             tenant_id=session.tenant_id,
-            claim_id=session.claim_id,
-            portal_access_id=session.portal_access_id,
+            claim_id=claim.id,
+            portal_access_id=access.id,
             iban=validation["normalized_iban"],
-            account_holder=payload.account_holder,
+            account_holder=claim.nome_contraente or payload.account_holder,
             validation_status="valid" if validation["is_valid"] else "invalid",
             bank_name=validation.get("abi"),
             branch_name=validation.get("cab"),
@@ -633,15 +1531,25 @@ class PortalService:
         )
         db.add(submission)
 
-        claim = await PortalService.get_claim_for_tenant(db, session.tenant_id, session.claim_id)
-        if claim and validation["is_valid"]:
+        if validation["is_valid"]:
             claim.iban = True
+            claim.iban_value = validation["normalized_iban"]
             claim.updated_at = datetime.now(timezone.utc)
+            claim.metadata_json = PortalService._merge_metadata(
+                claim.metadata_json,
+                portal_iban_workflow={
+                    "status": "provided",
+                    "provided_at": datetime.now(timezone.utc).isoformat(),
+                    "contraente_required": True,
+                    "contraente_name": claim.nome_contraente,
+                    "validation": validation,
+                },
+            )
 
         await PortalService._create_claim_event(
             db,
             session.tenant_id,
-            session.claim_id,
+            claim.id,
             "portal_iban_submitted",
             "portal",
             {"submission_id": submission.id, "valid": validation["is_valid"]},
@@ -651,16 +1559,195 @@ class PortalService:
         return submission, validation
 
     @staticmethod
+    async def submit_additional_documents(
+        db: AsyncSession,
+        session: PortalSessionContext,
+        *,
+        note: str | None,
+        document_ids: list[str],
+        requested_items: list[str],
+        claim_id: str | None = None,
+    ) -> dict:
+        claim, access = await PortalService.resolve_claim_for_session(db, session, claim_id)
+        insured_folder = await PortalService._ensure_insured_claim_folder(db, session.tenant_id, claim)
+        result = await db.execute(
+            select(Document).where(
+                Document.tenant_id == session.tenant_id,
+                Document.claim_id == claim.id,
+                Document.id.in_(document_ids or []),
+            )
+        )
+        documents = result.scalars().all()
+        normalized_requested = [item.strip() for item in requested_items if item and item.strip()]
+        for document in documents:
+            tags = list(dict.fromkeys([*(document.tags_json or []), "da assicurato", "documentazione aggiuntiva"]))
+            document.folder_id = insured_folder.id
+            document.logical_path = f"{insured_folder.path}/{document.file_name}"
+            document.tags_json = tags
+            document.metadata_json = PortalService._merge_metadata(
+                document.metadata_json,
+                portal_access_id=access.id,
+                audience="insured",
+                workflow="documentazione_aggiuntiva",
+                requested_items=normalized_requested,
+                note=note,
+            )
+
+        existing_submissions = (claim.metadata_json or {}).get("portal_additional_documents") or []
+        if not isinstance(existing_submissions, list):
+            existing_submissions = []
+        existing_submissions.append(
+            {
+                "submitted_at": datetime.now(timezone.utc).isoformat(),
+                "portal_access_id": access.id,
+                "document_ids": [document.id for document in documents],
+                "requested_items": normalized_requested,
+                "note": note,
+            }
+        )
+        claim.metadata_json = PortalService._merge_metadata(
+            claim.metadata_json,
+            portal_additional_documents=existing_submissions,
+        )
+        claim.updated_at = datetime.now(timezone.utc)
+        await PortalService._create_claim_event(
+            db,
+            session.tenant_id,
+            claim.id,
+            "portal_additional_documents_submitted",
+            "portal",
+            {"document_count": len(documents), "requested_items": normalized_requested},
+        )
+        await db.commit()
+        return {
+            "status": "submitted",
+            "submitted_at": datetime.now(timezone.utc),
+            "document_count": len(documents),
+        }
+
+    @staticmethod
+    async def update_additional_document_requests(
+        db: AsyncSession,
+        tenant_id: str,
+        claim_id: str,
+        items: list[str],
+    ) -> dict:
+        claim = await PortalService.get_claim_for_tenant(db, tenant_id, claim_id)
+        if not claim:
+            raise ValueError("Claim not found")
+        normalized = [item.strip() for item in items if item and item.strip()]
+        claim.metadata_json = PortalService._merge_metadata(
+            claim.metadata_json,
+            portal_additional_document_requests=normalized,
+        )
+        claim.updated_at = datetime.now(timezone.utc)
+        await db.commit()
+        return {"items": normalized}
+
+    @staticmethod
+    async def update_act_flow(
+        db: AsyncSession,
+        tenant_id: str,
+        claim_id: str,
+        payload: dict,
+    ) -> dict:
+        claim = await PortalService.get_claim_for_tenant(db, tenant_id, claim_id)
+        if not claim:
+            raise ValueError("Claim not found")
+        existing = dict((claim.metadata_json or {}).get("portal_act_flow") or {})
+        next_payload = {
+            **existing,
+            **payload,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        claim.metadata_json = PortalService._merge_metadata(
+            claim.metadata_json,
+            portal_act_flow=next_payload,
+        )
+        claim.updated_at = datetime.now(timezone.utc)
+        await db.commit()
+        return PortalService._build_act_flow(claim) or {
+            "status": next_payload.get("status") or "pending_external_signature",
+            "label": "Firma atto",
+        }
+
+    @staticmethod
+    async def process_signature_provider_webhook(
+        db: AsyncSession,
+        payload: dict,
+    ) -> dict:
+        claim: Claim | None = None
+        request_id = payload.get("request_id")
+        provider_reference = payload.get("provider_reference")
+        if payload.get("claim_id"):
+            result = await db.execute(select(Claim).where(Claim.id == payload["claim_id"]))
+            claim = result.scalar_one_or_none()
+
+        if claim is None and request_id:
+            result = await db.execute(
+                select(Claim).where(
+                    func.json_extract_path_text(Claim.metadata_json, "portal_act_flow", "request_id") == str(request_id)
+                )
+            )
+            claim = result.scalar_one_or_none()
+
+        if claim is None and provider_reference:
+            result = await db.execute(
+                select(Claim).where(
+                    func.json_extract_path_text(Claim.metadata_json, "portal_act_flow", "provider_reference")
+                    == str(provider_reference)
+                )
+            )
+            claim = result.scalar_one_or_none()
+
+        if claim is None:
+            raise ValueError("Claim not found")
+
+        next_payload = {
+            **dict((claim.metadata_json or {}).get("portal_act_flow") or {}),
+            **payload,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        claim.metadata_json = PortalService._merge_metadata(
+            claim.metadata_json,
+            portal_act_flow=next_payload,
+        )
+        claim.updated_at = datetime.now(timezone.utc)
+
+        status = str(payload.get("status") or "")
+        if status in {"signed", "signed_by_insured"} and claim.stato_corrente in {"SV030", "SV031"}:
+            await StateService.transition_state(
+                db,
+                claim.tenant_id,
+                claim.id,
+                claim.stato_corrente,
+                "SV032",
+                None,
+                "External act signature confirmed",
+                {"provider_reference": provider_reference, "request_id": request_id},
+                event_source="portal_webhook",
+            )
+        else:
+            await db.commit()
+
+        refreshed = await PortalService.get_claim_for_tenant(db, claim.tenant_id, claim.id)
+        return PortalService._build_act_flow(refreshed or claim) or {
+            "status": status or "pending_external_signature",
+            "label": "Firma atto",
+        }
+
+    @staticmethod
     async def get_or_create_conversation(
         db: AsyncSession,
         session: PortalSessionContext,
         access: PortalClaimAccess,
+        claim_id: str,
     ) -> PortalConversation:
         result = await db.execute(
             select(PortalConversation).where(
                 PortalConversation.tenant_id == session.tenant_id,
-                PortalConversation.claim_id == session.claim_id,
-                PortalConversation.portal_access_id == session.portal_access_id,
+                PortalConversation.claim_id == claim_id,
+                PortalConversation.portal_access_id == access.id,
                 PortalConversation.status == "active",
             )
         )
@@ -671,19 +1758,19 @@ class PortalService:
         conversation = PortalConversation(
             id=str(uuid.uuid4()),
             tenant_id=session.tenant_id,
-            claim_id=session.claim_id,
-            portal_access_id=session.portal_access_id,
+            claim_id=claim_id,
+            portal_access_id=access.id,
             status="active",
             metadata_json={"source": "portal"},
         )
         db.add(conversation)
         await db.flush()
 
-        expert, _, _ = await PortalService.get_assigned_expert(db, session.claim_id, session.tenant_id)
+        expert, _, _ = await PortalService.get_assigned_expert(db, claim_id, session.tenant_id)
         thread = InternalChatThread(
             id=str(uuid.uuid4()),
             tenant_id=session.tenant_id,
-            claim_id=session.claim_id,
+            claim_id=claim_id,
             title=f"Portale assicurato - {access.full_name}",
             thread_type="portal",
             created_by_user_id=None,
@@ -706,14 +1793,16 @@ class PortalService:
     async def list_conversation_messages(
         db: AsyncSession,
         session: PortalSessionContext,
+        claim_id: str | None = None,
     ) -> list[dict]:
+        claim, access = await PortalService.resolve_claim_for_session(db, session, claim_id)
         result = await db.execute(
             select(PortalConversationMessage)
             .join(PortalConversation, PortalConversation.id == PortalConversationMessage.conversation_id)
             .where(
                 PortalConversation.tenant_id == session.tenant_id,
-                PortalConversation.claim_id == session.claim_id,
-                PortalConversation.portal_access_id == session.portal_access_id,
+                PortalConversation.claim_id == claim.id,
+                PortalConversation.portal_access_id == access.id,
             )
             .order_by(PortalConversationMessage.created_at.asc())
         )
@@ -732,9 +1821,10 @@ class PortalService:
         db: AsyncSession,
         session: PortalSessionContext,
         payload: PortalConversationMessageCreate,
+        claim_id: str | None = None,
     ) -> PortalConversationMessage:
-        access = await PortalService.get_access(db, session)
-        conversation = await PortalService.get_or_create_conversation(db, session, access)
+        claim, access = await PortalService.resolve_claim_for_session(db, session, claim_id)
+        conversation = await PortalService.get_or_create_conversation(db, session, access, claim.id)
 
         internal_message_id = None
         if conversation.internal_thread_id:
@@ -742,7 +1832,7 @@ class PortalService:
                 id=str(uuid.uuid4()),
                 tenant_id=session.tenant_id,
                 thread_id=conversation.internal_thread_id,
-                claim_id=session.claim_id,
+                claim_id=claim.id,
                 sender_user_id=None,
                 body_text=payload.body_text,
                 message_type="portal",
@@ -762,7 +1852,7 @@ class PortalService:
             id=str(uuid.uuid4()),
             tenant_id=session.tenant_id,
             conversation_id=conversation.id,
-            claim_id=session.claim_id,
+            claim_id=claim.id,
             author_type="portal",
             body_text=payload.body_text,
             internal_chat_message_id=internal_message_id,
@@ -772,7 +1862,7 @@ class PortalService:
         await PortalService._create_claim_event(
             db,
             session.tenant_id,
-            session.claim_id,
+            claim.id,
             "portal_message_created",
             "portal",
             {"conversation_id": conversation.id, "message_id": message.id},
@@ -786,19 +1876,20 @@ class PortalService:
         db: AsyncSession,
         session: PortalSessionContext,
         payload: PortalSignatureRequestCreate,
+        claim_id: str | None = None,
     ) -> tuple[PortalSignatureRequest, str]:
+        claim, access = await PortalService.resolve_claim_for_session(db, session, claim_id)
         document_result = await db.execute(
             select(Document).where(
                 Document.id == payload.document_id,
                 Document.tenant_id == session.tenant_id,
-                Document.claim_id == session.claim_id,
+                Document.claim_id == claim.id,
             )
         )
         document = document_result.scalar_one_or_none()
         if not document:
             raise ValueError("Document not found for claim")
 
-        access = await PortalService.get_access(db, session)
         challenge, raw_token = await PortalService.create_magic_link_challenge(
             db,
             access,
@@ -809,8 +1900,8 @@ class PortalService:
         signature_request = PortalSignatureRequest(
             id=str(uuid.uuid4()),
             tenant_id=session.tenant_id,
-            claim_id=session.claim_id,
-            portal_access_id=session.portal_access_id,
+            claim_id=claim.id,
+            portal_access_id=access.id,
             document_id=document.id,
             challenge_id=challenge.id,
             signature_method=payload.signature_method,
@@ -822,7 +1913,7 @@ class PortalService:
         await PortalService._create_claim_event(
             db,
             session.tenant_id,
-            session.claim_id,
+            claim.id,
             "portal_signature_requested",
             "portal",
             {"signature_request_id": signature_request.id, "document_id": document.id},
@@ -837,7 +1928,9 @@ class PortalService:
         session: PortalSessionContext,
         request_id: str,
         token: str,
+        claim_id: str | None = None,
     ) -> PortalSignatureRequest:
+        claim, access = await PortalService.resolve_claim_for_session(db, session, claim_id)
         hashed = hash_secret(token)
         result = await db.execute(
             select(PortalSignatureRequest, PortalAuthChallenge)
@@ -845,8 +1938,8 @@ class PortalService:
             .where(
                 PortalSignatureRequest.id == request_id,
                 PortalSignatureRequest.tenant_id == session.tenant_id,
-                PortalSignatureRequest.claim_id == session.claim_id,
-                PortalSignatureRequest.portal_access_id == session.portal_access_id,
+                PortalSignatureRequest.claim_id == claim.id,
+                PortalSignatureRequest.portal_access_id == access.id,
                 PortalSignatureRequest.status == "pending_confirmation",
                 PortalAuthChallenge.token_hash == hashed,
                 PortalAuthChallenge.status == "pending",
@@ -863,14 +1956,12 @@ class PortalService:
         challenge.status = "consumed"
         challenge.consumed_at = now
 
-        claim = await PortalService.get_claim_for_tenant(db, session.tenant_id, session.claim_id)
-        if claim:
-            claim.data_ritorno_atto = now
+        claim.data_ritorno_atto = now
 
         await PortalService._create_claim_event(
             db,
             session.tenant_id,
-            session.claim_id,
+            claim.id,
             "portal_signature_confirmed",
             "portal",
             {"signature_request_id": signature_request.id, "document_id": signature_request.document_id},
@@ -881,7 +1972,7 @@ class PortalService:
             await StateService.transition_state(
                 db,
                 session.tenant_id,
-                session.claim_id,
+                claim.id,
                 claim.stato_corrente,
                 "SV032",
                 None,

@@ -43,6 +43,16 @@ final class BackendAPIClient {
         return try decoder.decode(T.self, from: data)
     }
 
+    func post<B: Encodable, T: Decodable>(_ path: String, body: B, queryItems: [URLQueryItem] = []) async throws -> T {
+        var request = try makeRequest(path: path, method: "POST", queryItems: queryItems)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(body)
+
+        let (data, response) = try await session.data(for: request)
+        try validate(response: response, data: data)
+        return try decoder.decode(T.self, from: data)
+    }
+
     func delete(_ path: String, queryItems: [URLQueryItem] = []) async throws {
         let request = try makeRequest(path: path, method: "DELETE", queryItems: queryItems)
         let (data, response) = try await session.data(for: request)

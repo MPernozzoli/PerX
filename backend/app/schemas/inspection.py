@@ -57,6 +57,47 @@ class InspectionRouteDecisionRequest(BaseModel):
     reason: Optional[str] = None
 
 
+class InspectionAvailabilityWindowInput(BaseModel):
+    start_time: time
+    end_time: time
+
+
+class InspectionAvailabilityOverrideUpsert(BaseModel):
+    is_available: bool = True
+    note: Optional[str] = None
+    windows: list[InspectionAvailabilityWindowInput] = Field(default_factory=list)
+
+
+class InspectionAvailabilityCommitmentResponse(BaseModel):
+    id: str
+    tenant_name: Optional[str] = None
+    label: str
+    start_time: time
+    end_time: time
+
+
+class InspectionAvailabilityDayResponse(BaseModel):
+    date: date
+    is_available: bool = False
+    note: Optional[str] = None
+    windows: list[InspectionAvailabilityWindowInput] = Field(default_factory=list)
+    external_commitments: list[InspectionAvailabilityCommitmentResponse] = Field(default_factory=list)
+    has_confirmed_route: bool = False
+    source: str = "default"
+
+
+class InspectionAvailabilityMonthResponse(BaseModel):
+    owner_user_id: str
+    month: date
+    items: list[InspectionAvailabilityDayResponse] = Field(default_factory=list)
+
+
+class InspectionRoutePreferredWindowResponse(BaseModel):
+    start_time: time
+    end_time: time
+    label: Optional[str] = None
+
+
 class InspectionRouteStopResponse(BaseModel):
     claim_id: str
     claim_reference: Optional[str] = None
@@ -65,10 +106,17 @@ class InspectionRouteStopResponse(BaseModel):
     municipality: Optional[str] = None
     province: Optional[str] = None
     region: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     masked_location: Optional[str] = None
     outside_zone: bool = False
     distance_from_previous_km: float = 0
     duration_minutes: int = 0
+    asset_count: int = 0
+    complexity: Optional[str] = None
+    manually_fixed: bool = False
+    note: Optional[str] = None
+    preferred_windows: list[InspectionRoutePreferredWindowResponse] = Field(default_factory=list)
 
 
 class InspectionRouteProposalResponse(BaseModel):
@@ -79,12 +127,14 @@ class InspectionRouteProposalResponse(BaseModel):
     owner_name: Optional[str] = None
     title: str
     plan_date: date
+    generated_at: Optional[datetime] = None
     starts_at: datetime
     ends_at: datetime
     review_deadline: Optional[datetime] = None
     status: str
     total_distance_km: float = 0
     total_duration_minutes: int = 0
+    tenant_names: list[str] = Field(default_factory=list)
     stops: list[InspectionRouteStopResponse] = Field(default_factory=list)
     rejection_reason_code: Optional[str] = None
     rejection_reason: Optional[str] = None
@@ -112,4 +162,3 @@ class InspectionExpirationProcessResponse(BaseModel):
     expired_routes_count: int = 0
     replanned_routes_count: int = 0
     manual_fallback_claims: int = 0
-

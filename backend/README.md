@@ -81,7 +81,11 @@ uvicorn app.main:app --reload
 - `POST /api/v1/portal/claims/{id}/access-links` - Genera link di accesso portale per un assicurato
 - `POST /api/v1/portal/auth/start` - Avvia challenge pubblico per accesso assicurato
 - `POST /api/v1/portal/auth/exchange` - Scambia magic link con sessione portale
+- `GET /api/v1/portal/claims` - Elenca tutti i sinistri accessibili allo stesso assicurato
 - `GET /api/v1/portal/claim` - Dashboard assicurato sul proprio sinistro
+- `GET /api/v1/portal/claim/inspection-scheduling` - Restituisce stato, posizione e disponibilita sopralluogo
+- `PUT /api/v1/portal/claim/inspection-scheduling/location` - Conferma indirizzo e coordinate del sopralluogo
+- `PUT /api/v1/portal/claim/inspection-scheduling/preferences` - Salva le finestre preferite dell'assicurato
 
 ## Portale assicurati
 
@@ -91,7 +95,10 @@ Il backend include ora un perimetro dedicato al portale web assicurati:
 - token di sessione distinti rispetto agli utenti interni;
 - endpoint dedicati sotto `/api/v1/portal`;
 - instradamento dei messaggi assicurato -> team interno tramite il sistema chat esistente;
+- integrazione del workflow CAT per fissazione sopralluoghi lato assicurato;
 - architettura pronta per integrare invio e-mail automatico, SMS OTP e upload firmati storage.
+
+In ambiente `dev` e con `PORTAL_DEV_CLAIM_REFERENCE_ONLY_AUTH=True`, il portale puo creare al volo un accesso partendo dal solo riferimento sinistro e mostrare direttamente il magic link di anteprima senza ulteriori verifiche. Questa scorciatoia e pensata solo per sviluppo locale.
 
 Per il dettaglio funzionale e dei flussi, vedere anche `Documentation/insured-portal-architecture.md`.
 

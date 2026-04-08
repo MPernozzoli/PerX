@@ -17,6 +17,11 @@ struct iPadCATProgrammazioneView: View {
         store.availability(for: selectedDate)
     }
 
+    private var selectedMonthIdentifier: String {
+        let components = Calendar.current.dateComponents([.year, .month], from: selectedDate)
+        return "\(components.year ?? 0)-\(components.month ?? 0)"
+    }
+
     private var selectedDay: CATAvailabilityDay? {
         store.availabilityDay(for: selectedDate)
     }
@@ -45,12 +50,18 @@ struct iPadCATProgrammazioneView: View {
         .sheet(isPresented: $showingEditor) {
             if let selectedDay {
                 CATAvailabilityEditorSheet(day: selectedDay) { updatedDay in
-                    store.updateAvailability(updatedDay, for: selectedDate)
+                    Task {
+                        await store.updateAvailability(updatedDay, for: selectedDate)
+                    }
                 }
             }
         }
         .task {
             store.configure(for: session.currentUserEmail)
+            await store.ensureAvailability(for: selectedDate)
+        }
+        .task(id: selectedMonthIdentifier) {
+            await store.ensureAvailability(for: selectedDate)
         }
     }
 
@@ -130,6 +141,12 @@ struct iPadCATProgrammazioneView: View {
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            if let syncError = store.syncError {
+                Text(syncError)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
         }
         .padding()
         .background(Color(.secondarySystemGroupedBackground))

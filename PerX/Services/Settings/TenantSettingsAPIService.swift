@@ -83,6 +83,69 @@ struct TenantSettingsPayloadDTO: Encodable {
     let provider_settings: TenantInspectionProviderSettingsDTO?
 }
 
+struct TenantInspectionRouteStopDTO: Decodable, Identifiable, Hashable {
+    var id: String { "\(claim_id)-\(starts_at)" }
+    let claim_id: String
+    let claim_reference: String?
+    let starts_at: String
+    let ends_at: String
+    let municipality: String?
+    let province: String?
+    let masked_location: String?
+    let outside_zone: Bool
+    let duration_minutes: Int
+}
+
+struct TenantInspectionRouteDTO: Decodable, Identifiable, Hashable {
+    let event_id: String
+    let owner_user_id: String
+    let owner_email: String?
+    let owner_name: String?
+    let title: String
+    let plan_date: String
+    let generated_at: String?
+    let review_deadline: String?
+    let status: String
+    let total_distance_km: Double
+    let total_duration_minutes: Int
+    let tenant_names: [String]
+    let stops: [TenantInspectionRouteStopDTO]
+    let rejection_reason_code: String?
+    let rejection_reason: String?
+
+    var id: String { event_id }
+}
+
+struct TenantInspectionRouteListDTO: Decodable {
+    let items: [TenantInspectionRouteDTO]
+    let total: Int
+}
+
+struct TenantInspectionRouteRunPayloadDTO: Encodable {
+    let tenant_id: String?
+    let plan_date: String?
+    let force: Bool
+}
+
+struct TenantInspectionRouteRunDTO: Decodable {
+    let tenant_id: String
+    let plan_date: String
+    let processed_at: String
+    let generated_routes_count: Int
+    let claims_planned: Int
+    let claims_fallback_manual: Int
+    let skipped_claims: Int
+    let route_event_ids: [String]
+    let fallback_claim_ids: [String]
+}
+
+struct TenantInspectionExpirationDTO: Decodable {
+    let processed_at: String
+    let expired_routes_count: Int
+    let replanned_routes_count: Int
+    let manual_fallback_claims: Int
+}
+
 @MainActor
 final class TenantSettingsAPIService: ObservableObject {
     static let shared = TenantSettingsAPIService()
@@ -90,6 +153,7 @@ final class TenantSettingsAPIService: ObservableObject {
     @Published private(set) var availableTenants: [TenantSummaryDTO] = []
     @Published private(set) var lastSyncError: String?
     @Published private(set) var backendReachable = false
+    @Published private(set) var latestInspectionRoutes: [TenantInspectionRouteDTO] = []
 
     private let apiClient = BackendAPIClient.shared
 
@@ -163,6 +227,66 @@ final class TenantSettingsAPIService: ObservableObject {
             backendReachable = false
             lastSyncError = error.localizedDescription
             availableTenants = []
+        }
+    }
+
+    func loadInspectionRoutes(targetTenantId: String? = nil) async -> [TenantInspectionRouteDTO] {
+        do {
+            let dto: TenantInspectionRouteListDTO = try await apiClient.get(
+                "inspections/routes",
+                queryItems: queryItems(for: targetTenantId)
+            )
+            backendReachable = true
+            lastSyncError = nil
+            latestInspectionRoutes = dto.items
+            return dto.items
+        } catch {
+            backendReachable = false
+            lastSyncError = error.localizedDescription
+            return latestInspectionRoutes
+        }
+    }
+
+    func runInspectionPlanner(
+        targetTenantId: String? = nil,
+        planDate: String? = nil,
+        force: Bool = false
+    ) async -> TenantInspectionRouteRunDTO? {
+        do {
+            let dto: TenantInspectionRouteRunDTO = try await apiClient.post(
+                "inspections/routes/run",
+                body: TenantInspectionRouteRunPayloadDTO(
+                    tenant_id: targetTenantId,
+                    plan_date: planDate,
+                    force: force
+                )
+            )
+            backendReachable = true
+            lastSyncError = nil
+            _ = await loadInspectionRoutes(targetTenantId: targetTenantId)
+            return dto
+        } catch {
+            backendReachable = false
+            lastSyncError = error.localizedDescription
+            return nil
+        }
+    }
+
+    func processInspectionRouteExpirations(targetTenantId: String? = nil) async -> TenantInspectionExpirationDTO? {
+        do {
+            let dto: TenantInspectionExpirationDTO = try await apiClient.post(
+                "inspections/routes/process-expirations",
+                body: EmptyTenantPayload(),
+                queryItems: queryItems(for: targetTenantId)
+            )
+            backendReachable = true
+            lastSyncError = nil
+            _ = await loadInspectionRoutes(targetTenantId: targetTenantId)
+            return dto
+        } catch {
+            backendReachable = false
+            lastSyncError = error.localizedDescription
+            return nil
         }
     }
 
@@ -290,3 +414,5 @@ final class TenantSettingsAPIService: ObservableObject {
         )
     }
 }
+
+private struct EmptyTenantPayload: Encodable {}

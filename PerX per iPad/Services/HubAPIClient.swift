@@ -531,6 +531,56 @@ class HubAPIClient: ObservableObject {
         try await cloudGet(endpoint: "/api/v1/profiles/me")
     }
 
+    func getTenantSettingsFromCloud() async throws -> CloudTenantSettingsDTO {
+        try await cloudGet(endpoint: "/api/v1/inspections/context")
+    }
+
+    func getInspectionRoutesFromCloud(
+        statusFilter: String? = nil,
+        planDate: String? = nil
+    ) async throws -> CloudInspectionRouteListResponseDTO {
+        var endpoint = "/api/v1/inspections/routes"
+        var queryItems: [URLQueryItem] = []
+        if let statusFilter, !statusFilter.isEmpty {
+            queryItems.append(URLQueryItem(name: "status_filter", value: statusFilter))
+        }
+        if let planDate, !planDate.isEmpty {
+            queryItems.append(URLQueryItem(name: "plan_date", value: planDate))
+        }
+        if !queryItems.isEmpty {
+            var components = URLComponents()
+            components.queryItems = queryItems
+            endpoint += components.percentEncodedQuery.map { "?\($0)" } ?? ""
+        }
+        return try await cloudGet(endpoint: endpoint)
+    }
+
+    func acceptInspectionRouteOnCloud(eventID: String) async throws -> CloudInspectionRouteDTO {
+        try await cloudPost(endpoint: "/api/v1/inspections/routes/\(eventID)/accept", body: EmptyCloudRequest())
+    }
+
+    func rejectInspectionRouteOnCloud(
+        eventID: String,
+        reasonCode: String,
+        reason: String?
+    ) async throws -> CloudInspectionRouteDTO {
+        try await cloudPost(
+            endpoint: "/api/v1/inspections/routes/\(eventID)/reject",
+            body: CloudInspectionRouteDecisionRequestDTO(reason_code: reasonCode, reason: reason)
+        )
+    }
+
+    func getInspectionAvailabilityFromCloud(month: String) async throws -> CloudInspectionAvailabilityMonthDTO {
+        try await cloudGet(endpoint: "/api/v1/inspections/availability?month=\(month)")
+    }
+
+    func upsertInspectionAvailabilityOnCloud(
+        date: String,
+        payload: CloudInspectionAvailabilityOverrideRequestDTO
+    ) async throws -> CloudInspectionAvailabilityDayDTO {
+        try await cloudPut(endpoint: "/api/v1/inspections/availability/\(date)", body: payload)
+    }
+
     func getProfilesFromCloud() async throws -> [CloudProfileDTO] {
         try await cloudGet(endpoint: "/api/v1/profiles")
     }
@@ -773,6 +823,8 @@ struct CloudProfileUpdateRequestDTO: Encodable {
     let email_signature_html: String?
     let email_signature_text: String?
 }
+
+private struct EmptyCloudRequest: Encodable {}
 
 struct CloudProfileAssetDTO: Decodable {
     let asset_type: String

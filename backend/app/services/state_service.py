@@ -181,6 +181,22 @@ class StateService:
         )
         db.add(event)
 
+        if to_state == "SV052":
+            db.add(
+                ClaimEvent(
+                    id=str(uuid.uuid4()),
+                    tenant_id=tenant_id,
+                    claim_id=claim_id,
+                    event_type="inspection_scheduling_requested",
+                    actor_user_id=user_id,
+                    data_json={
+                        "address_line": claim.indirizzo_assicurato,
+                        "workflow_stage": INSPECTION_WORKFLOW_STAGES.get(to_state),
+                    },
+                    source=event_source,
+                )
+            )
+
         if commit:
             await db.commit()
         return True

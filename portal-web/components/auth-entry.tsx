@@ -45,19 +45,29 @@ export function AuthEntry() {
   }
 
   return (
-    <div className="auth-shell">
-      <section className="hero-panel">
-        <p className="hero-panel__eyebrow">PerX Assicurati</p>
-        <h1>Portale sinistri dedicato all'assicurato</h1>
-        <p className="hero-panel__lead">
-          Accesso diretto al sinistro, documentazione, chat con il perito, coordinate bancarie e
-          firma degli atti in un unico punto.
-        </p>
-        <div className="hero-panel__pills">
-          <span>Magic link</span>
-          <span>Dashboard stato pratica</span>
-          <span>Documentale guidata</span>
-          <span>Firma OTP</span>
+    <div className="auth-shell auth-shell--portal">
+      <section className="overview-panel">
+        <div className="overview-panel__hero">
+          <span className="overview-pill">PerX Assicurati</span>
+          <h1>Gestisci il tuo sinistro in un unico punto</h1>
+          <p>
+            Stato pratica, documentazione, sopralluogo, coordinate bancarie, chat e firma finale:
+            il portale raccoglie tutto il percorso dell&apos;assicurato in una sola area.
+          </p>
+        </div>
+        <div className="action-grid">
+          <div className="action-card action-card--warm">
+            <strong>Accesso diretto</strong>
+            <span>In sviluppo puoi entrare dal solo riferimento sinistro.</span>
+          </div>
+          <div className="action-card action-card--cool">
+            <strong>Flussi guidati</strong>
+            <span>Documentale e sopralluogo seguono una procedura passo per passo.</span>
+          </div>
+          <div className="action-card">
+            <strong>Chiusura pratica</strong>
+            <span>IBAN, importi e firma atto restano sempre consultabili.</span>
+          </div>
         </div>
         {hasActiveSession ? (
           <Link href="/claim" className="primary-link">
@@ -71,8 +81,8 @@ export function AuthEntry() {
           <p className="entry-card__eyebrow">Accesso</p>
           <h2>Richiedi il link di accesso</h2>
           <p>
-            Per ora il canale attivo e l&apos;e-mail. Il backend genera gia il challenge e, in
-            sviluppo, mostra l&apos;anteprima del magic link.
+            In sviluppo puoi accedere inserendo solo il numero o riferimento sinistro. Il backend
+            genera il challenge e mostra l&apos;anteprima del magic link.
           </p>
         </div>
 
@@ -98,7 +108,7 @@ export function AuthEntry() {
             <input
               value={taxCode}
               onChange={(event) => setTaxCode(event.target.value)}
-              placeholder="RSSMRA80A01H501Z"
+              placeholder="Opzionale"
             />
           </label>
           <label>
@@ -106,7 +116,7 @@ export function AuthEntry() {
             <input
               value={fullName}
               onChange={(event) => setFullName(event.target.value)}
-              placeholder="Mario Rossi"
+              placeholder="Opzionale"
             />
           </label>
           <label>
@@ -114,7 +124,7 @@ export function AuthEntry() {
             <input
               value={phoneNumber}
               onChange={(event) => setPhoneNumber(event.target.value)}
-              placeholder="+39 333 1234567"
+              placeholder="Opzionale"
             />
           </label>
           <button type="submit" disabled={isPending}>

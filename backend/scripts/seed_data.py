@@ -5,7 +5,7 @@ import asyncio
 import json
 import random
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from urllib import error as urlerror
 from urllib import request as urlrequest
@@ -223,6 +223,124 @@ async def seed_tenant_and_users(pool: asyncpg.Pool):
             VALUES ($1, $2)
             ON CONFLICT DO NOTHING
         """, cat_user_id, cat_role_id)
+
+        cat_settings_payload = {
+            "enabled": True,
+            "planner": {
+                "route_generation_hour": 9,
+                "route_review_window_minutes": 60,
+                "availability_slot_minutes": 120,
+                "availability_tolerance_percent": 50,
+                "max_outside_zone_kilometers": 50,
+            },
+            "technicians": [
+                {
+                    "id": "cat-demo-modena",
+                    "display_name": "CAT Demo",
+                    "email": "cat@demo.com",
+                    "latitude": 44.6471,
+                    "longitude": 10.9252,
+                    "comune": "Modena",
+                    "provincia": "MO",
+                    "regione": "Emilia-Romagna",
+                    "assigned_municipalities": ["Modena", "Carpi", "Sassuolo", "Rubiera"],
+                    "note": "Tecnico demo per test workflow CAT",
+                }
+            ],
+            "municipalities": [
+                {
+                    "id": "modena",
+                    "comune": "Modena",
+                    "provincia": "MO",
+                    "regione": "Emilia-Romagna",
+                    "latitude": 44.6471,
+                    "longitude": 10.9252,
+                    "assigned_cat_emails": ["cat@demo.com"],
+                    "priority": 1,
+                },
+                {
+                    "id": "carpi",
+                    "comune": "Carpi",
+                    "provincia": "MO",
+                    "regione": "Emilia-Romagna",
+                    "latitude": 44.7824,
+                    "longitude": 10.8777,
+                    "assigned_cat_emails": ["cat@demo.com"],
+                    "priority": 1,
+                },
+                {
+                    "id": "sassuolo",
+                    "comune": "Sassuolo",
+                    "provincia": "MO",
+                    "regione": "Emilia-Romagna",
+                    "latitude": 44.5432,
+                    "longitude": 10.7841,
+                    "assigned_cat_emails": ["cat@demo.com"],
+                    "priority": 2,
+                },
+                {
+                    "id": "rubiera",
+                    "comune": "Rubiera",
+                    "provincia": "RE",
+                    "regione": "Emilia-Romagna",
+                    "latitude": 44.6511,
+                    "longitude": 10.7812,
+                    "assigned_cat_emails": ["cat@demo.com"],
+                    "priority": 2,
+                },
+            ],
+        }
+
+        await conn.execute("""
+            UPDATE tenants
+            SET settings_json = (
+                COALESCE(settings_json::jsonb, '{}'::jsonb) || jsonb_build_object('cat_settings', $2::jsonb)
+            )::json
+            WHERE id = $1
+        """, tenant_id, json.dumps(cat_settings_payload))
+
+        await conn.execute("""
+            DELETE FROM user_work_schedules
+            WHERE tenant_id = $1 AND user_id = $2 AND metadata_json->>'seeded_by' = 'demo_cat_seed'
+        """, tenant_id, cat_user_id)
+
+        for weekday, start_time, end_time in [
+            (0, time(9, 0), time(11, 0)),
+            (0, time(11, 0), time(13, 0)),
+            (0, time(14, 0), time(16, 0)),
+            (1, time(9, 0), time(11, 0)),
+            (1, time(11, 0), time(13, 0)),
+            (1, time(14, 0), time(16, 0)),
+            (2, time(9, 0), time(11, 0)),
+            (2, time(11, 0), time(13, 0)),
+            (2, time(14, 0), time(16, 0)),
+            (3, time(9, 0), time(11, 0)),
+            (3, time(11, 0), time(13, 0)),
+            (3, time(14, 0), time(16, 0)),
+            (4, time(9, 0), time(11, 0)),
+            (4, time(11, 0), time(13, 0)),
+            (4, time(14, 0), time(16, 0)),
+        ]:
+            await conn.execute("""
+                INSERT INTO user_work_schedules (
+                    id, tenant_id, user_id, weekday, start_time, end_time,
+                    location, slot_type, effective_from, effective_to, metadata_json
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
+                ON CONFLICT DO NOTHING
+            """,
+                str(uuid.uuid4()),
+                tenant_id,
+                cat_user_id,
+                weekday,
+                start_time,
+                end_time,
+                "onsite",
+                "work",
+                None,
+                None,
+                json.dumps({"seeded_by": "demo_cat_seed", "place": "onsite"})
+            )
         
         print(f"✅ Creato/aggiornato admin piattaforma: {settings.APP_ADMIN_EMAIL} / {settings.APP_ADMIN_DEFAULT_PASSWORD}")
         print(f"✅ Creato tenant: {tenant_id}")

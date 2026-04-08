@@ -17,6 +17,8 @@ npm install
 npm run dev
 ```
 
+Di default l'app parte su `http://localhost:3001`.
+
 ## Variabili ambiente
 
 - `NEXT_PUBLIC_PORTAL_API_BASE_URL`: base URL del backend portal
