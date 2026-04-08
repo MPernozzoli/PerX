@@ -28,7 +28,11 @@ SCAN_INTERVAL = int(os.getenv("SCAN_INTERVAL", "60"))  # secondi
 PORT = int(os.getenv("PORT", "8084"))
 
 # Directory di lavoro (cartella clone/repo). AutoUpdater la scannerizza; per applicare aggiornamenti riesegui install-and-launch.sh dalla repo.
-REPO_BASE = Path(os.getenv("REPO_BASE", "/Users/mpernozzoli/PerX HUB"))
+# Default Mini: mirror in /opt/perx-hub/repo. install-and-launch imposta REPO_BASE reale via PlistBuddy.
+REPO_BASE = Path(os.getenv("REPO_BASE", "/opt/perx-hub/repo"))
+
+# Persistenza hash: evita che ogni riavvio AutoUpdater azzeri la baseline e salti le notifiche per codice già cambiato.
+HASH_STATE_PATH = Path(os.getenv("AUTOUPDATER_HASH_STATE", "/opt/perx-hub/data/autoupdater-hashes.json"))
 
 # Componenti da monitorare
 COMPONENTS = {
@@ -60,6 +64,12 @@ COMPONENTS = {
         "path": REPO_BASE / "perx_wa_bridge",
         "type": "node",
         "extensions": [".js", ".json"],
+        "remote": False,
+    },
+    "scripts": {
+        "path": REPO_BASE / "scripts",
+        "type": "shell",
+        "extensions": [".sh"],
         "remote": False,
     },
 }
@@ -154,6 +164,36 @@ def detect_changes(component_id: str, new_hashes: Dict[str, str]) -> List[str]:
     return changes
 
 
+def load_hash_state() -> None:
+    """Ripristina gli ultimi hash noti da disco (sopravvive ai riavvii del worker)."""
+    if not HASH_STATE_PATH.exists():
+        return
+    try:
+        raw = json.loads(HASH_STATE_PATH.read_text(encoding="utf-8"))
+        blob = raw.get("file_hashes")
+        if not isinstance(blob, dict):
+            return
+        restored: Dict[str, Dict[str, str]] = {}
+        for comp_id, files in blob.items():
+            if isinstance(files, dict):
+                restored[str(comp_id)] = {str(k): str(v) for k, v in files.items()}
+        if restored:
+            state.file_hashes = restored
+            n = sum(len(v) for v in restored.values())
+            print(f"[AutoUpdater] Stato hash ripristinato da {HASH_STATE_PATH} ({n} file tracciati)")
+    except Exception as e:
+        print(f"[AutoUpdater] Impossibile leggere stato hash: {e}")
+
+
+def save_hash_state() -> None:
+    try:
+        HASH_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        payload = {"file_hashes": state.file_hashes}
+        HASH_STATE_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    except Exception as e:
+        print(f"[AutoUpdater] Impossibile salvare stato hash: {e}")
+
+
 # MARK: - Hub Notification
 
 async def notify_hub_update(component_id: str, changed_files: List[str]):
@@ -180,42 +220,42 @@ async def notify_hub_update(component_id: str, changed_files: List[str]):
 # MARK: - Scan Loop
 
 async def scan_loop():
-    """Loop principale di scansione."""
-    print(f"[AutoUpdater] Starting scan loop (interval: {SCAN_INTERVAL}s)")
+    """Loop principale: ripristina hash da disco, primo giro subito, poi ogni SCAN_INTERVAL."""
+    print(
+        f"[AutoUpdater] Starting scan loop (interval: {SCAN_INTERVAL}s, repo: {REPO_BASE}, state: {HASH_STATE_PATH})"
+    )
     state.is_running = True
-    
-    # Prima scansione: stabilisci baseline
-    for component_id, config in COMPONENTS.items():
-        state.file_hashes[component_id] = scan_component(component_id, config)
-        print(f"[AutoUpdater] Baseline for {component_id}: {len(state.file_hashes[component_id])} files")
-    
-    state.last_scan = datetime.now()
-    
+    load_hash_state()
+
+    first_cycle = True
     while state.is_running:
-        await asyncio.sleep(SCAN_INTERVAL)
-        
+        if not first_cycle:
+            await asyncio.sleep(SCAN_INTERVAL)
+        first_cycle = False
+
         for component_id, config in COMPONENTS.items():
             new_hashes = scan_component(component_id, config)
+            prior = state.file_hashes.get(component_id) or {}
+
+            if not prior:
+                state.file_hashes[component_id] = new_hashes
+                print(f"[AutoUpdater] Baseline per {component_id}: {len(new_hashes)} file")
+                continue
+
             changes = detect_changes(component_id, new_hashes)
-            
             if changes:
                 print(f"[AutoUpdater] 🔄 Changes detected in {component_id}: {len(changes)} files")
-                
-                # Aggiungi ai pending updates
                 if component_id not in state.pending_updates:
                     state.pending_updates[component_id] = []
-                
                 for changed_file in changes:
                     if changed_file not in state.pending_updates[component_id]:
                         state.pending_updates[component_id].append(changed_file)
-                
-                # Notifica l'Hub
                 await notify_hub_update(component_id, changes)
-            
-            # Aggiorna gli hash
+
             state.file_hashes[component_id] = new_hashes
-        
+
         state.last_scan = datetime.now()
+        save_hash_state()
 
 
 # MARK: - FastAPI App
@@ -305,6 +345,7 @@ async def trigger_scan():
         state.file_hashes[component_id] = new_hashes
     
     state.last_scan = datetime.now()
+    save_hash_state()
     
     return {
         "status": "ok",

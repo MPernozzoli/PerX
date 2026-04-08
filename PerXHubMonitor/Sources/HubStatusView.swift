@@ -595,6 +595,12 @@ struct SettingsView: View {
     @State private var waBridgeURL: String = ""
     @State private var autoUpdaterURL: String = ""
     @State private var vaultPath: String = ""
+    @State private var hubInstallBasePath: String = ""
+    @State private var supabaseURL: String = ""
+    @State private var supabaseServiceRoleKey: String = ""
+    @State private var storageSharedSecret: String = ""
+    @State private var secretsError: String?
+    @State private var isSavingSecrets = false
     
     var body: some View {
         VStack(spacing: 16) {
@@ -611,6 +617,76 @@ struct SettingsView: View {
                     Divider()
                     
                     PathField(label: "Vault Sinistri", placeholder: "/opt/perx-hub/vault/sinistri", text: $vaultPath)
+                    PathField(label: "Base install Hub (Mini)", placeholder: "/opt/perx-hub", text: $hubInstallBasePath)
+                    
+                    Divider()
+                    
+                    Text("Segreti Hub (file su disco)")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    Text("Salvati in data/monitor-secrets.json. Priorità sul plist: dopo Salva riavvia l’Hub.")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    
+                    URLField(label: "SUPABASE_URL", placeholder: "https://xxx.supabase.co", text: $supabaseURL)
+                    SecureSettingField(label: "SUPABASE_SERVICE_ROLE_KEY (o secret API)", text: $supabaseServiceRoleKey)
+                    SecureSettingField(label: "PERX_STORAGE_SHARED_SECRET", text: $storageSharedSecret)
+                    
+                    if let err = secretsError {
+                        Text(err)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                    }
+                    
+                    HStack(spacing: 8) {
+                        Button {
+                            secretsError = nil
+                            isSavingSecrets = true
+                            monitor.hubInstallBasePath = hubInstallBasePath
+                            do {
+                                try monitor.saveMonitorSecrets(
+                                    supabaseURL: supabaseURL,
+                                    serviceRoleKey: supabaseServiceRoleKey,
+                                    storageToken: storageSharedSecret
+                                )
+                            } catch {
+                                secretsError = error.localizedDescription
+                            }
+                            isSavingSecrets = false
+                        } label: {
+                            if isSavingSecrets {
+                                ProgressView().scaleEffect(0.7)
+                            } else {
+                                Text("Salva segreti")
+                            }
+                        }
+                        .disabled(isSavingSecrets)
+                        
+                        Button("Salva segreti e riavvia Hub") {
+                            secretsError = nil
+                            isSavingSecrets = true
+                            Task {
+                                monitor.hubInstallBasePath = hubInstallBasePath
+                                do {
+                                    try monitor.saveMonitorSecrets(
+                                        supabaseURL: supabaseURL,
+                                        serviceRoleKey: supabaseServiceRoleKey,
+                                        storageToken: storageSharedSecret
+                                    )
+                                    let ok = await monitor.restartPerxHubDaemon()
+                                    if !ok {
+                                        secretsError = "Riavvio Hub annullato o fallito (verifica password amministratore)."
+                                    }
+                                } catch {
+                                    secretsError = error.localizedDescription
+                                }
+                                isSavingSecrets = false
+                                await monitor.refresh()
+                            }
+                        }
+                        .disabled(isSavingSecrets)
+                    }
                 }
             }
             
@@ -627,6 +703,7 @@ struct SettingsView: View {
                     monitor.waBridgeURL = waBridgeURL
                     monitor.autoUpdaterURL = autoUpdaterURL
                     monitor.vaultPath = vaultPath
+                    monitor.hubInstallBasePath = hubInstallBasePath
                     Task {
                         await monitor.refresh()
                     }
@@ -636,13 +713,34 @@ struct SettingsView: View {
             }
         }
         .padding()
-        .frame(width: 350, height: 340)
+        .frame(width: 400, height: 560)
         .onAppear {
             hubURL = monitor.hubURL
             mailWorkerURL = monitor.mailWorkerURL
             waBridgeURL = monitor.waBridgeURL
             autoUpdaterURL = monitor.autoUpdaterURL
             vaultPath = monitor.vaultPath
+            hubInstallBasePath = monitor.hubInstallBasePath
+            let s = monitor.loadMonitorSecretsForEditor()
+            supabaseURL = s.supabaseURL
+            supabaseServiceRoleKey = s.serviceRoleKey
+            storageSharedSecret = s.storageToken
+        }
+    }
+}
+
+private struct SecureSettingField: View {
+    let label: String
+    @Binding var text: String
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.caption)
+                .foregroundColor(.secondary)
+            SecureField("opzionale", text: $text)
+                .textFieldStyle(.roundedBorder)
+                .font(.caption)
         }
     }
 }

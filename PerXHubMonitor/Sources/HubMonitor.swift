@@ -57,7 +57,64 @@ class HubMonitor: ObservableObject {
         set { UserDefaults.standard.set(newValue, forKey: "vaultPath") }
     }
     
+    /// Directory installazione Hub sul Mini (per `data/monitor-secrets.json`)
+    var hubInstallBasePath: String {
+        get { UserDefaults.standard.string(forKey: "hubInstallBasePath") ?? "/opt/perx-hub" }
+        set { UserDefaults.standard.set(newValue, forKey: "hubInstallBasePath") }
+    }
+    
     var pollingInterval: TimeInterval = 30 // secondi
+    
+    // MARK: - Segreti Hub (file scritto per il daemon)
+    
+    var monitorSecretsFilePath: String {
+        "\(hubInstallBasePath)/data/monitor-secrets.json"
+    }
+    
+    /// Legge `monitor-secrets.json` se presente (per riempire le impostazioni).
+    func loadMonitorSecretsForEditor() -> (supabaseURL: String, serviceRoleKey: String, storageToken: String) {
+        let path = monitorSecretsFilePath
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+              let decoded = try? JSONDecoder().decode(HubMonitorRuntimeSecrets.self, from: data) else {
+            return ("", "", "")
+        }
+        return (
+            decoded.supabaseURL ?? "",
+            decoded.supabaseServiceRoleKey ?? "",
+            decoded.storageSharedSecret ?? ""
+        )
+    }
+    
+    /// Salva i segreti sul disco; il daemon Hub va riavviato per applicarli.
+    func saveMonitorSecrets(supabaseURL: String, serviceRoleKey: String, storageToken: String) throws {
+        let path = monitorSecretsFilePath
+        let dir = URL(fileURLWithPath: path).deletingLastPathComponent().path
+        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        
+        let url = supabaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let role = serviceRoleKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let tok = storageToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        let payload = HubMonitorRuntimeSecrets(
+            supabaseURL: url.isEmpty ? nil : url,
+            supabaseServiceRoleKey: role.isEmpty ? nil : role,
+            storageSharedSecret: tok.isEmpty ? nil : tok
+        )
+        
+        if payload.supabaseURL == nil, payload.supabaseServiceRoleKey == nil, payload.storageSharedSecret == nil {
+            if FileManager.default.fileExists(atPath: path) {
+                try FileManager.default.removeItem(atPath: path)
+            }
+            return
+        }
+        
+        let data = try JSONEncoder().encode(payload)
+        try data.write(to: URL(fileURLWithPath: path), options: .atomic)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: 0o600)],
+            ofItemAtPath: path
+        )
+    }
     
     // MARK: - Internal
     
@@ -339,6 +396,12 @@ class HubMonitor: ObservableObject {
         }
     }
     
+    /// Riavvio daemon Hub (`com.perx.hub`); compare dialog password amministratore.
+    @MainActor
+    func restartPerxHubDaemon() async -> Bool {
+        await launchctl.restart(identifier: "com.perx.hub")
+    }
+    
     private func restartViaAPI(url: String) async -> Bool {
         guard let restartURL = URL(string: url) else { return false }
         
@@ -571,14 +634,15 @@ struct ServiceHealthResponse: Codable {
 // MARK: - Launchctl Manager
 
 class LaunchctlManager {
+    /// I LaunchDaemon PerX sono nel dominio `system/`; serve `sudo` → AppleScript chiede password admin.
     func restart(identifier: String) async -> Bool {
-        let uid = getuid()
-        let command = "launchctl kickstart -k gui/\(uid)/\(identifier)"
+        let escaped = identifier.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        let script = "do shell script \"launchctl kickstart -k system/\(escaped)\" with administrator privileges"
         
         return await withCheckedContinuation { continuation in
             let task = Process()
-            task.launchPath = "/bin/sh"
-            task.arguments = ["-c", command]
+            task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+            task.arguments = ["-e", script]
             
             task.terminationHandler = { process in
                 continuation.resume(returning: process.terminationStatus == 0)
@@ -587,9 +651,17 @@ class LaunchctlManager {
             do {
                 try task.run()
             } catch {
-                print("[Launchctl] Failed to run: \(error)")
+                print("[Launchctl] Failed to run osascript: \(error)")
                 continuation.resume(returning: false)
             }
         }
     }
+}
+
+// MARK: - Stesso JSON di PerXHub `monitor-secrets.json`
+
+private struct HubMonitorRuntimeSecrets: Codable {
+    var supabaseURL: String?
+    var supabaseServiceRoleKey: String?
+    var storageSharedSecret: String?
 }

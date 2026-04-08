@@ -43,7 +43,7 @@
         <key>PERX_HUB_PORT</key>
         <string>8080</string>
         <key>PERX_STORAGE_SHARED_SECRET</key>
-        <string>CHANGE-ME-STORAGE-SECRET</string>
+        <string>10e8b2435923623026cb1ad24ff1b13e</string>
         <!-- Worker URLs -->
         <key>PERX_EMAIL_WORKER_URL</key>
         <string>http://localhost:5001</string>
@@ -51,6 +51,10 @@
         <string>http://localhost:5002</string>
         <key>PERX_AUTO_UPDATER_URL</key>
         <string>http://localhost:8084</string>
+        <key>SUPABASE_URL</key>
+        <string>https://wqcqiaojdflbmqyamndt.supabase.co</string>
+        <key>SUPABASE_SERVICE_ROLE_KEY</key>
+        <string>REPLACE-WITH-SERVICE-ROLE-KEY</string>
     </dict>
     
     <!-- Esegui come root per accesso completo (daemon) -->

@@ -15,7 +15,8 @@
 /opt/perx-hub/
 ├── PerXHub                    # Eseguibile principale
 ├── data/
-│   └── vault.sqlite           # Database SQLite
+│   ├── vault.sqlite           # Database SQLite
+│   └── monitor-secrets.json   # Opzionale: Supabase + storage token (scritto da Hub Monitor; ha priorità sul plist)
 ├── logs/
 │   ├── hub.log
 │   ├── hub-error.log
@@ -45,9 +46,11 @@ PERX_EMAIL_WORKER_URL=http://localhost:5001
 PERX_WA_BRIDGE_URL=http://localhost:5002
 PERX_AUTO_UPDATER_URL=http://localhost:8084
 PERX_REPO_PATH=/opt/perx-hub/repo
-SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_URL=https://wqcqiaojdflbmqyamndt.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=replace-with-service-role-key
 ```
+
+Il daemon (`com.perx.hub`) **non legge** file `.env`: le variabili devono essere in `Resources/com.perx.hub.plist` (o export manuali). Usa sempre la chiave **service_role**, non la **anon**.
 
 ## Supabase
 

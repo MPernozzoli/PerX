@@ -59,21 +59,12 @@ struct HubConfiguration {
         ProcessInfo.processInfo.environment["PERX_AUTO_UPDATER_URL"] ?? "http://localhost:8084"
     }
 
-    // Supabase server-side configuration.
-    static var supabaseURL: String? {
-        ProcessInfo.processInfo.environment["SUPABASE_URL"]
-    }
-
-    static var supabaseServiceRoleKey: String? {
-        ProcessInfo.processInfo.environment["SUPABASE_SERVICE_ROLE_KEY"]
-    }
-
-    static var storageSharedSecret: String {
-        ProcessInfo.processInfo.environment["PERX_STORAGE_SHARED_SECRET"] ?? ""
-    }
+    // Supabase + storage shared secret: vedi RuntimeSecrets.swift (env plist + override monitor-secrets.json)
 }
 
 // MARK: - Application Startup
+
+HubConfiguration.loadRuntimeSecretsFromDisk()
 
 let startTime = Date()
 
