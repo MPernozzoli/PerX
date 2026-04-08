@@ -16,7 +16,7 @@ final class HubAPIAdapterClient {
     private let keychainService = "com.perx.cloudapi"
     
     private var baseURL: String {
-        HubModeService.shared.hubURL
+        HubConfigService.shared.cloudAPIBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private var cloudBaseURL: String {
@@ -166,6 +166,31 @@ final class HubAPIAdapterClient {
         try await performCloudRequest(path: path, method: "PUT", body: body)
     }
 
+    func cloudDelete(_ path: String) async throws {
+        guard let url = URL(string: "\(cloudBaseURL)\(path)") else {
+            throw HubClientError.invalidURL
+        }
+
+        var request = try await authorizedCloudRequest(url: url)
+        request.httpMethod = "DELETE"
+
+        let (_, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw HubClientError.invalidResponse
+        }
+
+        if httpResponse.statusCode == 401 {
+            try await loginToCloud(forceRefresh: true)
+            var retry = try await authorizedCloudRequest(url: url)
+            retry.httpMethod = "DELETE"
+            let (_, retryResponse) = try await session.data(for: retry)
+            try validateResponse(retryResponse)
+            return
+        }
+
+        try validateResponse(response)
+    }
+
     private func performCloudRequest<T: Decodable, B: Encodable>(
         path: String,
         method: String,
@@ -256,7 +281,7 @@ final class HubAPIAdapterClient {
             let sinistroRef: String
         }
         
-        let _: EmptyResponse = try await post("/emails/\(emailId)/associate", body: AssociateRequest(sinistroRef: ref))
+        let _: EmptyResponse = try await cloudPost("/api/v1/hub/emails/\(emailId)/associate", body: AssociateRequest(sinistroRef: ref))
     }
     
     /// Programma invio email
@@ -281,7 +306,7 @@ final class HubAPIAdapterClient {
         // Ottieni account corrente
         let accountId = UserDefaults.standard.string(forKey: "current_user_email") ?? ""
         
-        let response: ScheduledEmailDTO = try await post("/emails/schedule", body: ScheduleRequest(
+        let response: ScheduledEmailDTO = try await cloudPost("/api/v1/hub/emails/schedule", body: ScheduleRequest(
             accountId: accountId,
             to: to,
             cc: cc,
@@ -296,7 +321,7 @@ final class HubAPIAdapterClient {
     
     /// Completa task
     func completeTask(id: String) async throws {
-        let _: TaskDTO = try await post("/tasks/\(id)/complete", body: EmptyBody())
+        let _: TaskDTO = try await cloudPost("/api/v1/tasks/\(id)/complete", body: EmptyBody())
     }
     
     /// Invia heartbeat
@@ -306,14 +331,10 @@ final class HubAPIAdapterClient {
             let client_info: String?
         }
         
-        guard let url = URL(string: "\(baseURL)/heartbeat") else { return }
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try encoder.encode(HeartbeatRequest(user_id: userId, client_info: clientInfo))
-        
-        _ = try await session.data(for: request)
+        let _: EmptyResponse = try await cloudPost(
+            "/api/v1/hub/heartbeat",
+            body: HeartbeatRequest(user_id: userId, client_info: clientInfo)
+        )
     }
     
     // MARK: - Helpers

@@ -4,10 +4,6 @@ import SwiftUI
 struct HubSettingsView: View {
     @ObservedObject private var config = HubConfigService.shared
     @ObservedObject private var profileService = UserProfileService.shared
-    @State private var showingURLEditor = false
-    @State private var tempURL = ""
-    @State private var tempTenantURL = ""
-    @State private var cloudURL = HubConfigService.shared.cloudAPIBaseURL
     @State private var cloudEmail = HubConfigService.shared.cloudAPIEmail
     @State private var cloudPassword = ""
     @State private var cloudStatusMessage: String?
@@ -59,17 +55,19 @@ struct HubSettingsView: View {
                                 Task { await testCloudLogin() }
                             }
                             .buttonStyle(.bordered)
-                            .disabled(cloudURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || cloudEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || cloudPassword.isEmpty)
+                            .disabled(cloudEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || cloudPassword.isEmpty)
                         }
                     }
 
-                    if isAdmin {
-                        TextField("URL Backend Cloud", text: $cloudURL)
-                            .textFieldStyle(.roundedBorder)
-                            .onChange(of: cloudURL) { _, newValue in
-                                config.cloudAPIBaseURL = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
-                            }
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Endpoint backend")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(config.cloudAPIBaseURL)
+                            .textSelection(.enabled)
+                    }
 
+                    if isAdmin {
                         TextField("Email backend", text: $cloudEmail)
                             .textFieldStyle(.roundedBorder)
                             .onChange(of: cloudEmail) { _, newValue in
@@ -92,10 +90,6 @@ struct HubSettingsView: View {
                             }
                             .buttonStyle(.bordered)
                         }
-                    } else {
-                        Text(config.cloudAPIBaseURL.isEmpty ? "Backend cloud non impostato" : config.cloudAPIBaseURL)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
                     }
 
                     if let cloudStatusMessage {
@@ -105,66 +99,37 @@ struct HubSettingsView: View {
                     }
                 }
                 
-                // Solo admin: URL Hub modificabile
-                if isAdmin {
-                    Divider()
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Text("URL Hub di default")
-                            Spacer()
-                            Text(config.hubBaseURL.isEmpty ? "Non configurato" : config.hubBaseURL)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                                .foregroundStyle(.secondary)
-                            Button("Modifica") {
-                                tempURL = config.hubBaseURL
-                                tempTenantURL = config.tenantOverride()?.baseURL ?? ""
-                                showingURLEditor = true
-                            }
-                            .buttonStyle(.bordered)
-                        }
-                        HStack {
-                            Text("Override tenant \(config.currentTenantSlug)")
-                            Spacer()
-                            Text(config.tenantOverride()?.baseURL ?? "Usa hub di default")
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    Text("Puoi usare un HUB condiviso per più tenant o definire un override dedicato per il tenant corrente.")
+                Divider()
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Hub legacy")
                         .font(.caption)
-                        .foregroundStyle(.tertiary)
-                } else if !config.hubBaseURL.isEmpty {
-                    HStack {
-                        Text("URL Hub")
-                        Spacer()
-                        Text(config.hubBaseURL)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                            .foregroundStyle(.secondary)
+                        .foregroundStyle(.secondary)
+                    Text(config.hubBaseURL.isEmpty ? "Non configurato" : config.hubBaseURL)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                    if let override = config.tenantOverride()?.baseURL, !override.isEmpty {
+                        Text("Override tenant \(config.currentTenantSlug): \(override)")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                            .textSelection(.enabled)
                     }
-                    .font(.caption)
                 }
+                Text("La modifica manuale degli endpoint e stata disabilitata in UI.")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
             }
             .padding()
         } label: {
             Label("Hub", systemImage: "server.rack")
                 .font(.headline)
         }
-        .sheet(isPresented: $showingURLEditor) {
-            URLEditorSheet(url: $tempURL, tenantURL: $tempTenantURL, tenantSlug: config.currentTenantSlug) { newURL, tenantOverride in
-                config.hubBaseURL = newURL
-                config.setTenantOverride(baseURL: tenantOverride, for: config.currentTenantSlug)
-                config.startHealthCheckTimer()
-            }
-        }
     }
 
     private func testCloudLogin() async {
         isTestingCloud = true
         defer { isTestingCloud = false }
-        config.cloudAPIBaseURL = cloudURL.trimmingCharacters(in: .whitespacesAndNewlines)
         config.cloudAPIEmail = cloudEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         HubAPIAdapterClient.shared.saveCloudPassword(cloudPassword)
 
@@ -174,52 +139,6 @@ struct HubSettingsView: View {
         } catch {
             cloudStatusMessage = "Login backend fallito: \(error.localizedDescription)"
         }
-    }
-}
-
-// MARK: - URL Editor Sheet
-
-private struct URLEditorSheet: View {
-    @Binding var url: String
-    @Binding var tenantURL: String
-    let tenantSlug: String
-    var onSave: (String, String) -> Void
-    @Environment(\.dismiss) private var dismiss
-    
-    var body: some View {
-        VStack(spacing: 20) {
-            Text("Configura URL Hub")
-                .font(.headline)
-            
-            Text("URL dell'Hub centralizzato (es. http://mac-mini.tailnet:8080). Le impostazioni sono condivise da tutti.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-            
-            TextField("URL Hub", text: $url)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 400)
-
-            TextField("Override tenant \(tenantSlug)", text: $tenantURL)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 400)
-            
-            HStack {
-                Button("Annulla") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Button("Salva") {
-                    onSave(
-                        url.trimmingCharacters(in: .whitespacesAndNewlines),
-                        tenantURL.trimmingCharacters(in: .whitespacesAndNewlines)
-                    )
-                    dismiss()
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-        }
-        .padding(30)
-        .frame(width: 500)
     }
 }
 

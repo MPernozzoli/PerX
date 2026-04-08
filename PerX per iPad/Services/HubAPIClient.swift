@@ -14,6 +14,7 @@ import Security
 @MainActor
 class HubAPIClient: ObservableObject {
     static let shared = HubAPIClient()
+    static let fixedCloudAPIBaseURL = "https://api.perx.it"
     
     @Published private(set) var isConnected = false
     @Published private(set) var lastError: String?
@@ -33,12 +34,12 @@ class HubAPIClient: ObservableObject {
         }
     }
 
-    private var _cloudAPIBaseURL: String = ""
+    private var _cloudAPIBaseURL: String = Self.fixedCloudAPIBaseURL
     var cloudAPIBaseURL: String {
-        get { _cloudAPIBaseURL }
+        get { Self.fixedCloudAPIBaseURL }
         set {
-            _cloudAPIBaseURL = newValue
-            UserDefaults.standard.set(newValue, forKey: "cloudAPIBaseURL")
+            _cloudAPIBaseURL = Self.fixedCloudAPIBaseURL
+            UserDefaults.standard.set(Self.fixedCloudAPIBaseURL, forKey: "cloudAPIBaseURL")
         }
     }
 
@@ -62,7 +63,8 @@ class HubAPIClient: ObservableObject {
         
         // Carica URL salvato
         _hubBaseURL = UserDefaults.standard.string(forKey: "hubBaseURL") ?? ""
-        _cloudAPIBaseURL = UserDefaults.standard.string(forKey: "cloudAPIBaseURL") ?? ""
+        _cloudAPIBaseURL = Self.fixedCloudAPIBaseURL
+        UserDefaults.standard.set(Self.fixedCloudAPIBaseURL, forKey: "cloudAPIBaseURL")
         _cloudAPIEmail = UserDefaults.standard.string(forKey: "cloudAPIEmail") ?? ""
     }
     

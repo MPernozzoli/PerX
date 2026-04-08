@@ -338,7 +338,6 @@ struct NewAccountLoginView: View {
     let onComplete: (Bool) -> Void
     
     @Environment(\.dismiss) private var dismiss
-    @State private var backendURL: String
     @State private var email: String
     @State private var password: String
     @State private var isLoggingIn = false
@@ -350,7 +349,6 @@ struct NewAccountLoginView: View {
         initialPassword: String = ""
     ) {
         self.onComplete = onComplete
-        _backendURL = State(initialValue: Self.defaultBackendURL())
         _email = State(initialValue: initialEmail)
         _password = State(initialValue: initialPassword)
     }
@@ -377,12 +375,15 @@ struct NewAccountLoginView: View {
                         .multilineTextAlignment(.center)
 
                     VStack(spacing: 14) {
-                        TextField("URL backend", text: $backendURL)
-                            .textContentType(.URL)
-                            .keyboardType(.URL)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .textFieldStyle(.roundedBorder)
+                        LabeledContent("Backend") {
+                            Text(HubAPIClient.fixedCloudAPIBaseURL)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .textSelection(.enabled)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(Color.white, in: RoundedRectangle(cornerRadius: 8))
 
                         TextField("Email", text: $email)
                             .textContentType(.username)
@@ -423,7 +424,7 @@ struct NewAccountLoginView: View {
                         password.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     )
 
-                    Text("L'URL backend resta condiviso su questo iPad. In simulatore, se vuoto, viene proposto `http://127.0.0.1:8000`.")
+                    Text("L'app usa sempre il backend ufficiale `https://api.perx.it`.")
                         .font(.caption)
                         .foregroundColor(.white.opacity(0.55))
                         .multilineTextAlignment(.center)
@@ -455,8 +456,6 @@ struct NewAccountLoginView: View {
     private func performLogin() {
         let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let normalizedPassword = password.trimmingCharacters(in: .whitespacesAndNewlines)
-        let normalizedBackendURL = backendURL.trimmingCharacters(in: .whitespacesAndNewlines)
-
         guard !normalizedEmail.isEmpty, !normalizedPassword.isEmpty else {
             errorMessage = "Inserisci email e password."
             return
@@ -469,8 +468,7 @@ struct NewAccountLoginView: View {
             do {
                 try await GoogleAuthServiceiOS.shared.signIn(
                     email: normalizedEmail,
-                    password: normalizedPassword,
-                    baseURL: normalizedBackendURL
+                    password: normalizedPassword
                 )
                 onComplete(true)
                 dismiss()
@@ -482,18 +480,6 @@ struct NewAccountLoginView: View {
         }
     }
 
-    private static func defaultBackendURL() -> String {
-        let saved = HubAPIClient.shared.cloudAPIBaseURL
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        if !saved.isEmpty {
-            return saved
-        }
-        #if targetEnvironment(simulator)
-        return "http://127.0.0.1:8000"
-        #else
-        return ""
-        #endif
-    }
 }
 
 // MARK: - Passcode Entry View

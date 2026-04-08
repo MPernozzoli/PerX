@@ -9,6 +9,7 @@ import Combine
 @MainActor
 final class HubModeService: ObservableObject {
     static let shared = HubModeService()
+    private static let fixedHubURL = HubConfigService.fixedCloudAPIBaseURL
     
     // MARK: - Published Properties
     
@@ -36,12 +37,7 @@ final class HubModeService: ObservableObject {
     @Published private(set) var hubConnected: Bool = false
     
     /// URL dell'Hub
-    @Published var hubURL: String {
-        didSet { 
-            UserDefaults.standard.set(hubURL, forKey: "hub_url")
-            Task { await checkHubConnection() }
-        }
-    }
+    @Published private(set) var hubURL: String
     
     private var cancellables = Set<AnyCancellable>()
     private var connectionCheckTimer: Timer?
@@ -62,7 +58,8 @@ final class HubModeService: ObservableObject {
         let fileRaw = UserDefaults.standard.string(forKey: "hub_file_mode") ?? ServiceMode.local.rawValue
         self.fileMode = ServiceMode(rawValue: fileRaw) ?? .local
         
-        self.hubURL = UserDefaults.standard.string(forKey: "hub_url") ?? "https://mac-mini-di-massimo.tailca58be.ts.net"
+        self.hubURL = Self.fixedHubURL
+        UserDefaults.standard.set(Self.fixedHubURL, forKey: "hub_url")
         
         // Avvia controllo connessione
         startConnectionCheck()
@@ -83,8 +80,9 @@ final class HubModeService: ObservableObject {
     }
     
     func checkHubConnection() async {
-        guard !hubURL.isEmpty,
-              let url = URL(string: "\(hubURL)/health") else {
+        let baseURL = HubConfigService.shared.cloudAPIBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !baseURL.isEmpty,
+              let url = URL(string: "\(baseURL)/health") else {
             hubConnected = false
             return
         }
@@ -113,14 +111,16 @@ final class HubModeService: ObservableObject {
         guard hubConnected else { return false }
         
         let config = HubConfigService.shared
-        
+        let cloudReady = config.isCloudAPIConfigured
+        guard cloudReady else { return false }
+
         switch service {
         case .email:
             return config.emailManagementMode == .cloud || emailMode == .hub
         case .task:
-            return taskMode == .hub
+            return true
         case .claim:
-            return claimMode == .hub
+            return true
         case .file:
             return config.fileManagementMode == .cloud || fileMode == .hub
         case .whatsapp:

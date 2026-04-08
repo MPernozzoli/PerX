@@ -42,6 +42,8 @@
         <string>0.0.0.0</string>
         <key>PERX_HUB_PORT</key>
         <string>8080</string>
+        <key>PERX_STORAGE_SHARED_SECRET</key>
+        <string>CHANGE-ME-STORAGE-SECRET</string>
         <!-- Worker URLs -->
         <key>PERX_EMAIL_WORKER_URL</key>
         <string>http://localhost:5001</string>

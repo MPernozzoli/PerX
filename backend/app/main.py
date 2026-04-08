@@ -18,6 +18,7 @@ from app.api.v1 import (
     routes_emails,
     routes_internal_chat,
     routes_inspections,
+    routes_hub_compat,
     routes_ai_chat,
     routes_planning,
     routes_portal,
@@ -70,6 +71,7 @@ app.include_router(routes_diary.router, prefix="/api/v1", tags=["diary"])
 app.include_router(routes_emails.router, prefix="/api/v1/emails", tags=["emails"])
 app.include_router(routes_attachments.router, prefix="/api/v1/attachments", tags=["attachments"])
 app.include_router(routes_whatsapp.router, prefix="/api/v1/whatsapp", tags=["whatsapp"])
+app.include_router(routes_hub_compat.router, prefix="/api/v1/hub", tags=["hub-compat"])
 app.include_router(routes_internal_chat.router, prefix="/api/v1/internal-chat", tags=["internal-chat"])
 app.include_router(routes_ai_chat.router, prefix="/api/v1/ai-chat", tags=["ai-chat"])
 app.include_router(routes_inspections.router, prefix="/api/v1", tags=["inspections"])

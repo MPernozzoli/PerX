@@ -5,7 +5,7 @@ import Foundation
 class ScheduledWhatsAppService {
     static let shared = ScheduledWhatsAppService()
     
-    private let hubService = HubService.shared
+    private let hubClient = HubAPIClient.shared
     
     private init() {}
     
@@ -61,52 +61,39 @@ class ScheduledWhatsAppService {
         scheduledFor: Date,
         sinistroRef: String?
     ) async throws -> ScheduledWhatsApp {
-        let endpoint = "/whatsapp/schedule"
-        
-        var payload: [String: Any] = [
-            "accountId": accountId,
-            "phoneNumber": phoneNumber,
-            "body": body,
-            "scheduledFor": ISO8601DateFormatter().string(from: scheduledFor)
-        ]
-        
-        if let mediaData = mediaData {
-            payload["mediaData"] = mediaData
+        struct SchedulePayload: Encodable {
+            let accountId: String
+            let phoneNumber: String
+            let body: String
+            let mediaData: String?
+            let mediaType: String?
+            let mediaFilename: String?
+            let scheduledFor: Date
+            let sinistroRef: String?
         }
-        if let mediaType = mediaType {
-            payload["mediaType"] = mediaType
-        }
-        if let mediaFilename = mediaFilename {
-            payload["mediaFilename"] = mediaFilename
-        }
-        if let sinistroRef = sinistroRef {
-            payload["sinistroRef"] = sinistroRef
-        }
-        
-        let data = try await hubService.post(endpoint: endpoint, payload: payload)
-        
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        
-        return try decoder.decode(ScheduledWhatsApp.self, from: data)
+
+        return try await hubClient.post(
+            endpoint: "whatsapp/schedule",
+            body: SchedulePayload(
+                accountId: accountId,
+                phoneNumber: phoneNumber,
+                body: body,
+                mediaData: mediaData,
+                mediaType: mediaType,
+                mediaFilename: mediaFilename,
+                scheduledFor: scheduledFor,
+                sinistroRef: sinistroRef
+            )
+        )
     }
     
     /// Ottiene lista messaggi programmati per account
     func getScheduledMessages(accountId: String) async throws -> [ScheduledWhatsApp] {
-        let endpoint = "/whatsapp/scheduled?accountId=\(accountId)"
-        
-        let data = try await hubService.get(endpoint: endpoint)
-        
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        
-        return try decoder.decode([ScheduledWhatsApp].self, from: data)
+        try await hubClient.get(endpoint: "whatsapp/scheduled?accountId=\(accountId)")
     }
     
     /// Cancella messaggio programmato (solo se pending)
     func cancelScheduledMessage(id: String) async throws {
-        let endpoint = "/whatsapp/scheduled/\(id)"
-        
-        try await hubService.delete(endpoint: endpoint)
+        try await hubClient.delete(endpoint: "whatsapp/scheduled/\(id)")
     }
 }

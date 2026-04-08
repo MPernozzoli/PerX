@@ -77,6 +77,10 @@ struct HubConfiguration {
     static var supabaseServiceRoleKey: String? {
         ProcessInfo.processInfo.environment["SUPABASE_SERVICE_ROLE_KEY"]
     }
+
+    static var storageSharedSecret: String {
+        ProcessInfo.processInfo.environment["PERX_STORAGE_SHARED_SECRET"] ?? ""
+    }
 }
 
 // MARK: - Application Startup
