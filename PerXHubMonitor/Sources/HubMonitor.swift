@@ -459,6 +459,7 @@ class HubMonitor: ObservableObject {
         let w = bashSingleQuoted(waBridgeURL.trimmingCharacters(in: .whitespacesAndNewlines))
         let a = bashSingleQuoted(autoUpdaterURL.trimmingCharacters(in: .whitespacesAndNewlines))
         let h = bashSingleQuoted(hubInstallBasePath.trimmingCharacters(in: .whitespacesAndNewlines))
+        // In raw `#"""` le interpolazioni sono `\#(...)`; `\\(...)` finirebbe letterale in bash e rompe con `)`.
         return #"""
         set -e
         PLIST='/Library/LaunchDaemons/com.perx.hub.plist'
@@ -472,10 +473,10 @@ class HubMonitor: ObservableObject {
           local k="$1"
           /usr/libexec/PlistBuddy -c "Delete :EnvironmentVariables:$k" "$PLIST" 2>/dev/null || true
         }
-        pb_set PERX_EMAIL_WORKER_URL \(m)
-        pb_set PERX_WA_BRIDGE_URL \(w)
-        pb_set PERX_AUTO_UPDATER_URL \(a)
-        pb_set PERX_HUB_PATH \(h)
+        pb_set PERX_EMAIL_WORKER_URL \#(m)
+        pb_set PERX_WA_BRIDGE_URL \#(w)
+        pb_set PERX_AUTO_UPDATER_URL \#(a)
+        pb_set PERX_HUB_PATH \#(h)
         pb_del PERX_SYNC_AGENT_URL
         exit 0
         """#
