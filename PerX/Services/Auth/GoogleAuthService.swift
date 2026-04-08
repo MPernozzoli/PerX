@@ -7,6 +7,7 @@ class GoogleAuthService: ObservableObject {
     
     @Published var isAuthenticated = false
     @Published var userEmail: String?
+    @Published var userName: String?
     @Published var errorMessage: String?
     @Published var needsReAuthentication = false
     
@@ -22,6 +23,9 @@ class GoogleAuthService: ObservableObject {
     private let clientSecret = "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"
     private let redirectUri = "http://127.0.0.1:3000"
     private let scope = "email https://mail.google.com/ https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/userinfo.email openid"
+    private let backendService = "com.perx.macos.auth"
+    private let session = URLSession.shared
+    private let decoder = JSONDecoder()
     
     /// Flag per evitare che il check venga rieseguito in loop
     private var hasCompletedInitialCheck = false
@@ -32,81 +36,77 @@ class GoogleAuthService: ObservableObject {
     struct AuthCheckResult {
         let authenticated: Bool
         let email: String?
+        let userName: String?
         let needsReAuth: Bool
     }
     
     /// Esegue il check senza toccare @Published. La view chiama poi applyAuthResult in modo differito.
     func checkAuthenticationState() async -> AuthCheckResult {
         if checkInProgress {
-            return AuthCheckResult(authenticated: isAuthenticated, email: userEmail, needsReAuth: needsReAuthentication)
+            return AuthCheckResult(authenticated: isAuthenticated, email: userEmail, userName: userName, needsReAuth: needsReAuthentication)
         }
         if hasCompletedInitialCheck && !isAuthenticated {
-            return AuthCheckResult(authenticated: false, email: nil, needsReAuth: needsReAuthentication)
+            return AuthCheckResult(authenticated: false, email: nil, userName: nil, needsReAuth: needsReAuthentication)
         }
         
         checkInProgress = true
         defer { checkInProgress = false }
         
-        // Solo token locale: niente Hub per mostrare dashboard senza token valido
-        guard let accessToken = loadFromKeychain(forKey: "google_access_token") else {
+        if let baseURL = normalizedBackendBaseURL(),
+           let accessToken = loadBackendValue(forKey: "access_token"),
+           let user = await fetchBackendUserInfo(accessToken: accessToken, baseURL: baseURL) {
             hasCompletedInitialCheck = true
-            return AuthCheckResult(authenticated: false, email: nil, needsReAuth: false)
+            persistAuthenticatedUser(email: user.email, fullName: user.full_name)
+            return AuthCheckResult(
+                authenticated: true,
+                email: user.email,
+                userName: Self.resolveDisplayName(email: user.email, fullName: user.full_name),
+                needsReAuth: false
+            )
         }
-        
-        let email = await fetchUserEmail(accessToken: accessToken)
-        
-        if let email = email {
-            hasCompletedInitialCheck = true
-            // Registra con Hub in background (non tocca @Published)
-            if let refreshToken = loadFromKeychain(forKey: "google_refresh_token") {
-                Task { [weak self] in
-                    await self?.registerTokenWithHub(email: email, refreshToken: refreshToken)
-                }
-            }
-            return AuthCheckResult(authenticated: true, email: email, needsReAuth: false)
+
+        // Se c'è una sessione salvata ma non più valida, puliscila e richiedi selezione esplicita account.
+        if loadBackendValue(forKey: "access_token") != nil {
+            clearBackendSession()
         }
-        
-        // Token non valido (401): rimuovilo subito
-        removeFromKeychain(forKey: "google_access_token")
-        
-        guard let refreshToken = loadFromKeychain(forKey: "google_refresh_token") else {
-            saveTokenExpiry(Date.distantPast)
-            hasCompletedInitialCheck = true
-            return AuthCheckResult(authenticated: false, email: nil, needsReAuth: true)
-        }
-        
-        do {
-            let newToken = try await refreshAccessToken(refreshToken)
-            saveToKeychain(token: newToken, forKey: "google_access_token")
-            let refreshedEmail = await fetchUserEmail(accessToken: newToken)
-            
-            if let refreshedEmail = refreshedEmail {
-                Task { [weak self] in
-                    await self?.registerTokenWithHub(email: refreshedEmail, refreshToken: refreshToken)
-                }
-            }
-            hasCompletedInitialCheck = true
-            return AuthCheckResult(authenticated: true, email: refreshedEmail, needsReAuth: false)
-        } catch {
-            print("❌ Errore refresh token: \(error)")
-            removeFromKeychain(forKey: "google_refresh_token")
-            saveTokenExpiry(Date.distantPast)
-            hasCompletedInitialCheck = true
-            return AuthCheckResult(authenticated: false, email: nil, needsReAuth: true)
-        }
+
+        hasCompletedInitialCheck = true
+        return AuthCheckResult(authenticated: false, email: nil, userName: nil, needsReAuth: false)
     }
     
     /// Applica il risultato del check dopo un breve delay, quando il ciclo di rendering è concluso
     func applyAuthResult(_ result: AuthCheckResult) {
         let email = result.email
+        let userName = result.userName
         let authenticated = result.authenticated
         let needsReAuth = result.needsReAuth
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
             guard let self else { return }
             self.userEmail = email
+            self.userName = userName
             self.isAuthenticated = authenticated
             self.needsReAuthentication = needsReAuth
         }
+    }
+
+    func signIn(email: String, password: String, baseURL: String? = nil) async throws {
+        let resolvedBaseURL = try requiredBackendBaseURL(override: baseURL)
+        _ = try await performBackendLogin(
+            email: email,
+            password: password,
+            baseURL: resolvedBaseURL,
+            persistAccount: true
+        )
+    }
+
+    func signInWithStoredCredentials(email: String, baseURL: String? = nil) async throws {
+        let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard let password = AccountManager.shared.getPassword(for: normalizedEmail),
+              !password.isEmpty else {
+            throw AuthError.missingSavedCredentials
+        }
+
+        try await signIn(email: normalizedEmail, password: password, baseURL: baseURL)
     }
     
     private func refreshAccessToken(_ refreshToken: String) async throws -> String {
@@ -272,21 +272,25 @@ class GoogleAuthService: ObservableObject {
     }
     
     func signOut() {
-        if let email = userEmail {
+        if let email = userEmail, loadFromKeychain(forKey: "google_refresh_token") != nil {
             let userId = email.components(separatedBy: "@").first ?? email
             Task { await deleteTokenFromHub(userId: userId) }
         }
         
+        clearBackendSession()
         removeFromKeychain(forKey: "google_access_token")
         removeFromKeychain(forKey: "google_refresh_token")
         UserDefaults.standard.removeObject(forKey: "google_token_expiry")
         UserDefaults.standard.removeObject(forKey: "last_google_user_id")
+        UserDefaults.standard.removeObject(forKey: "current_user_email")
+        UserDefaults.standard.removeObject(forKey: "userEmail")
         hasCompletedInitialCheck = false
         
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
             guard let self else { return }
             self.isAuthenticated = false
             self.userEmail = nil
+            self.userName = nil
             NotificationCenter.default.post(name: .init("GoogleAuthStateChanged"), object: nil, userInfo: ["signedOut": true])
         }
     }
@@ -303,6 +307,22 @@ class GoogleAuthService: ObservableObject {
     }
     
     func signIn() {
+        let configuredEmail = HubConfigService.shared.cloudAPIEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if let storedPassword = AccountManager.shared.getPassword(for: configuredEmail),
+           !configuredEmail.isEmpty,
+           !storedPassword.isEmpty {
+            Task {
+                do {
+                    try await signIn(email: configuredEmail, password: storedPassword)
+                } catch {
+                    await MainActor.run {
+                        self.errorMessage = error.localizedDescription
+                    }
+                }
+            }
+            return
+        }
+
         let urlString = "https://accounts.google.com/o/oauth2/v2/auth?" +
             "client_id=\(clientId)" +
             "&redirect_uri=\(redirectUri.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")" +
@@ -354,8 +374,12 @@ class GoogleAuthService: ObservableObject {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
                 guard let self else { return }
                 self.userEmail = capturedEmail
+                self.userName = capturedEmail.map { Self.resolveDisplayName(email: $0, fullName: nil) }
                 self.isAuthenticated = true
                 self.needsReAuthentication = false
+                if let capturedEmail {
+                    self.persistAuthenticatedUser(email: capturedEmail, fullName: nil)
+                }
                 NotificationCenter.default.post(name: .init("GoogleAuthStateChanged"), object: nil, userInfo: ["signedOut": false])
             }
             
@@ -459,6 +483,194 @@ class GoogleAuthService: ObservableObject {
         
         return nil
     }
+
+    private func normalizedBackendBaseURL(override: String? = nil) -> String? {
+        let candidate = (override ?? HubConfigService.shared.cloudAPIBaseURL)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !candidate.isEmpty else { return nil }
+        return candidate.hasSuffix("/") ? String(candidate.dropLast()) : candidate
+    }
+
+    private func requiredBackendBaseURL(override: String? = nil) throws -> String {
+        guard let baseURL = normalizedBackendBaseURL(override: override) else {
+            throw AuthError.missingBackendURL
+        }
+        return baseURL
+    }
+
+    private func performBackendLogin(
+        email: String,
+        password: String,
+        baseURL: String,
+        persistAccount: Bool
+    ) async throws -> BackendLoginResult {
+        let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let normalizedPassword = password.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !normalizedEmail.isEmpty, !normalizedPassword.isEmpty else {
+            throw AuthError.missingCredentials
+        }
+
+        guard let url = URL(string: "\(baseURL)/api/v1/auth/login") else {
+            throw AuthError.invalidBackendURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.httpBody = try JSONEncoder().encode(CloudAPILoginRequest(username: normalizedEmail, password: normalizedPassword))
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AuthError.invalidResponse
+        }
+
+        guard 200...299 ~= httpResponse.statusCode else {
+            throw AuthError.loginFailed(errorMessage(from: data, statusCode: httpResponse.statusCode))
+        }
+
+        let tokenResponse = try decoder.decode(CloudAPITokenResponse.self, from: data)
+        saveBackendValue(tokenResponse.access_token, forKey: "access_token")
+        saveBackendValue(tokenResponse.refresh_token, forKey: "refresh_token")
+        saveBackendValue(normalizedEmail, forKey: "active_email")
+
+        BackendAPIClient.shared.storeAccessToken(tokenResponse.access_token)
+        HubConfigService.shared.cloudAPIBaseURL = baseURL
+        HubConfigService.shared.cloudAPIEmail = normalizedEmail
+        HubAPIAdapterClient.shared.saveCloudPassword(normalizedPassword)
+        HubAPIAdapterClient.shared.clearCloudSession()
+
+        guard let user = await fetchBackendUserInfo(accessToken: tokenResponse.access_token, baseURL: baseURL) else {
+            clearBackendSession()
+            throw AuthError.userInfoFailed
+        }
+
+        let displayName = Self.resolveDisplayName(email: user.email, fullName: user.full_name)
+        persistAuthenticatedUser(email: user.email, fullName: user.full_name)
+
+        if persistAccount {
+            AccountManager.shared.saveAccount(email: user.email, displayName: displayName, password: normalizedPassword)
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self else { return }
+            self.userEmail = user.email
+            self.userName = displayName
+            self.isAuthenticated = true
+            self.needsReAuthentication = false
+            NotificationCenter.default.post(name: .init("GoogleAuthStateChanged"), object: nil, userInfo: ["signedOut": false])
+        }
+
+        return BackendLoginResult(email: user.email, displayName: displayName)
+    }
+
+    private func fetchBackendUserInfo(accessToken: String, baseURL: String) async -> CloudAPIUserResponse? {
+        guard let url = URL(string: "\(baseURL)/api/v1/auth/me") else {
+            return nil
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse,
+                  200...299 ~= httpResponse.statusCode else {
+                return nil
+            }
+            return try decoder.decode(CloudAPIUserResponse.self, from: data)
+        } catch {
+            print("[GoogleAuth] ❌ Fetch profilo backend fallito: \(error)")
+            return nil
+        }
+    }
+
+    private func saveBackendValue(_ value: String, forKey key: String) {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: backendService,
+            kSecAttrAccount as String: key,
+            kSecValueData as String: value.data(using: .utf8) ?? Data()
+        ]
+
+        SecItemDelete(query as CFDictionary)
+        SecItemAdd(query as CFDictionary, nil)
+    }
+
+    private func loadBackendValue(forKey key: String) -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: backendService,
+            kSecAttrAccount as String: key,
+            kSecReturnData as String: true
+        ]
+
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        guard status == errSecSuccess,
+              let data = result as? Data,
+              let value = String(data: data, encoding: .utf8),
+              !value.isEmpty else {
+            return nil
+        }
+        return value
+    }
+
+    private func removeBackendValue(forKey key: String) {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: backendService,
+            kSecAttrAccount as String: key
+        ]
+        SecItemDelete(query as CFDictionary)
+    }
+
+    private func clearBackendSession() {
+        removeBackendValue(forKey: "access_token")
+        removeBackendValue(forKey: "refresh_token")
+        removeBackendValue(forKey: "active_email")
+        BackendAPIClient.shared.clearAccessToken()
+        HubAPIAdapterClient.shared.clearCloudSession()
+    }
+
+    private func persistAuthenticatedUser(email: String, fullName: String?) {
+        let normalizedEmail = email.lowercased()
+        UserDefaults.standard.set(normalizedEmail, forKey: "current_user_email")
+        UserDefaults.standard.set(normalizedEmail, forKey: "userEmail")
+
+        let resolvedName = Self.resolveDisplayName(email: normalizedEmail, fullName: fullName)
+        userEmail = normalizedEmail
+        userName = resolvedName
+    }
+
+    private func errorMessage(from data: Data, statusCode: Int) -> String {
+        if let backendError = try? JSONDecoder().decode(BackendErrorResponse.self, from: data),
+           let detail = backendError.detail?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !detail.isEmpty {
+            return detail
+        }
+
+        switch statusCode {
+        case 401:
+            return "Credenziali non valide."
+        case 404:
+            return "Backend non trovato."
+        default:
+            return "Errore backend (\(statusCode))."
+        }
+    }
+
+    private static func resolveDisplayName(email: String, fullName: String?) -> String {
+        let trimmed = fullName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !trimmed.isEmpty {
+            return trimmed
+        }
+        return email.components(separatedBy: "@").first ?? email
+    }
 }
 
 struct TokenResponse: Codable {
@@ -473,4 +685,44 @@ struct UserInfo: Codable {
     let id: String?
     let verified_email: Bool?
     let picture: String?
+}
+
+private struct BackendErrorResponse: Codable {
+    let detail: String?
+}
+
+private struct BackendLoginResult {
+    let email: String
+    let displayName: String
+}
+
+extension GoogleAuthService {
+    enum AuthError: LocalizedError {
+        case missingCredentials
+        case missingSavedCredentials
+        case missingBackendURL
+        case invalidBackendURL
+        case invalidResponse
+        case loginFailed(String)
+        case userInfoFailed
+
+        var errorDescription: String? {
+            switch self {
+            case .missingCredentials:
+                return "Inserisci email e password."
+            case .missingSavedCredentials:
+                return "Credenziali salvate mancanti per questo account."
+            case .missingBackendURL:
+                return "Configura l'URL del backend prima di accedere."
+            case .invalidBackendURL:
+                return "URL backend non valido."
+            case .invalidResponse:
+                return "Risposta backend non valida."
+            case .loginFailed(let message):
+                return message
+            case .userInfoFailed:
+                return "Login riuscito ma profilo utente non disponibile."
+            }
+        }
+    }
 }

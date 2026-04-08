@@ -21,15 +21,18 @@ export function PortalNav() {
         </Link>
 
         <nav className="portal-nav">
-          {NAV_ITEMS.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`portal-nav__link${pathname === item.href ? " portal-nav__link--active" : ""}`}
-            >
-              {item.label}
-            </Link>
-          ))}
+          {NAV_ITEMS.map((item) => {
+            const isActive = item.href === "/claim" ? pathname.startsWith("/claim") : pathname === item.href;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`portal-nav__link${isActive ? " portal-nav__link--active" : ""}`}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
         </nav>
       </div>
     </header>

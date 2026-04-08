@@ -26,6 +26,34 @@ final class BackendAPIClient {
         backendAccessToken != nil
     }
 
+    func storeAccessToken(_ token: String) {
+        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            clearAccessToken()
+            return
+        }
+
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: tokenService,
+            kSecAttrAccount as String: tokenKey,
+            kSecValueData as String: trimmed.data(using: .utf8) ?? Data()
+        ]
+
+        SecItemDelete(query as CFDictionary)
+        SecItemAdd(query as CFDictionary, nil)
+    }
+
+    func clearAccessToken() {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: tokenService,
+            kSecAttrAccount as String: tokenKey
+        ]
+
+        SecItemDelete(query as CFDictionary)
+    }
+
     func get<T: Decodable>(_ path: String, queryItems: [URLQueryItem] = []) async throws -> T {
         var request = try makeRequest(path: path, method: "GET", queryItems: queryItems)
         let (data, response) = try await session.data(for: request)
