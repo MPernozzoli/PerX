@@ -402,6 +402,85 @@ class HubMonitor: ObservableObject {
         await launchctl.restart(identifier: "com.perx.hub")
     }
     
+    /// Allinea `EnvironmentVariables` di `/Library/LaunchDaemons/com.perx.hub.plist` a ciò che salvi nel Monitor
+    /// (altrimenti l’Hub continua a leggere il plist vecchio). Rimuove chiavi obsolete tipo `PERX_SYNC_AGENT_URL`.
+    @MainActor
+    func syncHubLaunchDaemonPlistEnvironment(
+        mailWorkerURL: String,
+        waBridgeURL: String,
+        autoUpdaterURL: String,
+        hubInstallBasePath: String
+    ) async -> String? {
+        let scriptBody = Self.bashScriptHubPlistSync(
+            mailWorkerURL: mailWorkerURL,
+            waBridgeURL: waBridgeURL,
+            autoUpdaterURL: autoUpdaterURL,
+            hubInstallBasePath: hubInstallBasePath
+        )
+        let b64 = Data(scriptBody.utf8).base64EncodedString()
+        let appleScript = """
+        do shell script "echo \(b64) | base64 -d | /bin/bash" with administrator privileges
+        """
+        return await withCheckedContinuation { continuation in
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+            task.arguments = ["-e", appleScript]
+            let errPipe = Pipe()
+            task.standardError = errPipe
+            task.terminationHandler = { process in
+                let err = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                if process.terminationStatus == 0 {
+                    continuation.resume(returning: nil)
+                } else {
+                    let msg = err.isEmpty ? "osascript exit \(process.terminationStatus)" : err
+                    continuation.resume(returning: msg)
+                }
+            }
+            do {
+                try task.run()
+            } catch {
+                continuation.resume(returning: error.localizedDescription)
+            }
+        }
+    }
+    
+    private static func bashSingleQuoted(_ s: String) -> String {
+        "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+   
+    private static func bashScriptHubPlistSync(
+        mailWorkerURL: String,
+        waBridgeURL: String,
+        autoUpdaterURL: String,
+        hubInstallBasePath: String
+    ) -> String {
+        let m = bashSingleQuoted(mailWorkerURL.trimmingCharacters(in: .whitespacesAndNewlines))
+        let w = bashSingleQuoted(waBridgeURL.trimmingCharacters(in: .whitespacesAndNewlines))
+        let a = bashSingleQuoted(autoUpdaterURL.trimmingCharacters(in: .whitespacesAndNewlines))
+        let h = bashSingleQuoted(hubInstallBasePath.trimmingCharacters(in: .whitespacesAndNewlines))
+        return #"""
+        set -e
+        PLIST='/Library/LaunchDaemons/com.perx.hub.plist'
+        pb_set() {
+          local k="$1"
+          local v="$2"
+          /usr/libexec/PlistBuddy -c "Set :EnvironmentVariables:$k $v" "$PLIST" 2>/dev/null || \
+          /usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:$k string $v" "$PLIST"
+        }
+        pb_del() {
+          local k="$1"
+          /usr/libexec/PlistBuddy -c "Delete :EnvironmentVariables:$k" "$PLIST" 2>/dev/null || true
+        }
+        pb_set PERX_EMAIL_WORKER_URL \(m)
+        pb_set PERX_WA_BRIDGE_URL \(w)
+        pb_set PERX_AUTO_UPDATER_URL \(a)
+        pb_set PERX_HUB_PATH \(h)
+        pb_del PERX_SYNC_AGENT_URL
+        exit 0
+        """#
+    }
+    
     private func restartViaAPI(url: String) async -> Bool {
         guard let restartURL = URL(string: url) else { return false }
         

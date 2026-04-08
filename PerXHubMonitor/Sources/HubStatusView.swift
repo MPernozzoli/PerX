@@ -600,6 +600,7 @@ struct SettingsView: View {
     @State private var supabaseServiceRoleKey: String = ""
     @State private var storageSharedSecret: String = ""
     @State private var secretsError: String?
+    @State private var plistSyncError: String?
     @State private var isSavingSecrets = false
     
     var body: some View {
@@ -609,6 +610,11 @@ struct SettingsView: View {
             
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
+                    Text("Gli URL worker sotto vengono scritti anche in /Library/LaunchDaemons/com.perx.hub.plist (password admin) così il daemon Hub li usa davvero.")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    
                     URLField(label: "PerX Hub", placeholder: "http://localhost:8080", text: $hubURL)
                     URLField(label: "Mail Worker", placeholder: "http://localhost:5001", text: $mailWorkerURL)
                     URLField(label: "WA Bridge", placeholder: "http://localhost:5002", text: $waBridgeURL)
@@ -638,22 +644,45 @@ struct SettingsView: View {
                             .font(.caption)
                             .foregroundColor(.red)
                     }
+                    if let err = plistSyncError {
+                        Text(err)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                    }
                     
                     HStack(spacing: 8) {
                         Button {
                             secretsError = nil
+                            plistSyncError = nil
                             isSavingSecrets = true
                             monitor.hubInstallBasePath = hubInstallBasePath
-                            do {
-                                try monitor.saveMonitorSecrets(
-                                    supabaseURL: supabaseURL,
-                                    serviceRoleKey: supabaseServiceRoleKey,
-                                    storageToken: storageSharedSecret
-                                )
-                            } catch {
-                                secretsError = error.localizedDescription
+                            monitor.hubURL = hubURL
+                            monitor.mailWorkerURL = mailWorkerURL
+                            monitor.waBridgeURL = waBridgeURL
+                            monitor.autoUpdaterURL = autoUpdaterURL
+                            monitor.vaultPath = vaultPath
+                            Task {
+                                if let pe = await monitor.syncHubLaunchDaemonPlistEnvironment(
+                                    mailWorkerURL: mailWorkerURL,
+                                    waBridgeURL: waBridgeURL,
+                                    autoUpdaterURL: autoUpdaterURL,
+                                    hubInstallBasePath: hubInstallBasePath
+                                ) {
+                                    plistSyncError = pe
+                                    isSavingSecrets = false
+                                    return
+                                }
+                                do {
+                                    try monitor.saveMonitorSecrets(
+                                        supabaseURL: supabaseURL,
+                                        serviceRoleKey: supabaseServiceRoleKey,
+                                        storageToken: storageSharedSecret
+                                    )
+                                } catch {
+                                    secretsError = error.localizedDescription
+                                }
+                                isSavingSecrets = false
                             }
-                            isSavingSecrets = false
                         } label: {
                             if isSavingSecrets {
                                 ProgressView().scaleEffect(0.7)
@@ -665,15 +694,32 @@ struct SettingsView: View {
                         
                         Button("Salva segreti e riavvia Hub") {
                             secretsError = nil
+                            plistSyncError = nil
                             isSavingSecrets = true
                             Task {
                                 monitor.hubInstallBasePath = hubInstallBasePath
+                                monitor.hubURL = hubURL
+                                monitor.mailWorkerURL = mailWorkerURL
+                                monitor.waBridgeURL = waBridgeURL
+                                monitor.autoUpdaterURL = autoUpdaterURL
+                                monitor.vaultPath = vaultPath
                                 do {
                                     try monitor.saveMonitorSecrets(
                                         supabaseURL: supabaseURL,
                                         serviceRoleKey: supabaseServiceRoleKey,
                                         storageToken: storageSharedSecret
                                     )
+                                    if let pe = await monitor.syncHubLaunchDaemonPlistEnvironment(
+                                        mailWorkerURL: mailWorkerURL,
+                                        waBridgeURL: waBridgeURL,
+                                        autoUpdaterURL: autoUpdaterURL,
+                                        hubInstallBasePath: hubInstallBasePath
+                                    ) {
+                                        plistSyncError = pe
+                                        isSavingSecrets = false
+                                        await monitor.refresh()
+                                        return
+                                    }
                                     let ok = await monitor.restartPerxHubDaemon()
                                     if !ok {
                                         secretsError = "Riavvio Hub annullato o fallito (verifica password amministratore)."
@@ -698,6 +744,7 @@ struct SettingsView: View {
                 Spacer()
                 
                 Button("Salva") {
+                    plistSyncError = nil
                     monitor.hubURL = hubURL
                     monitor.mailWorkerURL = mailWorkerURL
                     monitor.waBridgeURL = waBridgeURL
@@ -705,9 +752,18 @@ struct SettingsView: View {
                     monitor.vaultPath = vaultPath
                     monitor.hubInstallBasePath = hubInstallBasePath
                     Task {
+                        if let pe = await monitor.syncHubLaunchDaemonPlistEnvironment(
+                            mailWorkerURL: mailWorkerURL,
+                            waBridgeURL: waBridgeURL,
+                            autoUpdaterURL: autoUpdaterURL,
+                            hubInstallBasePath: hubInstallBasePath
+                        ) {
+                            plistSyncError = pe
+                            return
+                        }
                         await monitor.refresh()
+                        dismiss()
                     }
-                    dismiss()
                 }
                 .buttonStyle(.borderedProminent)
             }
