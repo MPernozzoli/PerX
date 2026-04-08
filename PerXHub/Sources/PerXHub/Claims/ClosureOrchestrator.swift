@@ -3,7 +3,7 @@ import PerXCore
 import SQLite
 
 /// Orchestratore per la chiusura e riapertura sinistri
-/// Gestisce il flusso: Client -> CK -> Hub -> Vault -> SyncAgent -> FS Legacy
+/// Gestisce il flusso: Client -> CK -> Hub -> Vault -> FS Legacy (ove applicabile)
 public actor ClosureOrchestrator {
     public static let shared = ClosureOrchestrator()
     

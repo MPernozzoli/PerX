@@ -13,7 +13,7 @@ Questa repo è strutturata come **monorepo** e contiene sia l’applicazione des
 - **`PerXCore/`**: moduli core riutilizzabili (modelli, logica condivisa).
 - **`PerXHub/`**: servizi di integrazione/sync verso fonti esterne (es. e‑mail, cloud).
 - **`PerXHubMonitor/`**: tool di monitoraggio e diagnostica per l’hub.
-- **`perx_sync_agent/`**: agent dedicato alla sincronizzazione/sorveglianza di directory e file locali.
+- **`perx_sync_agent/`**: storico agent Windows (non più usato nell’installazione Hub; cartella mantenuta solo per riferimento).
 - **`perx_chrome_extension/`**: estensione browser per integrazioni lato web.
 - **`backend/`**: backend FastAPI per servizi cloud (API sinistri, autenticazione, portale assicurati, ecc.).
 - **`portal-web/`**: nuova applicazione web dedicata agli assicurati per monitorare e gestire il proprio sinistro.
@@ -43,7 +43,7 @@ La configurazione dettagliata di schemi, bundle id, profili di provisioning e am
   Strumenti per monitorare e diagnosticare lo stato dell’hub, code di sync e job di integrazione.
 
 - **`perx_sync_agent/`**  
-  Agent per sincronizzazione locale di directory, monitoraggio file e instradamento verso PerX.
+  Non più integrato nell’Hub; codice di riferimento legacy.
 
 - **`perx_chrome_extension/`**  
   Estensione Chrome per catturare contenuti dal browser e collegarli alle pratiche PerX (dettagli nel relativo `README`).

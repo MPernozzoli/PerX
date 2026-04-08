@@ -40,17 +40,11 @@ struct HubConfiguration {
         ProcessInfo.processInfo.environment["PERX_REPO_PATH"] ?? "/Users/mpernozzoli/Documents/Attività Peritali/App/PerX BKP16 - fulminazioni Recupero"
     }
     
-    // Path installazione sync agent su Windows
-    static var syncAgentInstallPath: String {
-        ProcessInfo.processInfo.environment["PERX_SYNC_AGENT_PATH"] ?? "C:\\perx_sync_agent"
-    }
-    
     // MARK: - Worker Ports Configuration
     // Porte standard per tutti i servizi PerX:
     // - Hub:           8080
     // - Email Worker:  5001
     // - WA Bridge:     5002
-    // - SyncAgent:     8000 (Windows)
     // - AutoUpdater:   8084
     
     static var emailWorkerURL: String {
@@ -59,10 +53,6 @@ struct HubConfiguration {
     
     static var waBridgeURL: String {
         ProcessInfo.processInfo.environment["PERX_WA_BRIDGE_URL"] ?? "http://localhost:5002"
-    }
-    
-    static var syncAgentURL: String {
-        ProcessInfo.processInfo.environment["PERX_SYNC_AGENT_URL"] ?? "https://perx-sync-agent.tailca58be.ts.net"
     }
     
     static var autoUpdaterURL: String {

@@ -62,12 +62,6 @@ COMPONENTS = {
         "extensions": [".js", ".json"],
         "remote": False,
     },
-    "perx_sync_agent": {
-        "path": REPO_BASE / "perx_sync_agent",
-        "type": "python",
-        "extensions": [".py", ".json", ".txt"],
-        "remote": True,  # Remoto su Windows
-    },
 }
 
 # Stato del worker

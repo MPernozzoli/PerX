@@ -102,28 +102,6 @@ public actor JobService {
         return job
     }
     
-    /// Crea job di aggiornamento sync agent
-    public func createUpdateSyncAgentJob(changedFiles: [String], priority: Int = 10, tenantSlug: String = "default") async throws -> Job {
-        let sourceBasePath = HubConfiguration.repoBasePath
-        let targetInstallPath = HubConfiguration.syncAgentInstallPath
-        
-        let job = Job(
-            tenantSlug: tenantSlug,
-            type: .updateSyncAgent,
-            priority: priority,
-            payload: .updateSyncAgent(UpdateSyncAgentPayload(
-                changedFiles: changedFiles,
-                sourceBasePath: sourceBasePath,
-                targetInstallPath: targetInstallPath
-            ))
-        )
-        
-        try await DatabaseManager.shared.saveJob(job)
-        print("[JobService] Created update sync agent job: \(job.id) with \(changedFiles.count) files")
-        
-        return job
-    }
-    
     // MARK: - Query Jobs
     
     /// Ottiene job pendenti

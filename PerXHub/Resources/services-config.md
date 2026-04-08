@@ -8,7 +8,6 @@
 | Email Worker    | 5001  | HTTP       | Mac Mini        | (locale)                                    |
 | WA Bridge       | 5002  | HTTP       | Mac Mini        | (locale)                                    |
 | AutoUpdater     | 8084  | HTTP       | Mac Mini        | (locale)                                    |
-| SyncAgent       | 8000  | HTTPS      | Windows PC      | https://perx-sync-agent.tailca58be.ts.net   |
 
 ## Struttura Directory (/opt/perx-hub)
 
@@ -45,9 +44,7 @@ PERX_HUB_PORT=8080
 PERX_EMAIL_WORKER_URL=http://localhost:5001
 PERX_WA_BRIDGE_URL=http://localhost:5002
 PERX_AUTO_UPDATER_URL=http://localhost:8084
-PERX_SYNC_AGENT_URL=https://perx-sync-agent.tailca58be.ts.net
 PERX_REPO_PATH=/opt/perx-hub/repo
-PERX_SYNC_AGENT_PATH=C:\perx_sync_agent
 SUPABASE_URL=https://your-project-ref.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=replace-with-service-role-key
 ```

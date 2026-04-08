@@ -111,8 +111,6 @@ struct HubStatusView: View {
                     },
                     onUpdate: {
                         Task {
-                            // Per servizi locali: riavvia dopo ack
-                            // Per sync agent: i file sono già stati sincronizzati
                             if let componentName = monitor.componentName(for: service.id) {
                                 await monitor.acknowledgeUpdate(for: componentName)
                             }
@@ -595,7 +593,6 @@ struct SettingsView: View {
     @State private var hubURL: String = ""
     @State private var mailWorkerURL: String = ""
     @State private var waBridgeURL: String = ""
-    @State private var syncAgentURL: String = ""
     @State private var autoUpdaterURL: String = ""
     @State private var vaultPath: String = ""
     
@@ -609,7 +606,6 @@ struct SettingsView: View {
                     URLField(label: "PerX Hub", placeholder: "http://localhost:8080", text: $hubURL)
                     URLField(label: "Mail Worker", placeholder: "http://localhost:5001", text: $mailWorkerURL)
                     URLField(label: "WA Bridge", placeholder: "http://localhost:5002", text: $waBridgeURL)
-                    URLField(label: "SyncAgent Windows", placeholder: "http://192.168.x.x:8000", text: $syncAgentURL)
                     URLField(label: "AutoUpdater", placeholder: "http://localhost:8084", text: $autoUpdaterURL)
                     
                     Divider()
@@ -629,7 +625,6 @@ struct SettingsView: View {
                     monitor.hubURL = hubURL
                     monitor.mailWorkerURL = mailWorkerURL
                     monitor.waBridgeURL = waBridgeURL
-                    monitor.syncAgentURL = syncAgentURL
                     monitor.autoUpdaterURL = autoUpdaterURL
                     monitor.vaultPath = vaultPath
                     Task {
@@ -641,12 +636,11 @@ struct SettingsView: View {
             }
         }
         .padding()
-        .frame(width: 350, height: 380)
+        .frame(width: 350, height: 340)
         .onAppear {
             hubURL = monitor.hubURL
             mailWorkerURL = monitor.mailWorkerURL
             waBridgeURL = monitor.waBridgeURL
-            syncAgentURL = monitor.syncAgentURL
             autoUpdaterURL = monitor.autoUpdaterURL
             vaultPath = monitor.vaultPath
         }

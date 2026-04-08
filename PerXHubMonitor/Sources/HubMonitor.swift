@@ -47,11 +47,6 @@ class HubMonitor: ObservableObject {
         set { UserDefaults.standard.set(newValue, forKey: "waBridgeURL") }
     }
     
-    var syncAgentURL: String {
-        get { UserDefaults.standard.string(forKey: "syncAgentURL") ?? "https://perx-sync-agent.tailca58be.ts.net" }
-        set { UserDefaults.standard.set(newValue, forKey: "syncAgentURL") }
-    }
-    
     var autoUpdaterURL: String {
         get { UserDefaults.standard.string(forKey: "autoUpdaterURL") ?? "http://localhost:8084" }
         set { UserDefaults.standard.set(newValue, forKey: "autoUpdaterURL") }
@@ -214,17 +209,6 @@ class HubMonitor: ObservableObject {
             newServices.append(waStatus)
         }
         
-        // SyncAgent Windows
-        if !syncAgentURL.isEmpty {
-            let syncStatus = await checkServiceHealth(
-                id: "sync",
-                name: "SyncAgent Win",
-                url: syncAgentURL,
-                restartMethod: .api("\(syncAgentURL)/restart")
-            )
-            newServices.append(syncStatus)
-        }
-        
         // AutoUpdater
         if !autoUpdaterURL.isEmpty {
             let updaterStatus = await checkServiceHealth(
@@ -289,7 +273,6 @@ class HubMonitor: ObservableObject {
             "hub": "perx_hub",
             "mail": "perx_email_worker",
             "wa": "perx_wa_bridge",
-            "sync": "perx_sync_agent",
             "updater": "perx_autoupdater"
         ]
         
@@ -303,7 +286,6 @@ class HubMonitor: ObservableObject {
             "hub": "perx_hub",
             "mail": "perx_email_worker",
             "wa": "perx_wa_bridge",
-            "sync": "perx_sync_agent",
             "updater": "perx_autoupdater"
         ]
         return componentMap[serviceId]

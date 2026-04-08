@@ -143,7 +143,7 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
         return .ok
     }
 
-    internalStorage.post("files", "upload", body: .collect(maxSize: "100mb")) { req async throws -> InternalStorageResponse in
+    internalStorage.on(.POST, "files", "upload", body: .collect(maxSize: "100mb")) { req async throws -> InternalStorageResponse in
         try requireStorageAccess(req)
         let payload = try req.content.decode(InternalUploadRequest.self)
         guard let data = Data(base64Encoded: payload.data) else {
@@ -238,13 +238,12 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
         let db = try await DatabaseManager.shared.db()
         let tenantSlug = req.perxTenantSlug()
         
-        // Upsert: insert or update last_seen
-        try db.run(DatabaseSchema.connectedClients.upsert(
+        // INSERT OR REPLACE sulla chiave primaria (tenant_slug, user_id)
+        try db.run(DatabaseSchema.connectedClients.insert(or: .replace,
             DatabaseSchema.ConnectedClientsColumns.tenantSlug <- tenantSlug,
             DatabaseSchema.ConnectedClientsColumns.userId <- request.user_id,
             DatabaseSchema.ConnectedClientsColumns.lastSeen <- Date().timeIntervalSince1970,
-            DatabaseSchema.ConnectedClientsColumns.clientInfo <- request.client_info,
-            onConflictOf: DatabaseSchema.ConnectedClientsColumns.tenantSlug, DatabaseSchema.ConnectedClientsColumns.userId
+            DatabaseSchema.ConnectedClientsColumns.clientInfo <- request.client_info
         ))
         
         print("[Hub] Heartbeat from \(request.user_id) tenant=\(tenantSlug)")
@@ -605,7 +604,7 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
         return JobDTO(from: job)
     }
     
-    // Upload file da job (per Windows Agent)
+    // Upload file da job (worker / client che usa la coda job)
     jobs.on(.POST, ":id", "upload", body: .collect(maxSize: "100mb")) { req async throws -> VaultFileDTO in
         guard let jobId = req.parameters.get("id") else {
             throw Abort(.badRequest, reason: "Missing job id")
@@ -1330,16 +1329,6 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
         )
         
         print("[Updates] 🔄 Update notified for \(request.component): \(request.changed_files.count) files")
-        
-        // Se è sync_agent (remoto), crea job per trasferire i file
-        if request.component == "perx_sync_agent" {
-            // Crea job per sincronizzare i file aggiornati verso Windows
-            _ = try await JobService.shared.createUpdateSyncAgentJob(
-                changedFiles: request.changed_files
-            )
-            print("[Updates] Created sync job for sync_agent files")
-        }
-        
         return .ok
     }
     
@@ -1359,44 +1348,6 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
         await UpdatesManager.shared.acknowledgeUpdate(component: request.component)
         
         print("[Updates] ✅ Update acknowledged for \(request.component)")
-        return .ok
-    }
-    
-    // Scarica file di aggiornamento (per SyncAgent)
-    internalRoutes.get("updates", "file") { req async throws -> Response in
-        guard let filePath = req.query[String.self, at: "path"] else {
-            throw Abort(.badRequest, reason: "Missing path parameter")
-        }
-        
-        let repoBase = HubConfiguration.repoBasePath
-        let fullPath = "\(repoBase)/perx_sync_agent/\(filePath)"
-        
-        guard FileManager.default.fileExists(atPath: fullPath) else {
-            throw Abort(.notFound, reason: "File not found")
-        }
-        
-        guard let data = FileManager.default.contents(atPath: fullPath) else {
-            throw Abort(.internalServerError, reason: "Cannot read file")
-        }
-        
-        var headers = HTTPHeaders()
-        headers.add(name: .contentType, value: "application/octet-stream")
-        headers.add(name: .contentDisposition, value: "attachment; filename=\"\(URL(fileURLWithPath: fullPath).lastPathComponent)\"")
-        
-        return Response(status: .ok, headers: headers, body: .init(data: data))
-    }
-    
-    // Notifica che SyncAgent ha ricevuto i file (pronto per restart)
-    internalRoutes.post("updates", "sync-agent-ready") { req async throws -> HTTPStatus in
-        struct SyncAgentReadyRequest: Content {
-            let files_updated: Int
-        }
-        
-        let request = try req.content.decode(SyncAgentReadyRequest.self)
-        
-        await UpdatesManager.shared.markSyncAgentFilesTransferred()
-        
-        print("[Updates] ✅ SyncAgent received \(request.files_updated) files, ready for restart")
         return .ok
     }
     
@@ -2608,97 +2559,6 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
         return try await HubAIManager.shared.extractAssignmentInfo(body: request.body)
     }
     
-    // MARK: - SyncAgent Routes
-    
-    let syncagent = app.grouped("syncagent")
-    
-    // Lista cartelle attive da monitorare
-    syncagent.get("active-folders") { req async throws -> [ActiveFolderDTO] in
-        let db = try await DatabaseManager.shared.db()
-        
-        // Cartelle con stato attivo (non chiuso)
-        let query = DatabaseSchema.sinistri
-            .filter(DatabaseSchema.SinistriColumns.stato != StatoSinistro.chiusa.descrizione)
-            .filter(DatabaseSchema.SinistriColumns.legacyPath != nil)
-        
-        var folders: [ActiveFolderDTO] = []
-        for row in try db.prepare(query) {
-            let folder = ActiveFolderDTO(
-                sinistroRef: row[DatabaseSchema.SinistriColumns.riferimento],
-                legacyPath: row[DatabaseSchema.SinistriColumns.legacyPath] ?? "",
-                lastSyncAt: row[DatabaseSchema.SinistriColumns.lastModifiedAt]
-            )
-            folders.append(folder)
-        }
-        
-        return folders
-    }
-    
-    // Riceve risultato scansione dal SyncAgent
-    syncagent.post("scan-result") { req async throws -> ScanResultResponseDTO in
-        struct ScanResultRequest: Content {
-            let sinistroRef: String
-            let scannedAt: String
-            let files: [ScannedFileDTO]
-        }
-        
-        struct ScannedFileDTO: Content {
-            let path: String
-            let relativePath: String
-            let size: Int64
-            let modifiedAt: String
-        }
-        
-        let request = try req.content.decode(ScanResultRequest.self)
-        
-        // Confronta con manifest esistente
-        let changes = try await ManifestService.shared.compareWithScan(
-            sinistroRef: request.sinistroRef,
-            files: request.files.map {
-                ManifestService.ScannedFile(
-                    path: $0.path,
-                    relativePath: $0.relativePath,
-                    size: $0.size,
-                    modifiedAt: ISO8601DateFormatter().date(from: $0.modifiedAt)
-                )
-            }
-        )
-        
-        print("[SyncAgent] Scan result for \(request.sinistroRef): \(changes.newFiles.count) new, \(changes.modifiedFiles.count) modified, \(changes.deletedFiles.count) deleted")
-        
-        return ScanResultResponseDTO(
-            changes: changes.newFiles.count + changes.modifiedFiles.count + changes.deletedFiles.count,
-            newFiles: changes.newFiles.count,
-            modifiedFiles: changes.modifiedFiles.count,
-            deletedFiles: changes.deletedFiles.count
-        )
-    }
-    
-    // Richiedi scan on-demand
-    syncagent.post("request-scan", ":ref") { req async throws -> HTTPStatus in
-        guard let ref = req.parameters.get("ref") else {
-            throw Abort(.badRequest, reason: "Missing sinistro ref")
-        }
-        
-        // Ottieni legacy path dal sinistro
-        let db = try await DatabaseManager.shared.db()
-        let query = DatabaseSchema.sinistri.filter(DatabaseSchema.SinistriColumns.riferimento == ref)
-        
-        guard let row = try db.pluck(query),
-              let legacyPath = row[DatabaseSchema.SinistriColumns.legacyPath] else {
-            throw Abort(.notFound, reason: "Sinistro not found or no legacy path")
-        }
-        
-        // Crea job di scan
-        _ = try await JobService.shared.createScanLegacyJob(
-            sinistroRef: ref,
-            legacyPath: legacyPath,
-            priority: 5
-        )
-        
-        return .accepted
-    }
-    
     // MARK: - Debug Routes (solo per development)
     
     #if DEBUG
@@ -3073,21 +2933,6 @@ struct JFishDiarioResponseEntry: Content {
     let tipo: String?
     let nota: String?
     let autore: String?
-}
-
-// MARK: - SyncAgent DTOs
-
-struct ActiveFolderDTO: Content {
-    let sinistroRef: String
-    let legacyPath: String
-    let lastSyncAt: Double
-}
-
-struct ScanResultResponseDTO: Content {
-    let changes: Int
-    let newFiles: Int
-    let modifiedFiles: Int
-    let deletedFiles: Int
 }
 
 // MARK: - Email Send DTO

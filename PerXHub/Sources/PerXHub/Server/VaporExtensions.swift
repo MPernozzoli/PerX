@@ -31,6 +31,12 @@ extension EmailProcessedResponse: @retroactive Content {}
 extension SinistroDTO: @retroactive Content {}
 extension StateChangeResponse: @retroactive Content {}
 
+extension AssignmentPlannerSettingsDTO: @retroactive Content {}
+extension AssignmentMemberSettingsDTO: @retroactive Content {}
+extension AssignmentPlanDTO: @retroactive Content {}
+extension AssignmentPlanEntryDTO: @retroactive Content {}
+extension AssignmentPlanRecomputeRequest: @retroactive Content {}
+
 // MARK: - Mailbox DTO
 
 public struct MailboxDTO: Content, Codable, Sendable {

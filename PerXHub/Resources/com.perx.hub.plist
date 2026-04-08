@@ -51,8 +51,6 @@
         <string>http://localhost:5002</string>
         <key>PERX_AUTO_UPDATER_URL</key>
         <string>http://localhost:8084</string>
-        <key>PERX_SYNC_AGENT_URL</key>
-        <string>https://perx-sync-agent.tailca58be.ts.net</string>
     </dict>
     
     <!-- Esegui come root per accesso completo (daemon) -->

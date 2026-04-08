@@ -119,7 +119,7 @@ public actor AssignmentPlannerService {
                 let nextRatio = (projection.totalWeight + claim.complexity) / max(projection.capacityWeight, 1)
                 guard nextRatio <= settings.maxLoadRatioPerExpert else { return nil }
 
-                var score = nextRatio + projection.dayWeights[day]
+                var score = nextRatio + (projection.dayWeights[day] ?? 0)
                 if projection.matchesAgency(claim.agencyCode) { score -= 0.35 }
                 if projection.matchesPolicy(claim.policyNumber) { score -= 0.45 }
                 if projection.matchesInsured(claim.insuredName) { score -= 0.35 }
