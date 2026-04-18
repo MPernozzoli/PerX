@@ -111,8 +111,6 @@ struct HubStatusView: View {
                     },
                     onUpdate: {
                         Task {
-                            // Per servizi locali: riavvia dopo ack
-                            // Per sync agent: i file sono già stati sincronizzati
                             if let componentName = monitor.componentName(for: service.id) {
                                 await monitor.acknowledgeUpdate(for: componentName)
                             }
@@ -595,9 +593,15 @@ struct SettingsView: View {
     @State private var hubURL: String = ""
     @State private var mailWorkerURL: String = ""
     @State private var waBridgeURL: String = ""
-    @State private var syncAgentURL: String = ""
     @State private var autoUpdaterURL: String = ""
     @State private var vaultPath: String = ""
+    @State private var hubInstallBasePath: String = ""
+    @State private var supabaseURL: String = ""
+    @State private var supabaseServiceRoleKey: String = ""
+    @State private var storageSharedSecret: String = ""
+    @State private var secretsError: String?
+    @State private var plistSyncError: String?
+    @State private var isSavingSecrets = false
     
     var body: some View {
         VStack(spacing: 16) {
@@ -606,15 +610,129 @@ struct SettingsView: View {
             
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
+                    Text("Gli URL worker sotto vengono scritti anche in /Library/LaunchDaemons/com.perx.hub.plist (password admin) così il daemon Hub li usa davvero.")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    
                     URLField(label: "PerX Hub", placeholder: "http://localhost:8080", text: $hubURL)
                     URLField(label: "Mail Worker", placeholder: "http://localhost:5001", text: $mailWorkerURL)
                     URLField(label: "WA Bridge", placeholder: "http://localhost:5002", text: $waBridgeURL)
-                    URLField(label: "SyncAgent Windows", placeholder: "http://192.168.x.x:8000", text: $syncAgentURL)
                     URLField(label: "AutoUpdater", placeholder: "http://localhost:8084", text: $autoUpdaterURL)
                     
                     Divider()
                     
                     PathField(label: "Vault Sinistri", placeholder: "/opt/perx-hub/vault/sinistri", text: $vaultPath)
+                    PathField(label: "Base install Hub (Mini)", placeholder: "/opt/perx-hub", text: $hubInstallBasePath)
+                    
+                    Divider()
+                    
+                    Text("Segreti Hub (file su disco)")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    Text("Salvati in data/monitor-secrets.json. Priorità sul plist: dopo Salva riavvia l’Hub.")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    
+                    URLField(label: "SUPABASE_URL", placeholder: "https://xxx.supabase.co", text: $supabaseURL)
+                    SecureSettingField(label: "SUPABASE_SERVICE_ROLE_KEY (o secret API)", text: $supabaseServiceRoleKey)
+                    SecureSettingField(label: "PERX_STORAGE_SHARED_SECRET", text: $storageSharedSecret)
+                    
+                    if let err = secretsError {
+                        Text(err)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                    }
+                    if let err = plistSyncError {
+                        Text(err)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                    }
+                    
+                    HStack(spacing: 8) {
+                        Button {
+                            secretsError = nil
+                            plistSyncError = nil
+                            isSavingSecrets = true
+                            monitor.hubInstallBasePath = hubInstallBasePath
+                            monitor.hubURL = hubURL
+                            monitor.mailWorkerURL = mailWorkerURL
+                            monitor.waBridgeURL = waBridgeURL
+                            monitor.autoUpdaterURL = autoUpdaterURL
+                            monitor.vaultPath = vaultPath
+                            Task {
+                                if let pe = await monitor.syncHubLaunchDaemonPlistEnvironment(
+                                    mailWorkerURL: mailWorkerURL,
+                                    waBridgeURL: waBridgeURL,
+                                    autoUpdaterURL: autoUpdaterURL,
+                                    hubInstallBasePath: hubInstallBasePath
+                                ) {
+                                    plistSyncError = pe
+                                    isSavingSecrets = false
+                                    return
+                                }
+                                do {
+                                    try monitor.saveMonitorSecrets(
+                                        supabaseURL: supabaseURL,
+                                        serviceRoleKey: supabaseServiceRoleKey,
+                                        storageToken: storageSharedSecret
+                                    )
+                                } catch {
+                                    secretsError = error.localizedDescription
+                                }
+                                isSavingSecrets = false
+                            }
+                        } label: {
+                            if isSavingSecrets {
+                                ProgressView().scaleEffect(0.7)
+                            } else {
+                                Text("Salva segreti")
+                            }
+                        }
+                        .disabled(isSavingSecrets)
+                        
+                        Button("Salva segreti e riavvia Hub") {
+                            secretsError = nil
+                            plistSyncError = nil
+                            isSavingSecrets = true
+                            Task {
+                                monitor.hubInstallBasePath = hubInstallBasePath
+                                monitor.hubURL = hubURL
+                                monitor.mailWorkerURL = mailWorkerURL
+                                monitor.waBridgeURL = waBridgeURL
+                                monitor.autoUpdaterURL = autoUpdaterURL
+                                monitor.vaultPath = vaultPath
+                                do {
+                                    try monitor.saveMonitorSecrets(
+                                        supabaseURL: supabaseURL,
+                                        serviceRoleKey: supabaseServiceRoleKey,
+                                        storageToken: storageSharedSecret
+                                    )
+                                    if let pe = await monitor.syncHubLaunchDaemonPlistEnvironment(
+                                        mailWorkerURL: mailWorkerURL,
+                                        waBridgeURL: waBridgeURL,
+                                        autoUpdaterURL: autoUpdaterURL,
+                                        hubInstallBasePath: hubInstallBasePath
+                                    ) {
+                                        plistSyncError = pe
+                                        isSavingSecrets = false
+                                        await monitor.refresh()
+                                        return
+                                    }
+                                    let ok = await monitor.restartPerxHubDaemon()
+                                    if !ok {
+                                        secretsError = "Riavvio Hub annullato o fallito (verifica password amministratore)."
+                                    }
+                                } catch {
+                                    secretsError = error.localizedDescription
+                                }
+                                isSavingSecrets = false
+                                await monitor.refresh()
+                            }
+                        }
+                        .disabled(isSavingSecrets)
+                    }
                 }
             }
             
@@ -626,29 +744,59 @@ struct SettingsView: View {
                 Spacer()
                 
                 Button("Salva") {
+                    plistSyncError = nil
                     monitor.hubURL = hubURL
                     monitor.mailWorkerURL = mailWorkerURL
                     monitor.waBridgeURL = waBridgeURL
-                    monitor.syncAgentURL = syncAgentURL
                     monitor.autoUpdaterURL = autoUpdaterURL
                     monitor.vaultPath = vaultPath
+                    monitor.hubInstallBasePath = hubInstallBasePath
                     Task {
+                        if let pe = await monitor.syncHubLaunchDaemonPlistEnvironment(
+                            mailWorkerURL: mailWorkerURL,
+                            waBridgeURL: waBridgeURL,
+                            autoUpdaterURL: autoUpdaterURL,
+                            hubInstallBasePath: hubInstallBasePath
+                        ) {
+                            plistSyncError = pe
+                            return
+                        }
                         await monitor.refresh()
+                        dismiss()
                     }
-                    dismiss()
                 }
                 .buttonStyle(.borderedProminent)
             }
         }
         .padding()
-        .frame(width: 350, height: 380)
+        .frame(width: 400, height: 560)
         .onAppear {
             hubURL = monitor.hubURL
             mailWorkerURL = monitor.mailWorkerURL
             waBridgeURL = monitor.waBridgeURL
-            syncAgentURL = monitor.syncAgentURL
             autoUpdaterURL = monitor.autoUpdaterURL
             vaultPath = monitor.vaultPath
+            hubInstallBasePath = monitor.hubInstallBasePath
+            let s = monitor.loadMonitorSecretsForEditor()
+            supabaseURL = s.supabaseURL
+            supabaseServiceRoleKey = s.serviceRoleKey
+            storageSharedSecret = s.storageToken
+        }
+    }
+}
+
+private struct SecureSettingField: View {
+    let label: String
+    @Binding var text: String
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.caption)
+                .foregroundColor(.secondary)
+            SecureField("opzionale", text: $text)
+                .textFieldStyle(.roundedBorder)
+                .font(.caption)
         }
     }
 }

@@ -29,7 +29,7 @@
         <key>SCAN_INTERVAL</key>
         <string>60</string>
         <key>REPO_BASE</key>
-        <string>/Users/mpernozzoli/PerX HUB</string>
+        <string>/opt/perx-hub/repo</string>
         <key>PYTHONUNBUFFERED</key>
         <string>1</string>
     </dict>

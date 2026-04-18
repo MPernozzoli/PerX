@@ -6,7 +6,7 @@ Mac Mini Hub - Single Source of Truth per PerX.
 
 PerXHub è un daemon Swift che espone API HTTP REST per:
 - **Vault**: Storage centralizzato file sinistri
-- **Jobs**: Job queue per Windows Agent (import/export)
+- **Jobs**: Coda job (import/export/scan verso percorsi legacy ove configurati)
 - **Health**: Monitoring e status
 
 ## Requisiti
@@ -144,7 +144,7 @@ Variabili d'ambiente:
 
 ## Convenzione ID Utente Univoco
 
-L'Hub utilizza un **ID utente univoco** (`user_id`) per identificare gli utenti in tutti i servizi: Email, WhatsApp e File Sync.
+L'Hub utilizza un **ID utente univoco** (`user_id`) per identificare gli utenti nei servizi: Email, WhatsApp e client collegati all'Hub.
 
 ### Formato
 
@@ -159,14 +159,13 @@ user_id = local-part dell'email
 | Servizio | Campo | Esempio |
 |----------|-------|---------|
 | **Email** | `account_id` | `massimo.pernozzoli` |
-| **File Sync (perx_sync_agent)** | `user_id` | `massimo.pernozzoli` |
+| **Client / sync via Hub** | `user_id` | `massimo.pernozzoli` |
 | **Heartbeat** | `user_id` | `massimo.pernozzoli` |
 
 ### Implementazione
 
 - **Client PerX**: usa `currentUserId()` = local-part dell'email autenticata
 - **Email Worker**: configura `user_id` = local-part in `accounts.json`
-- **Sync Agent**: riceve `user_id` in ogni richiesta API
 
 ### Heartbeat e Monitoraggio
 

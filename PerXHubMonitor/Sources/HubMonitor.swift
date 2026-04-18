@@ -47,11 +47,6 @@ class HubMonitor: ObservableObject {
         set { UserDefaults.standard.set(newValue, forKey: "waBridgeURL") }
     }
     
-    var syncAgentURL: String {
-        get { UserDefaults.standard.string(forKey: "syncAgentURL") ?? "https://perx-sync-agent.tailca58be.ts.net" }
-        set { UserDefaults.standard.set(newValue, forKey: "syncAgentURL") }
-    }
-    
     var autoUpdaterURL: String {
         get { UserDefaults.standard.string(forKey: "autoUpdaterURL") ?? "http://localhost:8084" }
         set { UserDefaults.standard.set(newValue, forKey: "autoUpdaterURL") }
@@ -62,7 +57,64 @@ class HubMonitor: ObservableObject {
         set { UserDefaults.standard.set(newValue, forKey: "vaultPath") }
     }
     
+    /// Directory installazione Hub sul Mini (per `data/monitor-secrets.json`)
+    var hubInstallBasePath: String {
+        get { UserDefaults.standard.string(forKey: "hubInstallBasePath") ?? "/opt/perx-hub" }
+        set { UserDefaults.standard.set(newValue, forKey: "hubInstallBasePath") }
+    }
+    
     var pollingInterval: TimeInterval = 30 // secondi
+    
+    // MARK: - Segreti Hub (file scritto per il daemon)
+    
+    var monitorSecretsFilePath: String {
+        "\(hubInstallBasePath)/data/monitor-secrets.json"
+    }
+    
+    /// Legge `monitor-secrets.json` se presente (per riempire le impostazioni).
+    func loadMonitorSecretsForEditor() -> (supabaseURL: String, serviceRoleKey: String, storageToken: String) {
+        let path = monitorSecretsFilePath
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+              let decoded = try? JSONDecoder().decode(HubMonitorRuntimeSecrets.self, from: data) else {
+            return ("", "", "")
+        }
+        return (
+            decoded.supabaseURL ?? "",
+            decoded.supabaseServiceRoleKey ?? "",
+            decoded.storageSharedSecret ?? ""
+        )
+    }
+    
+    /// Salva i segreti sul disco; il daemon Hub va riavviato per applicarli.
+    func saveMonitorSecrets(supabaseURL: String, serviceRoleKey: String, storageToken: String) throws {
+        let path = monitorSecretsFilePath
+        let dir = URL(fileURLWithPath: path).deletingLastPathComponent().path
+        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        
+        let url = supabaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let role = serviceRoleKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let tok = storageToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        let payload = HubMonitorRuntimeSecrets(
+            supabaseURL: url.isEmpty ? nil : url,
+            supabaseServiceRoleKey: role.isEmpty ? nil : role,
+            storageSharedSecret: tok.isEmpty ? nil : tok
+        )
+        
+        if payload.supabaseURL == nil, payload.supabaseServiceRoleKey == nil, payload.storageSharedSecret == nil {
+            if FileManager.default.fileExists(atPath: path) {
+                try FileManager.default.removeItem(atPath: path)
+            }
+            return
+        }
+        
+        let data = try JSONEncoder().encode(payload)
+        try data.write(to: URL(fileURLWithPath: path), options: .atomic)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: 0o600)],
+            ofItemAtPath: path
+        )
+    }
     
     // MARK: - Internal
     
@@ -214,17 +266,6 @@ class HubMonitor: ObservableObject {
             newServices.append(waStatus)
         }
         
-        // SyncAgent Windows
-        if !syncAgentURL.isEmpty {
-            let syncStatus = await checkServiceHealth(
-                id: "sync",
-                name: "SyncAgent Win",
-                url: syncAgentURL,
-                restartMethod: .api("\(syncAgentURL)/restart")
-            )
-            newServices.append(syncStatus)
-        }
-        
         // AutoUpdater
         if !autoUpdaterURL.isEmpty {
             let updaterStatus = await checkServiceHealth(
@@ -289,7 +330,6 @@ class HubMonitor: ObservableObject {
             "hub": "perx_hub",
             "mail": "perx_email_worker",
             "wa": "perx_wa_bridge",
-            "sync": "perx_sync_agent",
             "updater": "perx_autoupdater"
         ]
         
@@ -303,7 +343,6 @@ class HubMonitor: ObservableObject {
             "hub": "perx_hub",
             "mail": "perx_email_worker",
             "wa": "perx_wa_bridge",
-            "sync": "perx_sync_agent",
             "updater": "perx_autoupdater"
         ]
         return componentMap[serviceId]
@@ -355,6 +394,92 @@ class HubMonitor: ObservableObject {
         case .api(let url):
             return await restartViaAPI(url: url)
         }
+    }
+    
+    /// Riavvio daemon Hub (`com.perx.hub`); compare dialog password amministratore.
+    @MainActor
+    func restartPerxHubDaemon() async -> Bool {
+        await launchctl.restart(identifier: "com.perx.hub")
+    }
+    
+    /// Allinea `EnvironmentVariables` di `/Library/LaunchDaemons/com.perx.hub.plist` a ciò che salvi nel Monitor
+    /// (altrimenti l’Hub continua a leggere il plist vecchio). Rimuove chiavi obsolete tipo `PERX_SYNC_AGENT_URL`.
+    @MainActor
+    func syncHubLaunchDaemonPlistEnvironment(
+        mailWorkerURL: String,
+        waBridgeURL: String,
+        autoUpdaterURL: String,
+        hubInstallBasePath: String
+    ) async -> String? {
+        let scriptBody = Self.bashScriptHubPlistSync(
+            mailWorkerURL: mailWorkerURL,
+            waBridgeURL: waBridgeURL,
+            autoUpdaterURL: autoUpdaterURL,
+            hubInstallBasePath: hubInstallBasePath
+        )
+        let b64 = Data(scriptBody.utf8).base64EncodedString()
+        let appleScript = """
+        do shell script "echo \(b64) | base64 -d | /bin/bash" with administrator privileges
+        """
+        return await withCheckedContinuation { continuation in
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+            task.arguments = ["-e", appleScript]
+            let errPipe = Pipe()
+            task.standardError = errPipe
+            task.terminationHandler = { process in
+                let err = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                if process.terminationStatus == 0 {
+                    continuation.resume(returning: nil)
+                } else {
+                    let msg = err.isEmpty ? "osascript exit \(process.terminationStatus)" : err
+                    continuation.resume(returning: msg)
+                }
+            }
+            do {
+                try task.run()
+            } catch {
+                continuation.resume(returning: error.localizedDescription)
+            }
+        }
+    }
+    
+    private static func bashSingleQuoted(_ s: String) -> String {
+        "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+   
+    private static func bashScriptHubPlistSync(
+        mailWorkerURL: String,
+        waBridgeURL: String,
+        autoUpdaterURL: String,
+        hubInstallBasePath: String
+    ) -> String {
+        let m = bashSingleQuoted(mailWorkerURL.trimmingCharacters(in: .whitespacesAndNewlines))
+        let w = bashSingleQuoted(waBridgeURL.trimmingCharacters(in: .whitespacesAndNewlines))
+        let a = bashSingleQuoted(autoUpdaterURL.trimmingCharacters(in: .whitespacesAndNewlines))
+        let h = bashSingleQuoted(hubInstallBasePath.trimmingCharacters(in: .whitespacesAndNewlines))
+        // In raw `#"""` le interpolazioni sono `\#(...)`; `\\(...)` finirebbe letterale in bash e rompe con `)`.
+        return #"""
+        set -e
+        PLIST='/Library/LaunchDaemons/com.perx.hub.plist'
+        pb_set() {
+          local k="$1"
+          local v="$2"
+          /usr/libexec/PlistBuddy -c "Set :EnvironmentVariables:$k $v" "$PLIST" 2>/dev/null || \
+          /usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:$k string $v" "$PLIST"
+        }
+        pb_del() {
+          local k="$1"
+          /usr/libexec/PlistBuddy -c "Delete :EnvironmentVariables:$k" "$PLIST" 2>/dev/null || true
+        }
+        pb_set PERX_EMAIL_WORKER_URL \#(m)
+        pb_set PERX_WA_BRIDGE_URL \#(w)
+        pb_set PERX_AUTO_UPDATER_URL \#(a)
+        pb_set PERX_HUB_PATH \#(h)
+        pb_del PERX_SYNC_AGENT_URL
+        exit 0
+        """#
     }
     
     private func restartViaAPI(url: String) async -> Bool {
@@ -589,14 +714,15 @@ struct ServiceHealthResponse: Codable {
 // MARK: - Launchctl Manager
 
 class LaunchctlManager {
+    /// I LaunchDaemon PerX sono nel dominio `system/`; serve `sudo` → AppleScript chiede password admin.
     func restart(identifier: String) async -> Bool {
-        let uid = getuid()
-        let command = "launchctl kickstart -k gui/\(uid)/\(identifier)"
+        let escaped = identifier.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        let script = "do shell script \"launchctl kickstart -k system/\(escaped)\" with administrator privileges"
         
         return await withCheckedContinuation { continuation in
             let task = Process()
-            task.launchPath = "/bin/sh"
-            task.arguments = ["-c", command]
+            task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+            task.arguments = ["-e", script]
             
             task.terminationHandler = { process in
                 continuation.resume(returning: process.terminationStatus == 0)
@@ -605,9 +731,17 @@ class LaunchctlManager {
             do {
                 try task.run()
             } catch {
-                print("[Launchctl] Failed to run: \(error)")
+                print("[Launchctl] Failed to run osascript: \(error)")
                 continuation.resume(returning: false)
             }
         }
     }
+}
+
+// MARK: - Stesso JSON di PerXHub `monitor-secrets.json`
+
+private struct HubMonitorRuntimeSecrets: Codable {
+    var supabaseURL: String?
+    var supabaseServiceRoleKey: String?
+    var storageSharedSecret: String?
 }

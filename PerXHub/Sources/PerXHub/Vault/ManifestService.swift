@@ -158,64 +158,6 @@ public actor ManifestService {
         try await saveEntry(entry)
     }
     
-    // MARK: - Compare With Scan (per SyncAgent)
-    
-    public struct ScannedFile {
-        public let path: String
-        public let relativePath: String
-        public let size: Int64
-        public let modifiedAt: Date?
-        
-        public init(path: String, relativePath: String, size: Int64, modifiedAt: Date?) {
-            self.path = path
-            self.relativePath = relativePath
-            self.size = size
-            self.modifiedAt = modifiedAt
-        }
-    }
-    
-    public struct ScanChanges {
-        public let newFiles: [String]
-        public let modifiedFiles: [String]
-        public let deletedFiles: [String]
-    }
-    
-    /// Confronta risultato scan con manifest esistente
-    public func compareWithScan(sinistroRef: String, files: [ScannedFile]) async throws -> ScanChanges {
-        var newFiles: [String] = []
-        var modifiedFiles: [String] = []
-        var deletedFiles: [String] = []
-        
-        // Ottieni entry esistenti per questo sinistro
-        let existingEntries = try await getEntriesForSinistro(sinistroRef: sinistroRef)
-        var existingPaths = Set(existingEntries.map { $0.legacyPath })
-        
-        // Controlla ogni file scanato
-        for file in files {
-            if existingPaths.contains(file.path) {
-                // File esistente - controlla se modificato
-                let changed = try await hasFileChanged(
-                    legacyPath: file.path,
-                    currentChecksum: nil,
-                    currentSize: file.size,
-                    currentModified: file.modifiedAt
-                )
-                if changed {
-                    modifiedFiles.append(file.path)
-                }
-                existingPaths.remove(file.path)
-            } else {
-                // Nuovo file
-                newFiles.append(file.path)
-            }
-        }
-        
-        // I path rimasti in existingPaths sono stati eliminati
-        deletedFiles = Array(existingPaths)
-        
-        return ScanChanges(newFiles: newFiles, modifiedFiles: modifiedFiles, deletedFiles: deletedFiles)
-    }
-    
     // MARK: - Helpers
     
     private func entryFromRow(_ row: Row) -> FileManifestEntry {

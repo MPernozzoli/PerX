@@ -14,20 +14,37 @@ if [ ! -d "$MONITOR_DIR" ]; then
     exit 1
 fi
 
+resolve_swift_release_binary() {
+    local pkg_dir="$1"
+    local exe_name="$2"
+    if [ -f "$pkg_dir/.build/release/$exe_name" ]; then
+        echo "$pkg_dir/.build/release/$exe_name"
+        return 0
+    fi
+    local cand
+    for cand in "$pkg_dir"/.build/*-apple-macosx/release/"$exe_name"; do
+        if [ -f "$cand" ]; then
+            echo "$cand"
+            return 0
+        fi
+    done
+    return 1
+}
+
 echo "Build PerX Hub Monitor da $MONITOR_DIR ..."
 cd "$MONITOR_DIR"
-rm -rf .build
 swift build -c release
 
-if [ ! -f "$MONITOR_DIR/.build/release/PerXHubMonitor" ]; then
-    echo "Errore: build fallita"
+MONITOR_BIN=""
+if ! MONITOR_BIN="$(resolve_swift_release_binary "$MONITOR_DIR" PerXHubMonitor)"; then
+    echo "Errore: eseguibile non trovato (controlla swift build in $MONITOR_DIR/.build)"
     exit 1
 fi
 
 echo "Installazione in /Applications/PerXHubMonitor.app ..."
 sudo mkdir -p /Applications/PerXHubMonitor.app/Contents/MacOS
 sudo mkdir -p /Applications/PerXHubMonitor.app/Contents/Resources
-sudo cp "$MONITOR_DIR/.build/release/PerXHubMonitor" /Applications/PerXHubMonitor.app/Contents/MacOS/
+sudo cp "$MONITOR_BIN" /Applications/PerXHubMonitor.app/Contents/MacOS/PerXHubMonitor
 sudo chmod +x /Applications/PerXHubMonitor.app/Contents/MacOS/PerXHubMonitor
 
 sudo tee /Applications/PerXHubMonitor.app/Contents/Info.plist > /dev/null << 'EOF'
@@ -42,9 +59,9 @@ sudo tee /Applications/PerXHubMonitor.app/Contents/Info.plist > /dev/null << 'EO
     <key>CFBundleName</key>
     <string>PerX Hub Monitor</string>
     <key>CFBundleVersion</key>
-    <string>1.0</string>
+    <string>1.1</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>1.1</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>LSUIElement</key>

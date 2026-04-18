@@ -46,8 +46,20 @@ echo "Directories created."
 
 # Copy executable
 echo "[4/6] Copying executable..."
-sudo cp "$HUB_DIR/.build/release/PerXHub" "$TARGET_DIR/"
+HUB_BIN=""
+for cand in "$HUB_DIR/.build/release/PerXHub" "$HUB_DIR/.build/arm64-apple-macosx/release/PerXHub" "$HUB_DIR/.build/x86_64-apple-macosx/release/PerXHub"; do
+    if [ -f "$cand" ]; then HUB_BIN="$cand"; break; fi
+done
+if [ -z "$HUB_BIN" ]; then
+    HUB_BIN="$(ls "$HUB_DIR/.build/"*/release/PerXHub 2>/dev/null | head -1)"
+fi
+if [ -z "$HUB_BIN" ] || [ ! -f "$HUB_BIN" ]; then
+    echo "ERRORE: eseguibile PerXHub non trovato dopo swift build (cerca in .build/*-apple-macosx/release/)."
+    exit 1
+fi
+sudo cp "$HUB_BIN" "$TARGET_DIR/"
 sudo chmod +x "$TARGET_DIR/PerXHub"
+sudo codesign -s - --force "$TARGET_DIR/PerXHub" 2>/dev/null || true
 echo "Executable copied."
 
 # Copy plist

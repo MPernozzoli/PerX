@@ -11,9 +11,6 @@ public actor UpdatesManager {
     /// Timestamp dell'ultimo aggiornamento per componente
     private var updateTimestamps: [String: Date] = [:]
     
-    /// Files già trasferiti per sync_agent (in attesa di restart)
-    private var syncAgentFilesTransferred: Bool = false
-    
     private init() {}
     
     // MARK: - Public API
@@ -62,21 +59,7 @@ public actor UpdatesManager {
         pendingUpdates.removeValue(forKey: component)
         updateTimestamps.removeValue(forKey: component)
         
-        if component == "perx_sync_agent" {
-            syncAgentFilesTransferred = false
-        }
-        
         print("[UpdatesManager] Update acknowledged for \(component)")
-    }
-    
-    /// Segna i file del sync_agent come trasferiti (pronto per restart)
-    public func markSyncAgentFilesTransferred() {
-        syncAgentFilesTransferred = true
-    }
-    
-    /// Verifica se i file del sync_agent sono stati trasferiti
-    public func isSyncAgentReadyForUpdate() -> Bool {
-        return syncAgentFilesTransferred && hasUpdate(for: "perx_sync_agent")
     }
     
     /// Restituisce un riepilogo degli aggiornamenti per il Monitor
@@ -84,18 +67,11 @@ public actor UpdatesManager {
         var summaries: [ComponentUpdateSummary] = []
         
         for (component, files) in pendingUpdates {
-            let isReady: Bool
-            if component == "perx_sync_agent" {
-                isReady = syncAgentFilesTransferred
-            } else {
-                isReady = true // Componenti locali sono sempre pronti
-            }
-            
             summaries.append(ComponentUpdateSummary(
                 component: component,
                 filesChanged: files.count,
                 timestamp: updateTimestamps[component],
-                isReadyToUpdate: isReady
+                isReadyToUpdate: true
             ))
         }
         

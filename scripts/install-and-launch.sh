@@ -31,6 +31,24 @@ DAEMONS_DIR="/Library/LaunchDaemons"
 # Porte usate da Hub e worker (liberate prima dell'install)
 PERX_PORTS="8080 5001 5002 8084"
 
+# SwiftPM su Apple Silicon mette spesso l'eseguibile in .build/arm64-apple-macosx/release/, non in .build/release/
+resolve_swift_release_binary() {
+    local pkg_dir="$1"
+    local exe_name="$2"
+    if [ -f "$pkg_dir/.build/release/$exe_name" ]; then
+        echo "$pkg_dir/.build/release/$exe_name"
+        return 0
+    fi
+    local cand
+    for cand in "$pkg_dir"/.build/*-apple-macosx/release/"$exe_name"; do
+        if [ -f "$cand" ]; then
+            echo "$cand"
+            return 0
+        fi
+    done
+    return 1
+}
+
 echo -e "${BLUE}╔══════════════════════════════════════════════════════════╗${NC}"
 echo -e "${BLUE}║         PerX Hub - Installazione e avvio completo        ║${NC}"
 echo -e "${BLUE}╚══════════════════════════════════════════════════════════╝${NC}"
@@ -71,6 +89,9 @@ echo "  ✓ Porte pronte"
 echo -e "${YELLOW}[2/11] Creazione directory in $HUB_BASE...${NC}"
 mkdir -p "$HUB_BASE"/{bin,logs,data,vault,workers/{email,wa-bridge,autoupdater},repo}
 chmod -R 755 "$HUB_BASE"
+# Hub Monitor scrive monitor-secrets.json in data/ come utente del gruppo staff
+chown root:staff "$HUB_BASE/data" 2>/dev/null || true
+chmod 2775 "$HUB_BASE/data" 2>/dev/null || true
 echo "  ✓ Directory pronte"
 
 echo -e "${YELLOW}[3/11] Power Management (anti-sleep)...${NC}"
@@ -89,12 +110,14 @@ echo -e "${YELLOW}[4/11] Build PerX Hub (Swift)...${NC}"
 if [ -d "$REPO_BASE/PerXHub" ] && command -v swift &>/dev/null; then
     (cd "$REPO_BASE/PerXHub" && swift build -c release 2>/dev/null) || true
 fi
-if [ -f "$REPO_BASE/PerXHub/.build/release/PerXHub" ]; then
-    cp "$REPO_BASE/PerXHub/.build/release/PerXHub" "$HUB_BASE/PerXHub"
+if HUB_BIN="$(resolve_swift_release_binary "$REPO_BASE/PerXHub" PerXHub)"; then
+    cp "$HUB_BIN" "$HUB_BASE/PerXHub"
     chmod +x "$HUB_BASE/PerXHub"
+    # Firma ad-hoc: senza questa riga launchd può rifiutare il binario (OS_REASON_CODESIGNING).
+    codesign -s - --force "$HUB_BASE/PerXHub" 2>/dev/null || true
     echo "  ✓ PerXHub installato"
 else
-    echo "  ⚠ Build non trovata. Installa Xcode/Swift e riesegui, oppure copia il binario in $REPO_BASE/PerXHub/.build/release/PerXHub"
+    echo "  ⚠ Build non trovata in .build/release/ né .build/*-apple-macosx/release/ per PerXHub"
 fi
 
 echo -e "${YELLOW}[5/11] Email Worker (copia + venv + pip)...${NC}"
@@ -121,11 +144,11 @@ fi
 
 echo -e "${YELLOW}[7/11] PerX Hub Monitor (build + app in /Applications)...${NC}"
 if [ -d "$REPO_BASE/PerXHubMonitor" ] && command -v swift &>/dev/null; then
-    (cd "$REPO_BASE/PerXHubMonitor" && rm -rf .build && swift build -c release 2>/dev/null) || true
-    if [ -f "$REPO_BASE/PerXHubMonitor/.build/release/PerXHubMonitor" ]; then
+    (cd "$REPO_BASE/PerXHubMonitor" && swift build -c release 2>/dev/null) || true
+    if MONITOR_BIN="$(resolve_swift_release_binary "$REPO_BASE/PerXHubMonitor" PerXHubMonitor)"; then
         mkdir -p /Applications/PerXHubMonitor.app/Contents/MacOS
         mkdir -p /Applications/PerXHubMonitor.app/Contents/Resources
-        cp "$REPO_BASE/PerXHubMonitor/.build/release/PerXHubMonitor" /Applications/PerXHubMonitor.app/Contents/MacOS/
+        cp "$MONITOR_BIN" /Applications/PerXHubMonitor.app/Contents/MacOS/PerXHubMonitor
         chmod +x /Applications/PerXHubMonitor.app/Contents/MacOS/PerXHubMonitor
         cat > /Applications/PerXHubMonitor.app/Contents/Info.plist << 'INFOPLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -139,9 +162,9 @@ if [ -d "$REPO_BASE/PerXHubMonitor" ] && command -v swift &>/dev/null; then
     <key>CFBundleName</key>
     <string>PerX Hub Monitor</string>
     <key>CFBundleVersion</key>
-    <string>1.0</string>
+    <string>1.1</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>1.1</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>LSUIElement</key>
