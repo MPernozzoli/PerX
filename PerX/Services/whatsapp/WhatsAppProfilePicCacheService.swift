@@ -17,6 +17,7 @@ class WhatsAppProfilePicCacheService: ObservableObject {
     
     /// Timestamp cache
     private var cacheTimestamps: [String: Date] = [:]
+    private var loadedScope: String?
     
     private init() {
         loadCache()
@@ -24,6 +25,7 @@ class WhatsAppProfilePicCacheService: ObservableObject {
     
     /// Ottiene la foto profilo per un contatto (da cache o fetch)
     func getProfilePicUrl(for contactId: String) async -> String? {
+        ensureCacheLoadedForCurrentScope()
         let normalizedId = normalizeContactId(contactId)
         
         // Se in cache e non scaduta, ritorna
@@ -56,12 +58,14 @@ class WhatsAppProfilePicCacheService: ObservableObject {
     
     /// Ottiene la foto profilo dalla cache senza fetch
     func cachedProfilePicUrl(for contactId: String) -> String? {
+        ensureCacheLoadedForCurrentScope()
         let normalizedId = normalizeContactId(contactId)
         return profilePicCache[normalizedId] ?? nil
     }
     
     /// Pre-fetch foto profilo per più contatti
     func prefetchProfilePics(for contactIds: [String]) async {
+        ensureCacheLoadedForCurrentScope()
         let uniqueIds = Set(contactIds.map { normalizeContactId($0) })
         let needsFetch = uniqueIds.filter { 
             profilePicCache[$0] == nil || isCacheExpired(for: $0)
@@ -81,8 +85,8 @@ class WhatsAppProfilePicCacheService: ObservableObject {
     func clearCache() {
         profilePicCache.removeAll()
         cacheTimestamps.removeAll()
-        UserDefaults.standard.removeObject(forKey: "whatsapp_profile_pic_cache")
-        UserDefaults.standard.removeObject(forKey: "whatsapp_profile_pic_timestamps")
+        UserDefaults.standard.removeObject(forKey: cacheKey)
+        UserDefaults.standard.removeObject(forKey: timestampsKey)
     }
     
     // MARK: - Private
@@ -109,26 +113,52 @@ class WhatsAppProfilePicCacheService: ObservableObject {
     }
     
     private func saveCache() {
+        loadedScope = currentAccountScope
         // Salva solo URL non nil
         let validCache = profilePicCache.compactMapValues { $0 }
-        UserDefaults.standard.set(validCache, forKey: "whatsapp_profile_pic_cache")
+        UserDefaults.standard.set(validCache, forKey: cacheKey)
         
         // Salva timestamps
         let timestampStrings = cacheTimestamps.mapValues { $0.timeIntervalSince1970 }
-        UserDefaults.standard.set(timestampStrings, forKey: "whatsapp_profile_pic_timestamps")
+        UserDefaults.standard.set(timestampStrings, forKey: timestampsKey)
     }
     
     private func loadCache() {
-        if let saved = UserDefaults.standard.dictionary(forKey: "whatsapp_profile_pic_cache") as? [String: String] {
+        loadedScope = currentAccountScope
+        if let saved = UserDefaults.standard.dictionary(forKey: cacheKey) as? [String: String] {
             for (key, value) in saved {
                 profilePicCache[key] = value
             }
         }
         
-        if let timestamps = UserDefaults.standard.dictionary(forKey: "whatsapp_profile_pic_timestamps") as? [String: Double] {
+        if let timestamps = UserDefaults.standard.dictionary(forKey: timestampsKey) as? [String: Double] {
             for (key, value) in timestamps {
                 cacheTimestamps[key] = Date(timeIntervalSince1970: value)
             }
         }
+    }
+
+    private func ensureCacheLoadedForCurrentScope() {
+        guard loadedScope != currentAccountScope else { return }
+        profilePicCache.removeAll()
+        cacheTimestamps.removeAll()
+        pendingFetches.removeAll()
+        loadCache()
+    }
+
+    private var cacheKey: String {
+        "whatsapp_profile_pic_cache.\(currentAccountScope)"
+    }
+
+    private var timestampsKey: String {
+        "whatsapp_profile_pic_timestamps.\(currentAccountScope)"
+    }
+
+    private var currentAccountScope: String {
+        let accountId = WhatsAppService.shared.selectedAccountId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if !accountId.isEmpty {
+            return accountId
+        }
+        return CurrentUserService.shared.currentUsername?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? "anonymous"
     }
 }

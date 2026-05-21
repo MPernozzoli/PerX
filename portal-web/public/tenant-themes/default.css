@@ -1,0 +1,8 @@
+/*
+ * Default tenant theme.
+ * Create one CSS file per tenant in this folder, named with the tenant theme id
+ * derived from assicurati.[tenant-domain], for example demo.css for assicurati.demo.it.
+ */
+:root {
+  --tenant-logo-label: "PX";
+}

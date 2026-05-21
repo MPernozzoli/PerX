@@ -302,7 +302,26 @@ def _email_metadata(email: Email) -> dict:
         return {}
 
 
+def _canonical_whatsapp_account_id(current_user: User) -> str:
+    email = (current_user.personal_email or current_user.email or "").strip().lower()
+    if not email:
+        return current_user.id
+    return email.split("@", 1)[0]
+
+
+def _assert_whatsapp_account_owner(current_user: User, account_id: str) -> str:
+    normalized = account_id.strip().lower()
+    expected = _canonical_whatsapp_account_id(current_user)
+    if normalized != expected:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="WhatsApp account does not belong to the authenticated user",
+        )
+    return normalized
+
+
 async def _ensure_whatsapp_account(db: AsyncSession, current_user: User, account_id: str) -> WhatsAppAccount:
+    account_id = _assert_whatsapp_account_owner(current_user, account_id)
     result = await db.execute(
         select(WhatsAppAccount).where(
             WhatsAppAccount.id == account_id,
@@ -1153,8 +1172,12 @@ async def compat_whatsapp_chats(
     current_user: User = Depends(get_current_active_user),
 ):
     query = select(WhatsAppThread).where(WhatsAppThread.tenant_id == current_user.tenant_id)
-    if accountId:
-        query = query.where(WhatsAppThread.account_id == accountId)
+    effective_account_id = (
+        _assert_whatsapp_account_owner(current_user, accountId)
+        if accountId
+        else _canonical_whatsapp_account_id(current_user)
+    )
+    query = query.where(WhatsAppThread.account_id == effective_account_id)
     result = await db.execute(query.order_by(WhatsAppThread.last_message_at.desc().nullslast()))
     threads = result.scalars().all()
     items = []
@@ -1201,8 +1224,12 @@ async def compat_whatsapp_messages(
         WhatsAppMessage.tenant_id == current_user.tenant_id,
         WhatsAppThread.tenant_id == current_user.tenant_id,
     )
-    if accountId:
-        query = query.where(WhatsAppThread.account_id == accountId)
+    effective_account_id = (
+        _assert_whatsapp_account_owner(current_user, accountId)
+        if accountId
+        else _canonical_whatsapp_account_id(current_user)
+    )
+    query = query.where(WhatsAppThread.account_id == effective_account_id)
     if chatId:
         query = query.where(WhatsAppThread.external_thread_ref == chatId)
     if sinistroRef:
@@ -1292,6 +1319,7 @@ async def compat_whatsapp_scheduled(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
+    accountId = _assert_whatsapp_account_owner(current_user, accountId)
     query = select(WhatsAppMessage, WhatsAppThread).join(
         WhatsAppThread, WhatsAppThread.id == WhatsAppMessage.thread_id
     ).where(
@@ -1330,10 +1358,15 @@ async def compat_whatsapp_cancel_scheduled(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
+    canonical_account_id = _canonical_whatsapp_account_id(current_user)
     result = await db.execute(
-        select(WhatsAppMessage).where(
+        select(WhatsAppMessage).join(
+            WhatsAppThread, WhatsAppThread.id == WhatsAppMessage.thread_id
+        ).where(
             WhatsAppMessage.id == message_id,
             WhatsAppMessage.tenant_id == current_user.tenant_id,
+            WhatsAppThread.tenant_id == current_user.tenant_id,
+            WhatsAppThread.account_id == canonical_account_id,
             WhatsAppMessage.status == "scheduled",
         )
     )
@@ -1368,6 +1401,7 @@ async def compat_whatsapp_associate(
     result = await db.execute(
         select(WhatsAppThread).where(
             WhatsAppThread.tenant_id == current_user.tenant_id,
+            WhatsAppThread.account_id == _canonical_whatsapp_account_id(current_user),
             WhatsAppThread.external_thread_ref == chat_id,
         )
     )

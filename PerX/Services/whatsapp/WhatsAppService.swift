@@ -25,15 +25,29 @@ class WhatsAppService: ObservableObject {
     
     private var pollingTimer: Timer?
     private let hubClient = HubAPIClient.shared
+    private var cancellables = Set<AnyCancellable>()
+    private let legacySelectedAccountKey = "whatsapp_selected_account"
     
     private init() {
-        // Carica accountId salvato, oppure usa username corrente come default
-        if let saved = UserDefaults.standard.string(forKey: "whatsapp_selected_account"), !saved.isEmpty {
-            selectedAccountId = saved
-        } else if let username = CurrentUserService.shared.currentUsername {
-            selectedAccountId = username
-            UserDefaults.standard.set(username, forKey: "whatsapp_selected_account")
-        }
+        syncSelectedAccountWithCurrentUser()
+
+        CurrentUserService.shared.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.handleCurrentUserChanged()
+                }
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: .init("GoogleAuthStateChanged"))
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.handleCurrentUserChanged()
+                }
+            }
+            .store(in: &cancellables)
     }
     
     // MARK: - Lifecycle
@@ -44,11 +58,7 @@ class WhatsAppService: ObservableObject {
             return
         }
         
-        // Se non c'è accountId, usa username corrente
-        if selectedAccountId.isEmpty, let username = CurrentUserService.shared.currentUsername {
-            selectedAccountId = username
-            UserDefaults.standard.set(username, forKey: "whatsapp_selected_account")
-        }
+        syncSelectedAccountWithCurrentUser()
         
         Task { await checkStatus() }
     }
@@ -60,19 +70,22 @@ class WhatsAppService: ObservableObject {
     // MARK: - Account Management
     
     func selectAccount(_ accountId: String) {
-        selectedAccountId = accountId
-        UserDefaults.standard.set(accountId, forKey: "whatsapp_selected_account")
+        let normalized = normalizedAccountId(accountId)
+        guard isAccountAllowedForCurrentUser(normalized) else {
+            print("[WhatsAppService] selectAccount bloccato: accountId '\(accountId)' non appartiene all'utente corrente")
+            syncSelectedAccountWithCurrentUser(forceCurrentUser: true)
+            return
+        }
+
+        selectedAccountId = normalized
+        UserDefaults.standard.set(normalized, forKey: selectedAccountKey)
         Task { await checkStatus() }
     }
     
     // MARK: - Connection
     
     func connect() async {
-        // Se non c'è accountId, usa username corrente
-        if selectedAccountId.isEmpty, let username = CurrentUserService.shared.currentUsername {
-            selectedAccountId = username
-            UserDefaults.standard.set(username, forKey: "whatsapp_selected_account")
-        }
+        syncSelectedAccountWithCurrentUser(forceCurrentUser: true)
         
         guard !selectedAccountId.isEmpty else {
             errorMessage = "Nessun account selezionato"
@@ -121,6 +134,7 @@ class WhatsAppService: ObservableObject {
     }
     
     func checkStatus() async {
+        syncSelectedAccountWithCurrentUser()
         guard !selectedAccountId.isEmpty else { return }
         
         do {
@@ -169,12 +183,14 @@ class WhatsAppService: ObservableObject {
     // MARK: - Chats & Messages (via Hub)
     
     func fetchChats() async throws -> [WhatsAppChat] {
+        syncSelectedAccountWithCurrentUser()
         guard !selectedAccountId.isEmpty else {
             print("[WhatsAppService] fetchChats: accountId vuoto")
             return []
         }
         
-        let endpoint = "whatsapp/chats?accountId=\(selectedAccountId)"
+        let encodedAccountId = selectedAccountId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? selectedAccountId
+        let endpoint = "whatsapp/chats?accountId=\(encodedAccountId)"
         print("[WhatsAppService] fetchChats: \(endpoint)")
         
         let response: [WhatsAppChatResponse] = try await hubClient.get(endpoint: endpoint)
@@ -184,21 +200,26 @@ class WhatsAppService: ObservableObject {
     }
     
     func fetchMessages(chatId: String, limit: Int = 100) async throws -> [WhatsAppMessage] {
+        syncSelectedAccountWithCurrentUser()
         guard !selectedAccountId.isEmpty else { return [] }
         
         let encodedChatId = chatId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? chatId
+        let encodedAccountId = selectedAccountId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? selectedAccountId
         let response: [WhatsAppMessageResponse] = try await hubClient.get(
-            endpoint: "whatsapp/messages?accountId=\(selectedAccountId)&chatId=\(encodedChatId)&limit=\(limit)"
+            endpoint: "whatsapp/messages?accountId=\(encodedAccountId)&chatId=\(encodedChatId)&limit=\(limit)"
         )
         
         return response.map { WhatsAppMessage(from: $0) }
     }
     
     func fetchMessagesForSinistro(sinistroRef: String) async throws -> [WhatsAppMessage] {
+        syncSelectedAccountWithCurrentUser()
         guard !selectedAccountId.isEmpty else { return [] }
         
+        let encodedAccountId = selectedAccountId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? selectedAccountId
+        let encodedSinistroRef = sinistroRef.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? sinistroRef
         let response: [WhatsAppMessageResponse] = try await hubClient.get(
-            endpoint: "whatsapp/messages?accountId=\(selectedAccountId)&sinistroRef=\(sinistroRef)"
+            endpoint: "whatsapp/messages?accountId=\(encodedAccountId)&sinistroRef=\(encodedSinistroRef)"
         )
         
         return response.map { WhatsAppMessage(from: $0) }
@@ -317,10 +338,12 @@ class WhatsAppService: ObservableObject {
     }
     
     func fetchScheduledMessages() async throws -> [ScheduledWhatsAppMessage] {
+        syncSelectedAccountWithCurrentUser()
         guard !selectedAccountId.isEmpty else { return [] }
         
+        let encodedAccountId = selectedAccountId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? selectedAccountId
         let response: [ScheduledWhatsAppMessageResponse] = try await hubClient.get(
-            endpoint: "whatsapp/scheduled?accountId=\(selectedAccountId)"
+            endpoint: "whatsapp/scheduled?accountId=\(encodedAccountId)"
         )
         
         return response.map { ScheduledWhatsAppMessage(from: $0) }
@@ -349,6 +372,67 @@ class WhatsAppService: ObservableObject {
     }
     
     // MARK: - Helpers
+
+    private var selectedAccountKey: String {
+        "whatsapp_selected_account.\(currentUserScope)"
+    }
+
+    private var currentUserScope: String {
+        if let username = CurrentUserService.shared.currentUsername, !username.isEmpty {
+            return normalizedAccountId(username)
+        }
+        if let email = CurrentUserService.shared.currentEmail, !email.isEmpty {
+            return normalizedAccountId(UserProfile.generateUsername(from: email))
+        }
+        return "anonymous"
+    }
+
+    private func handleCurrentUserChanged() {
+        stopPolling()
+        qrCode = nil
+        isConnected = false
+        connectionStatus = "disconnected"
+        syncSelectedAccountWithCurrentUser(forceCurrentUser: true)
+    }
+
+    private func syncSelectedAccountWithCurrentUser(forceCurrentUser: Bool = false) {
+        guard let currentUsername = CurrentUserService.shared.currentUsername, !currentUsername.isEmpty else {
+            if !selectedAccountId.isEmpty {
+                selectedAccountId = ""
+            }
+            return
+        }
+
+        let currentAccount = normalizedAccountId(currentUsername)
+        let saved = UserDefaults.standard.string(forKey: selectedAccountKey).map(normalizedAccountId)
+
+        if !forceCurrentUser,
+           let saved,
+           !saved.isEmpty,
+           isAccountAllowedForCurrentUser(saved) {
+            selectedAccountId = saved
+            return
+        }
+
+        if selectedAccountId.isEmpty || !isAccountAllowedForCurrentUser(selectedAccountId) || forceCurrentUser {
+            selectedAccountId = currentAccount
+            UserDefaults.standard.set(currentAccount, forKey: selectedAccountKey)
+        }
+
+        if let legacy = UserDefaults.standard.string(forKey: legacySelectedAccountKey),
+           normalizedAccountId(legacy) != currentAccount {
+            UserDefaults.standard.removeObject(forKey: legacySelectedAccountKey)
+        }
+    }
+
+    private func isAccountAllowedForCurrentUser(_ accountId: String) -> Bool {
+        guard let username = CurrentUserService.shared.currentUsername else { return false }
+        return normalizedAccountId(accountId) == normalizedAccountId(username)
+    }
+
+    private func normalizedAccountId(_ accountId: String) -> String {
+        accountId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
     
     private func normalizePhoneNumber(_ number: String) -> String {
         var cleaned = number

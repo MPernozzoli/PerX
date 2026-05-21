@@ -9,7 +9,7 @@ from urllib import request as urlrequest
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -17,7 +17,7 @@ from app.core.database import get_db
 from app.core.security import get_password_hash
 from app.core.security import get_current_active_user
 from app.models.role import Role, user_roles
-from app.models.tenant import Tenant
+from app.models.tenant import Tenant, TenantPortalDomain
 from app.models.user import User
 from app.schemas.tenant_settings import (
     TenantMailSettingsPayload,
@@ -157,6 +157,7 @@ def _normalized_settings(tenant: Tenant, include_provider_secrets: bool) -> dict
     return {
         "tenant_name": tenant.name,
         "tenant_slug": tenant.slug,
+        "portal_domains": settings.get("portal_domains", []),
         "internal_domains": settings.get("internal_domains", []),
         "internal_emails": settings.get("internal_emails", []),
         "system_emails": settings.get("system_emails", []),
@@ -166,6 +167,26 @@ def _normalized_settings(tenant: Tenant, include_provider_secrets: bool) -> dict
         "cat_settings": cat_settings,
         "provider_settings": provider_settings if include_provider_secrets else None,
     }
+
+
+def _normalize_portal_domain(value: str) -> str | None:
+    candidate = value.strip().lower()
+    candidate = candidate.replace("https://", "").replace("http://", "")
+    candidate = candidate.split("/", 1)[0].split("?", 1)[0].strip().rstrip(".")
+    if not candidate:
+        return None
+    if candidate.startswith("assicurati."):
+        candidate = candidate[len("assicurati."):]
+    return candidate or None
+
+
+def _normalize_portal_domains(values: list[str]) -> list[str]:
+    normalized: list[str] = []
+    for value in values:
+        domain = _normalize_portal_domain(value)
+        if domain and domain not in normalized:
+            normalized.append(domain)
+    return normalized
 
 
 async def _is_tenant_admin(db: AsyncSession, user: User) -> bool:
@@ -351,9 +372,11 @@ async def update_my_tenant_settings(
 
     tenant.name = payload.tenant_name
     tenant.slug = payload.tenant_slug
+    portal_domains = _normalize_portal_domains(payload.portal_domains)
 
     updated_settings = {
         **dict(tenant.settings_json or {}),
+        "portal_domains": portal_domains,
         "internal_domains": payload.internal_domains,
         "internal_emails": [str(value) for value in payload.internal_emails],
         "system_emails": [str(value) for value in payload.system_emails],
@@ -366,6 +389,16 @@ async def update_my_tenant_settings(
         updated_settings["provider_settings"] = payload.provider_settings.model_dump()
 
     tenant.settings_json = updated_settings
+    await db.execute(delete(TenantPortalDomain).where(TenantPortalDomain.tenant_id == tenant.id))
+    for index, domain in enumerate(portal_domains):
+        db.add(
+            TenantPortalDomain(
+                id=str(uuid.uuid4()),
+                tenant_id=tenant.id,
+                domain=domain,
+                is_primary=index == 0,
+            )
+        )
 
     await db.commit()
     await db.refresh(tenant)

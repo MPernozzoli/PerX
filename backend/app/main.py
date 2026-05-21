@@ -13,6 +13,7 @@ from app.api.v1 import (
     routes_attachments,
     routes_auth,
     routes_claims,
+    routes_cat_dispatcher,
     routes_diary,
     routes_documents,
     routes_email_processing,
@@ -70,6 +71,7 @@ app.include_router(routes_auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(routes_profiles.router, prefix="/api/v1/profiles", tags=["profiles"])
 app.include_router(routes_reporting.router, prefix="/api/v1/reports", tags=["reporting"])
 app.include_router(routes_claims.router, prefix="/api/v1/claims", tags=["claims"])
+app.include_router(routes_cat_dispatcher.router, prefix="/api/v1/cat-dispatcher", tags=["cat-dispatcher"])
 app.include_router(routes_tasks.router, prefix="/api/v1", tags=["tasks"])
 app.include_router(routes_documents.router, prefix="/api/v1", tags=["documents"])
 app.include_router(routes_diary.router, prefix="/api/v1", tags=["diary"])

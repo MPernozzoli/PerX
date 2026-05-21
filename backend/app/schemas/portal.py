@@ -32,6 +32,7 @@ class PortalAuthStartRequest(BaseModel):
     full_name: Optional[str] = None
     phone_number: Optional[str] = None
     channel: str = "email"
+    portal_host: Optional[str] = None
 
 
 class PortalAuthStartResponse(BaseModel):
@@ -45,6 +46,7 @@ class PortalAuthStartResponse(BaseModel):
 
 class PortalAuthExchangeRequest(BaseModel):
     token: str
+    portal_host: Optional[str] = None
 
 
 class PortalAuthExchangeResponse(BaseModel):

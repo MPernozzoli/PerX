@@ -22,13 +22,25 @@ class WhatsAppNotificationService: ObservableObject {
     /// ID degli ultimi messaggi notificati (per evitare duplicati) - persistito in UserDefaults
     private var notifiedMessageIds: Set<String> {
         get {
-            Set(UserDefaults.standard.stringArray(forKey: "whatsapp_notified_message_ids") ?? [])
+            Set(UserDefaults.standard.stringArray(forKey: notifiedMessageIdsKey) ?? [])
         }
         set {
             // Mantieni solo gli ultimi 500 per non crescere troppo
             let array = Array(newValue.suffix(500))
-            UserDefaults.standard.set(array, forKey: "whatsapp_notified_message_ids")
+            UserDefaults.standard.set(array, forKey: notifiedMessageIdsKey)
         }
+    }
+
+    private var notifiedMessageIdsKey: String {
+        let accountId = WhatsAppService.shared.selectedAccountId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if !accountId.isEmpty {
+            return "whatsapp_notified_message_ids.\(accountId)"
+        }
+        if let username = CurrentUserService.shared.currentUsername?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+           !username.isEmpty {
+            return "whatsapp_notified_message_ids.\(username)"
+        }
+        return "whatsapp_notified_message_ids.anonymous"
     }
     
     private init() {

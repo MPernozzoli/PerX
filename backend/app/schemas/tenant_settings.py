@@ -57,6 +57,7 @@ class TenantInspectionProviderSettingsPayload(BaseModel):
 class TenantMailSettingsPayload(BaseModel):
     tenant_name: str = Field(..., min_length=1)
     tenant_slug: str = Field(..., min_length=1)
+    portal_domains: list[str] = Field(default_factory=list)
     internal_domains: list[str] = Field(default_factory=list)
     internal_emails: list[EmailStr] = Field(default_factory=list)
     system_emails: list[EmailStr] = Field(default_factory=list)
@@ -71,6 +72,7 @@ class TenantSettingsResponse(BaseModel):
     tenant_id: str
     tenant_name: str
     tenant_slug: str
+    portal_domains: list[str]
     internal_domains: list[str]
     internal_emails: list[EmailStr]
     system_emails: list[EmailStr]

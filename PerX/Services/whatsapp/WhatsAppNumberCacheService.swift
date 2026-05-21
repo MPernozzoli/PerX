@@ -26,6 +26,7 @@ class WhatsAppNumberCacheService: ObservableObject {
     
     /// Timestamp ultima verifica per numero
     private var cacheTimestamps: [String: Date] = [:]
+    private var loadedScope: String?
     
     private init() {
         loadCache()
@@ -35,6 +36,7 @@ class WhatsAppNumberCacheService: ObservableObject {
     
     /// Verifica se un numero è su WhatsApp (usa cache se disponibile)
     func checkNumber(_ phoneNumber: String) async -> NumberStatus {
+        ensureCacheLoadedForCurrentScope()
         let normalized = normalizeNumber(phoneNumber)
         
         // Se già in cache e non scaduto, ritorna il risultato
@@ -81,6 +83,7 @@ class WhatsAppNumberCacheService: ObservableObject {
     
     /// Verifica multipli numeri in parallelo (deduplica automaticamente)
     func checkNumbers(_ phoneNumbers: [String]) async {
+        ensureCacheLoadedForCurrentScope()
         // Deduplica e normalizza
         let uniqueNumbers = Set(phoneNumbers.map { normalizeNumber($0) })
             .filter { !$0.isEmpty }
@@ -114,6 +117,7 @@ class WhatsAppNumberCacheService: ObservableObject {
     
     /// Stato corrente di un numero (senza avviare verifica)
     func status(for phoneNumber: String) -> NumberStatus {
+        ensureCacheLoadedForCurrentScope()
         let normalized = normalizeNumber(phoneNumber)
         return numberCache[normalized] ?? .unknown
     }
@@ -123,8 +127,8 @@ class WhatsAppNumberCacheService: ObservableObject {
         numberCache.removeAll()
         cacheTimestamps.removeAll()
         pendingChecks.removeAll()
-        UserDefaults.standard.removeObject(forKey: "whatsapp_number_cache")
-        UserDefaults.standard.removeObject(forKey: "whatsapp_number_cache_timestamps")
+        UserDefaults.standard.removeObject(forKey: cacheKey)
+        UserDefaults.standard.removeObject(forKey: timestampsKey)
     }
     
     // MARK: - Private
@@ -144,6 +148,7 @@ class WhatsAppNumberCacheService: ObservableObject {
     }
     
     private func saveCache() {
+        loadedScope = currentAccountScope
         // Salva solo registered/notRegistered
         var toSave: [String: Bool] = [:]
         for (number, status) in numberCache {
@@ -154,21 +159,22 @@ class WhatsAppNumberCacheService: ObservableObject {
             }
         }
         
-        UserDefaults.standard.set(toSave, forKey: "whatsapp_number_cache")
+        UserDefaults.standard.set(toSave, forKey: cacheKey)
         
         // Salva timestamps
         let timestamps = cacheTimestamps.mapValues { $0.timeIntervalSince1970 }
-        UserDefaults.standard.set(timestamps, forKey: "whatsapp_number_cache_timestamps")
+        UserDefaults.standard.set(timestamps, forKey: timestampsKey)
     }
     
     private func loadCache() {
-        if let saved = UserDefaults.standard.dictionary(forKey: "whatsapp_number_cache") as? [String: Bool] {
+        loadedScope = currentAccountScope
+        if let saved = UserDefaults.standard.dictionary(forKey: cacheKey) as? [String: Bool] {
             for (number, isRegistered) in saved {
                 numberCache[number] = isRegistered ? .registered : .notRegistered
             }
         }
         
-        if let timestamps = UserDefaults.standard.dictionary(forKey: "whatsapp_number_cache_timestamps") as? [String: Double] {
+        if let timestamps = UserDefaults.standard.dictionary(forKey: timestampsKey) as? [String: Double] {
             for (number, interval) in timestamps {
                 cacheTimestamps[number] = Date(timeIntervalSince1970: interval)
             }
@@ -182,5 +188,29 @@ class WhatsAppNumberCacheService: ObservableObject {
                 cacheTimestamps.removeValue(forKey: number)
             }
         }
+    }
+
+    private func ensureCacheLoadedForCurrentScope() {
+        guard loadedScope != currentAccountScope else { return }
+        numberCache.removeAll()
+        cacheTimestamps.removeAll()
+        pendingChecks.removeAll()
+        loadCache()
+    }
+
+    private var cacheKey: String {
+        "whatsapp_number_cache.\(currentAccountScope)"
+    }
+
+    private var timestampsKey: String {
+        "whatsapp_number_cache_timestamps.\(currentAccountScope)"
+    }
+
+    private var currentAccountScope: String {
+        let accountId = WhatsAppService.shared.selectedAccountId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if !accountId.isEmpty {
+            return accountId
+        }
+        return CurrentUserService.shared.currentUsername?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? "anonymous"
     }
 }

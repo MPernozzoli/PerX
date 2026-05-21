@@ -78,6 +78,8 @@ uvicorn app.main:app --reload
 - `PUT /api/v1/claims/{id}` - Update claim
 - `POST /api/v1/claims/{id}/state-transitions` - Change state
 - `GET /api/v1/claims/{id}/events` - Get timeline
+- `POST /api/v1/cat-dispatcher/address-to-cat` - Lookup CAT da indirizzo o comune tramite servizio CatDispatcher
+- `POST /api/v1/cat-dispatcher/get-cat-by-commune` - Lookup CAT economico da comune/provincia tramite servizio CatDispatcher
 - `POST /api/v1/portal/claims/{id}/access-links` - Genera link di accesso portale per un assicurato
 - `POST /api/v1/portal/auth/start` - Avvia challenge pubblico per accesso assicurato
 - `POST /api/v1/portal/auth/exchange` - Scambia magic link con sessione portale
@@ -106,6 +108,15 @@ Il backend include ora un perimetro dedicato al portale web assicurati:
 In ambiente `dev` e con `PORTAL_DEV_CLAIM_REFERENCE_ONLY_AUTH=True`, il portale puo creare al volo un accesso partendo dal solo riferimento sinistro e mostrare direttamente il magic link di anteprima senza ulteriori verifiche. Questa scorciatoia e pensata solo per sviluppo locale.
 
 Per il dettaglio funzionale e dei flussi, vedere anche `Documentation/insured-portal-architecture.md`.
+
+## CatDispatcher
+
+La gestione delle associazioni CAT-Comune vive nel servizio CatDispatcher. Il backend PerX espone un proxy autenticato sotto `/api/v1/cat-dispatcher`, così i client PerX continuano a usare il token PerX e non chiamano direttamente Supabase/Edge Functions del servizio esterno.
+
+Variabili richieste:
+
+- `CATDISPATCHER_BASE_URL`: URL del progetto Supabase CatDispatcher, oppure direttamente l'URL che termina con `/functions/v1`.
+- `CATDISPATCHER_API_KEY`: chiave server condivisa con le Edge Function CatDispatcher tramite secret `CATDISPATCHER_SERVER_API_KEY`.
 
 ## Process jobs e Mac mini
 

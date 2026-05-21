@@ -107,8 +107,8 @@ class WhatsAppMessageTagManager: ObservableObject {
     // MARK: - Private
     
     private let userDefaults = UserDefaults.standard
-    private let tagsKey = "whatsapp_message_tags"
     private var cancellables = Set<AnyCancellable>()
+    private var loadedScope: String?
     
     // MARK: - Initialization
     
@@ -121,6 +121,7 @@ class WhatsAppMessageTagManager: ObservableObject {
     
     /// Aggiungi un tag a un messaggio
     func addTag(_ tag: WhatsAppMessageTag, toMessageId messageId: String, sinistroRif: String? = nil) {
+        ensureTagsLoadedForCurrentScope()
         if var existing = messageTags[messageId] {
             existing.tags.insert(tag)
             if let rif = sinistroRif {
@@ -142,6 +143,7 @@ class WhatsAppMessageTagManager: ObservableObject {
     
     /// Rimuovi un tag da un messaggio
     func removeTag(_ tag: WhatsAppMessageTag, fromMessageId messageId: String) {
+        ensureTagsLoadedForCurrentScope()
         guard var existing = messageTags[messageId] else { return }
         
         existing.tags.remove(tag)
@@ -158,6 +160,7 @@ class WhatsAppMessageTagManager: ObservableObject {
     
     /// Imposta tutti i tag per un messaggio
     func setTags(_ tags: Set<WhatsAppMessageTag>, forMessageId messageId: String, sinistroRif: String? = nil, note: String? = nil) {
+        ensureTagsLoadedForCurrentScope()
         if tags.isEmpty && note == nil {
             messageTags.removeValue(forKey: messageId)
         } else {
@@ -175,6 +178,7 @@ class WhatsAppMessageTagManager: ObservableObject {
     
     /// Associa un messaggio a un sinistro
     func associateMessageToSinistro(messageId: String, sinistroRif: String) {
+        ensureTagsLoadedForCurrentScope()
         if var existing = messageTags[messageId] {
             existing.sinistroRiferimento = sinistroRif
             messageTags[messageId] = existing
@@ -192,6 +196,7 @@ class WhatsAppMessageTagManager: ObservableObject {
     
     /// Rimuovi associazione sinistro
     func disassociateMessageFromSinistro(messageId: String) {
+        ensureTagsLoadedForCurrentScope()
         guard var existing = messageTags[messageId] else { return }
         
         existing.sinistroRiferimento = nil
@@ -209,27 +214,32 @@ class WhatsAppMessageTagManager: ObservableObject {
     
     /// Ottieni i tag di un messaggio
     func getTags(forMessageId messageId: String) -> Set<WhatsAppMessageTag> {
+        ensureTagsLoadedForCurrentScope()
         return messageTags[messageId]?.tags ?? []
     }
     
     /// Ottieni tutti i dati del tag di un messaggio
     func getTagData(forMessageId messageId: String) -> WhatsAppMessageTagData? {
+        ensureTagsLoadedForCurrentScope()
         return messageTags[messageId]
     }
     
     /// Verifica se un messaggio ha un tag specifico
     func hasTag(_ tag: WhatsAppMessageTag, messageId: String) -> Bool {
+        ensureTagsLoadedForCurrentScope()
         return messageTags[messageId]?.tags.contains(tag) ?? false
     }
     
     /// Verifica se un messaggio ha almeno un tag
     func hasAnyTag(messageId: String) -> Bool {
+        ensureTagsLoadedForCurrentScope()
         guard let data = messageTags[messageId] else { return false }
         return !data.tags.isEmpty || data.sinistroRiferimento != nil
     }
     
     /// Ottieni il riferimento sinistro per un messaggio
     func getSinistroRif(forMessageId messageId: String) -> String? {
+        ensureTagsLoadedForCurrentScope()
         return messageTags[messageId]?.sinistroRiferimento
     }
     
@@ -237,16 +247,19 @@ class WhatsAppMessageTagManager: ObservableObject {
     
     /// Ottieni tutti i messaggi con un tag specifico
     func getMessages(withTag tag: WhatsAppMessageTag) -> [String] {
+        ensureTagsLoadedForCurrentScope()
         return messageTags.filter { $0.value.tags.contains(tag) }.map { $0.key }
     }
     
     /// Ottieni tutti i messaggi associati a un sinistro
     func getMessages(forSinistro sinistroRif: String) -> [String] {
+        ensureTagsLoadedForCurrentScope()
         return messageTags.filter { $0.value.sinistroRiferimento == sinistroRif }.map { $0.key }
     }
     
     /// Ottieni statistiche sui tag
     func getTagStats() -> [WhatsAppMessageTag: Int] {
+        ensureTagsLoadedForCurrentScope()
         var stats: [WhatsAppMessageTag: Int] = [:]
         
         for tagData in messageTags.values {
@@ -261,6 +274,7 @@ class WhatsAppMessageTagManager: ObservableObject {
     // MARK: - Persistence
     
     private func loadAllTags() {
+        loadedScope = currentAccountScope
         guard let data = userDefaults.data(forKey: tagsKey) else { return }
         
         do {
@@ -274,6 +288,7 @@ class WhatsAppMessageTagManager: ObservableObject {
     
     private func saveTags() {
         do {
+            loadedScope = currentAccountScope
             let data = try JSONEncoder().encode(messageTags)
             userDefaults.set(data, forKey: tagsKey)
         } catch {
@@ -290,6 +305,24 @@ class WhatsAppMessageTagManager: ObservableObject {
                 self?.saveTags()
             }
             .store(in: &cancellables)
+    }
+
+    private func ensureTagsLoadedForCurrentScope() {
+        guard loadedScope != currentAccountScope else { return }
+        messageTags.removeAll()
+        loadAllTags()
+    }
+
+    private var tagsKey: String {
+        "whatsapp_message_tags.\(currentAccountScope)"
+    }
+
+    private var currentAccountScope: String {
+        let accountId = WhatsAppService.shared.selectedAccountId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if !accountId.isEmpty {
+            return accountId
+        }
+        return CurrentUserService.shared.currentUsername?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? "anonymous"
     }
 }
 
