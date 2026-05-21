@@ -146,6 +146,55 @@ struct TenantInspectionExpirationDTO: Decodable {
     let manual_fallback_claims: Int
 }
 
+struct TenantUserDTO: Codable, Identifiable, Hashable {
+    let id: String
+    let tenant_id: String
+    let personal_email: String
+    let professional_email: String?
+    let email_aliases: [String]
+    let first_name: String
+    let last_name: String
+    let full_name: String
+    let job_title: String?
+    let phone_number: String?
+    let contract_type: String?
+    let roles: [String]
+    let is_active: Bool
+    let invite_status: String?
+    let invited_at: String?
+    let last_login_at: String?
+}
+
+struct TenantUserCreateDTO: Encodable {
+    let personal_email: String
+    let first_name: String
+    let last_name: String
+    let job_title: String?
+    let phone_number: String?
+    let contract_type: String?
+    let roles: [String]
+    let send_invite: Bool
+}
+
+struct TenantUserUpdateDTO: Encodable {
+    let first_name: String
+    let last_name: String
+    let job_title: String?
+    let phone_number: String?
+    let contract_type: String?
+    let roles: [String]
+    let is_active: Bool
+    let professional_email: String?
+}
+
+struct TenantUserInviteDTO: Decodable {
+    let user: TenantUserDTO
+    let invite_status: String
+    let invite_error: String?
+}
+
+private struct EmptyTenantPayload: Encodable {}
+
 @MainActor
 final class TenantSettingsAPIService: ObservableObject {
     static let shared = TenantSettingsAPIService()
@@ -154,6 +203,7 @@ final class TenantSettingsAPIService: ObservableObject {
     @Published private(set) var lastSyncError: String?
     @Published private(set) var backendReachable = false
     @Published private(set) var latestInspectionRoutes: [TenantInspectionRouteDTO] = []
+    @Published private(set) var tenantUsers: [TenantUserDTO] = []
 
     private let apiClient = BackendAPIClient.shared
 
@@ -244,6 +294,77 @@ final class TenantSettingsAPIService: ObservableObject {
             backendReachable = false
             lastSyncError = error.localizedDescription
             return latestInspectionRoutes
+        }
+    }
+
+    func loadTenantUsers(targetTenantId: String? = nil) async -> [TenantUserDTO] {
+        do {
+            let users: [TenantUserDTO] = try await apiClient.get(
+                "tenants/me/users",
+                queryItems: queryItems(for: targetTenantId)
+            )
+            backendReachable = true
+            lastSyncError = nil
+            tenantUsers = users
+            return users
+        } catch {
+            backendReachable = false
+            lastSyncError = error.localizedDescription
+            return tenantUsers
+        }
+    }
+
+    func createTenantUser(_ payload: TenantUserCreateDTO, targetTenantId: String? = nil) async -> TenantUserInviteDTO? {
+        do {
+            let response: TenantUserInviteDTO = try await apiClient.post(
+                "tenants/me/users",
+                body: payload,
+                queryItems: queryItems(for: targetTenantId)
+            )
+            _ = await loadTenantUsers(targetTenantId: targetTenantId)
+            backendReachable = true
+            lastSyncError = response.invite_error
+            return response
+        } catch {
+            backendReachable = false
+            lastSyncError = error.localizedDescription
+            return nil
+        }
+    }
+
+    func updateTenantUser(_ userId: String, payload: TenantUserUpdateDTO, targetTenantId: String? = nil) async -> TenantUserDTO? {
+        do {
+            let user: TenantUserDTO = try await apiClient.put(
+                "tenants/me/users/\(userId)",
+                body: payload,
+                queryItems: queryItems(for: targetTenantId)
+            )
+            _ = await loadTenantUsers(targetTenantId: targetTenantId)
+            backendReachable = true
+            lastSyncError = nil
+            return user
+        } catch {
+            backendReachable = false
+            lastSyncError = error.localizedDescription
+            return nil
+        }
+    }
+
+    func resendTenantUserInvite(_ userId: String, targetTenantId: String? = nil) async -> TenantUserInviteDTO? {
+        do {
+            let response: TenantUserInviteDTO = try await apiClient.post(
+                "tenants/me/users/\(userId)/invite",
+                body: EmptyTenantPayload(),
+                queryItems: queryItems(for: targetTenantId)
+            )
+            _ = await loadTenantUsers(targetTenantId: targetTenantId)
+            backendReachable = true
+            lastSyncError = response.invite_error
+            return response
+        } catch {
+            backendReachable = false
+            lastSyncError = error.localizedDescription
+            return nil
         }
     }
 

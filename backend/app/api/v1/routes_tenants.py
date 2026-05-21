@@ -1,16 +1,39 @@
 """
 Tenant settings routes
 """
+import asyncio
+from datetime import datetime, timezone
+import json
+from urllib import error as urlerror
+from urllib import request as urlrequest
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import get_db
+from app.core.security import get_password_hash
+from app.models.email import TenantEmailDomain
 from app.core.security import get_current_active_user
 from app.models.role import Role, user_roles
 from app.models.tenant import Tenant
 from app.models.user import User
-from app.schemas.tenant_settings import TenantMailSettingsPayload, TenantSettingsResponse
+from app.schemas.tenant_settings import (
+    TenantMailSettingsPayload,
+    TenantSettingsResponse,
+    TenantUserCreateRequest,
+    TenantUserInviteResponse,
+    TenantUserResponse,
+    TenantUserUpdateRequest,
+)
+from app.services.user_email_service import (
+    ensure_personal_email,
+    ensure_professional_email,
+    get_user_aliases,
+    set_professional_email,
+)
 
 router = APIRouter()
 
@@ -156,6 +179,122 @@ async def _is_tenant_admin(db: AsyncSession, user: User) -> bool:
     return "admin_tenant" in role_names or "admin" in role_names
 
 
+ROLE_MAP_FROM_APP = {
+    "admin": "admin_tenant",
+    "direttore": "direttore",
+    "capoTeam": "capoTeam",
+    "gestore": "gestore",
+    "perito": "perito",
+    "cat": "cat",
+    "segreteria": "segreteria",
+}
+
+
+ROLE_MAP_TO_APP = {
+    "admin_tenant": "admin",
+    "admin": "admin",
+    "direttore": "direttore",
+    "capoTeam": "capoTeam",
+    "gestore": "gestore",
+    "perito": "perito",
+    "expert": "perito",
+    "cat": "cat",
+    "segreteria": "segreteria",
+}
+
+
+async def _fetch_role_names(db: AsyncSession, user_id: str) -> list[str]:
+    result = await db.execute(
+        select(Role.name)
+        .select_from(user_roles.join(Role, user_roles.c.role_id == Role.id))
+        .where(user_roles.c.user_id == user_id)
+    )
+    mapped: list[str] = []
+    for row in result.all():
+        app_name = ROLE_MAP_TO_APP.get(row[0])
+        if app_name and app_name not in mapped:
+            mapped.append(app_name)
+    return mapped
+
+
+async def _ensure_roles(db: AsyncSession, user: User, app_role_names: list[str]) -> None:
+    normalized = []
+    for name in app_role_names:
+        mapped = ROLE_MAP_FROM_APP.get(name)
+        if mapped and mapped not in normalized:
+            normalized.append(mapped)
+
+    await db.execute(user_roles.delete().where(user_roles.c.user_id == user.id))
+
+    for name in normalized:
+        result = await db.execute(select(Role).where(Role.tenant_id == user.tenant_id, Role.name == name))
+        role = result.scalar_one_or_none()
+        if role is None:
+            role = Role(
+                id=str(uuid.uuid4()),
+                tenant_id=user.tenant_id,
+                name=name,
+                description=f"Ruolo {name}",
+            )
+            db.add(role)
+            await db.flush()
+        await db.execute(user_roles.insert().values(user_id=user.id, role_id=role.id))
+
+
+async def _tenant_user_response(db: AsyncSession, user: User) -> TenantUserResponse:
+    role_names = await _fetch_role_names(db, user.id)
+    aliases = await get_user_aliases(db, user)
+    settings_json = dict(user.settings_json or {})
+    return TenantUserResponse(
+        id=user.id,
+        tenant_id=user.tenant_id,
+        personal_email=user.personal_email or user.email,
+        professional_email=user.professional_email,
+        email_aliases=aliases,
+        first_name=user.first_name or "",
+        last_name=user.last_name or "",
+        full_name=user.full_name,
+        job_title=user.job_title,
+        phone_number=user.phone_number,
+        contract_type=user.contract_type,
+        roles=role_names,
+        is_active=user.is_active,
+        invite_status=settings_json.get("invite_status"),
+        invited_at=settings_json.get("invited_at"),
+        last_login_at=user.last_login_at.isoformat() if user.last_login_at else None,
+    )
+
+
+async def _send_supabase_invite(personal_email: str) -> tuple[str, str | None]:
+    if not settings.SUPABASE_URL or not settings.SUPABASE_SERVICE_ROLE_KEY:
+        return "not_configured", "Supabase service role key is not configured"
+
+    body = json.dumps({
+        "email": personal_email,
+        "data": {},
+        "redirect_to": settings.APP_PUBLIC_URL,
+    }).encode("utf-8")
+    req = urlrequest.Request(
+        f"{settings.SUPABASE_URL}/auth/v1/invite",
+        data=body,
+        headers={
+            "apikey": settings.SUPABASE_SERVICE_ROLE_KEY,
+            "Authorization": f"Bearer {settings.SUPABASE_SERVICE_ROLE_KEY}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        await asyncio.to_thread(lambda: urlrequest.urlopen(req, timeout=20).read())
+        return "sent", None
+    except urlerror.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")
+        return "failed", detail or f"HTTP {exc.code}"
+    except urlerror.URLError as exc:
+        return "failed", str(exc)
+
+
 async def _resolve_target_tenant(
     db: AsyncSession,
     current_user: User,
@@ -234,3 +373,144 @@ async def update_my_tenant_settings(
 
     settings = _normalized_settings(tenant, include_provider_secrets=current_user.is_platform_admin)
     return TenantSettingsResponse(tenant_id=tenant.id, **settings)
+
+
+@router.get("/me/users", response_model=list[TenantUserResponse])
+async def list_tenant_users(
+    tenant_id: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    tenant = await _resolve_target_tenant(db, current_user, tenant_id)
+    result = await db.execute(
+        select(User)
+        .where(User.tenant_id == tenant.id)
+        .order_by(User.full_name.asc(), User.email.asc())
+    )
+    users = result.scalars().all()
+    return [await _tenant_user_response(db, user) for user in users]
+
+
+@router.post("/me/users", response_model=TenantUserInviteResponse, status_code=status.HTTP_201_CREATED)
+async def create_tenant_user(
+    payload: TenantUserCreateRequest,
+    tenant_id: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    tenant = await _resolve_target_tenant(db, current_user, tenant_id)
+    personal_email = str(payload.personal_email).lower()
+
+    existing = await db.execute(
+        select(User).where((User.personal_email == personal_email) | (User.email == personal_email))
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Personal email already exists")
+
+    full_name = f"{payload.first_name.strip()} {payload.last_name.strip()}".strip()
+    user = User(
+        id=str(uuid.uuid4()),
+        tenant_id=tenant.id,
+        email=personal_email,
+        personal_email=personal_email,
+        full_name=full_name,
+        first_name=payload.first_name.strip(),
+        last_name=payload.last_name.strip(),
+        job_title=payload.job_title,
+        phone_number=payload.phone_number,
+        contract_type=payload.contract_type,
+        password_hash=get_password_hash(str(uuid.uuid4())),
+        is_active=True,
+        is_platform_admin=False,
+        settings_json={},
+    )
+    db.add(user)
+    await db.flush()
+    await _ensure_roles(db, user, payload.roles)
+    await ensure_professional_email(db, user, payload.roles)
+
+    invite_status = "not_sent"
+    invite_error = None
+    if payload.send_invite:
+        invite_status, invite_error = await _send_supabase_invite(personal_email)
+
+    metadata = dict(user.settings_json or {})
+    metadata["invite_status"] = invite_status
+    metadata["invited_at"] = datetime.now(timezone.utc).isoformat() if invite_status == "sent" else None
+    if invite_error:
+        metadata["invite_error"] = invite_error
+    user.settings_json = metadata
+
+    await db.commit()
+    await db.refresh(user)
+    return TenantUserInviteResponse(
+        user=await _tenant_user_response(db, user),
+        invite_status=invite_status,
+        invite_error=invite_error,
+    )
+
+
+@router.put("/me/users/{user_id}", response_model=TenantUserResponse)
+async def update_tenant_user(
+    user_id: str,
+    payload: TenantUserUpdateRequest,
+    tenant_id: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    tenant = await _resolve_target_tenant(db, current_user, tenant_id)
+    result = await db.execute(select(User).where(User.id == user_id, User.tenant_id == tenant.id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    user.first_name = payload.first_name.strip()
+    user.last_name = payload.last_name.strip()
+    user.full_name = f"{user.first_name} {user.last_name}".strip()
+    user.job_title = payload.job_title
+    user.phone_number = payload.phone_number
+    user.contract_type = payload.contract_type
+    user.is_active = payload.is_active
+
+    await _ensure_roles(db, user, payload.roles)
+    if payload.professional_email:
+        await set_professional_email(db, user, str(payload.professional_email), source="admin")
+    else:
+        await ensure_professional_email(db, user, payload.roles)
+
+    await db.commit()
+    await db.refresh(user)
+    return await _tenant_user_response(db, user)
+
+
+@router.post("/me/users/{user_id}/invite", response_model=TenantUserInviteResponse)
+async def resend_tenant_user_invite(
+    user_id: str,
+    tenant_id: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    tenant = await _resolve_target_tenant(db, current_user, tenant_id)
+    result = await db.execute(select(User).where(User.id == user_id, User.tenant_id == tenant.id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    await ensure_personal_email(db, user)
+    invite_status, invite_error = await _send_supabase_invite(user.personal_email or user.email)
+    metadata = dict(user.settings_json or {})
+    metadata["invite_status"] = invite_status
+    metadata["invited_at"] = datetime.now(timezone.utc).isoformat() if invite_status == "sent" else metadata.get("invited_at")
+    if invite_error:
+        metadata["invite_error"] = invite_error
+    else:
+        metadata.pop("invite_error", None)
+    user.settings_json = metadata
+
+    await db.commit()
+    await db.refresh(user)
+    return TenantUserInviteResponse(
+        user=await _tenant_user_response(db, user),
+        invite_status=invite_status,
+        invite_error=invite_error,
+    )

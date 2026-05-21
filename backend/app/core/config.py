@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     SUPABASE_URL: Optional[str] = None
     SUPABASE_ANON_KEY: Optional[str] = None
     SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None
+    APP_PUBLIC_URL: str = "https://app.perx.it"
     
     # Security
     SECRET_KEY: str = "change-me-in-production"
@@ -63,6 +64,7 @@ class Settings(BaseSettings):
     # Mail Ingestion
     MAIL_INGESTION_ENABLED: bool = True
     MAIL_POLL_INTERVAL_SECONDS: int = 300  # 5 minutes
+    LOCAL_AI_WORKER_SHARED_SECRET: Optional[str] = None
     
     # Feature Flags
     FF_CLOUD_AUTH_ENABLED: bool = False
@@ -72,6 +74,7 @@ class Settings(BaseSettings):
     FF_TASKS_ENABLED: bool = False
     FF_AUTOMATIONS_ENABLED: bool = False
     FF_INSPECTION_AUTOMATIONS_ENABLED: bool = True
+    AUTOMATION_POLL_SECONDS: int = 3600
     INSPECTION_AUTOMATION_POLL_SECONDS: int = 60
     
     class Config:

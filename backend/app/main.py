@@ -15,6 +15,7 @@ from app.api.v1 import (
     routes_claims,
     routes_diary,
     routes_documents,
+    routes_email_processing,
     routes_emails,
     routes_internal_chat,
     routes_inspections,
@@ -29,6 +30,7 @@ from app.api.v1 import (
     routes_whatsapp,
 )
 from app.services.inspection_workflow_service import InspectionAutomationRuntime
+from app.services.automation_service import AutomationRuntime
 
 
 @asynccontextmanager
@@ -38,10 +40,12 @@ async def lifespan(app: FastAPI):
     setup_logging()
     # Create tables (in production, use migrations)
     # Base.metadata.create_all(bind=engine)
+    await AutomationRuntime.start()
     await InspectionAutomationRuntime.start()
     yield
     # Shutdown
     await InspectionAutomationRuntime.stop()
+    await AutomationRuntime.stop()
 
 
 app = FastAPI(
@@ -69,6 +73,7 @@ app.include_router(routes_tasks.router, prefix="/api/v1", tags=["tasks"])
 app.include_router(routes_documents.router, prefix="/api/v1", tags=["documents"])
 app.include_router(routes_diary.router, prefix="/api/v1", tags=["diary"])
 app.include_router(routes_emails.router, prefix="/api/v1/emails", tags=["emails"])
+app.include_router(routes_email_processing.router, prefix="/api/v1/email-processing", tags=["email-processing"])
 app.include_router(routes_attachments.router, prefix="/api/v1/attachments", tags=["attachments"])
 app.include_router(routes_whatsapp.router, prefix="/api/v1/whatsapp", tags=["whatsapp"])
 app.include_router(routes_hub_compat.router, prefix="/api/v1/hub", tags=["hub-compat"])

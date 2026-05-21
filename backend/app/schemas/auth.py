@@ -23,6 +23,9 @@ class LoginRequest(BaseModel):
 class UserResponse(BaseModel):
     id: str
     email: str
+    personal_email: Optional[str] = None
+    professional_email: Optional[str] = None
+    email_aliases: list[str] = []
     full_name: str
     first_name: str = ""
     last_name: str = ""

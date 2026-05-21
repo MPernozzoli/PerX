@@ -18,6 +18,7 @@ from app.schemas.content import (
     ClaimDiaryEntryResponse,
 )
 from app.services.claim_service import ClaimService
+from app.services.automation_service import AutomationService
 
 router = APIRouter()
 
@@ -95,6 +96,14 @@ async def create_claim_diary_entry(
         "diary_entry_created",
         current_user.id,
         {"entry_id": entry.id, "entry_type": entry.entry_type, "title": entry.title},
+    )
+
+    await AutomationService.process_diary_entry(
+        db,
+        current_user.tenant_id,
+        claim,
+        entry,
+        current_user.id,
     )
 
     return ClaimDiaryEntryResponse.model_validate(entry)

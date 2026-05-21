@@ -160,7 +160,7 @@ async def get_current_user(
     from sqlalchemy import select
     if is_supabase_auth_enabled():
         query = select(User).where(User.is_active == True).where(
-            (User.idp_subject == idp_subject) | (User.email == user_email)
+            (User.idp_subject == idp_subject) | (User.personal_email == user_email) | (User.email == user_email)
         )
     else:
         query = select(User).where(User.id == user_id).where(User.is_active == True)

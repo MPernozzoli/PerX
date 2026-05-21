@@ -56,6 +56,37 @@ class EmailListResponse(BaseModel):
     total: int
 
 
+class EmailProcessingJobResponse(BaseModel):
+    id: str
+    tenant_id: str
+    inbound_event_id: str
+    status: str
+    priority: int
+    retry_count: int
+    input_json: dict
+    lease_expires_at: Optional[datetime] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class EmailProcessingJobClaimResponse(BaseModel):
+    items: list[EmailProcessingJobResponse]
+    total: int
+
+
+class EmailProcessingJobCompleteRequest(BaseModel):
+    email_id: Optional[str] = None
+    result_json: dict = Field(default_factory=dict)
+
+
+class EmailProcessingJobFailRequest(BaseModel):
+    error: str
+    retry: bool = True
+    result_json: Optional[dict] = None
+
+
 class AttachmentCreate(BaseModel):
     email_id: Optional[str] = None
     claim_id: Optional[str] = None

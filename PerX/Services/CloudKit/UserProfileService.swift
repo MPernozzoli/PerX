@@ -499,6 +499,9 @@ final class UserProfileService: ObservableObject {
 private struct BackendUserProfileDTO: Codable {
     let id: String
     let email: String
+    let personal_email: String?
+    let professional_email: String?
+    let email_aliases: [String]?
     let full_name: String
     let first_name: String
     let last_name: String
@@ -525,6 +528,9 @@ private struct BackendUserProfileDTO: Codable {
 
     func toUserProfile() -> UserProfile {
         var profile = UserProfile(email: email)
+        profile.personalEmail = personal_email ?? email
+        profile.professionalEmail = professional_email
+        profile.emailAliases = email_aliases ?? []
         profile.firstName = first_name
         profile.lastName = last_name
         profile.jobTitle = job_title
@@ -575,6 +581,7 @@ private struct BackendUserProfileUpdateDTO: Encodable {
     let send_read_receipts: Bool
     let email_signature_html: String?
     let email_signature_text: String?
+    let professional_email: String?
 
     init(profile: UserProfile) {
         self.first_name = profile.firstName
@@ -595,6 +602,7 @@ private struct BackendUserProfileUpdateDTO: Encodable {
         self.send_read_receipts = profile.sendReadReceipts
         self.email_signature_html = profile.emailSignatureHTML
         self.email_signature_text = profile.emailSignatureText
+        self.professional_email = profile.professionalEmail
     }
 }
 

@@ -11,6 +11,10 @@ load_dotenv()
 
 # Hub configuration
 HUB_URL = os.getenv('HUB_URL', 'http://localhost:8080')
+CLOUD_API_URL = os.getenv('CLOUD_API_URL', HUB_URL)
+LOCAL_AI_WORKER_ID = os.getenv('LOCAL_AI_WORKER_ID', 'mac-mini-local-ai')
+LOCAL_AI_WORKER_SHARED_SECRET = os.getenv('LOCAL_AI_WORKER_SHARED_SECRET', '')
+CLOUD_JOB_POLL_INTERVAL = int(os.getenv('CLOUD_JOB_POLL_INTERVAL', '5'))
 
 # Polling intervals
 IMAP_POLL_INTERVAL = int(os.getenv('IMAP_POLL_INTERVAL', '60'))  # seconds
