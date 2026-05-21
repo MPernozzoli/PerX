@@ -6,6 +6,7 @@ from __future__ import annotations
 from datetime import date, datetime, time, timedelta, timezone
 import hashlib
 from pathlib import Path
+import re
 import uuid
 
 from sqlalchemy import and_, func, or_, select
@@ -38,6 +39,7 @@ from app.models.portal import (
     PortalDocumentCollectionSubmission,
     PortalSignatureRequest,
 )
+from app.models.tenant import TenantPortalDomain
 from app.models.user import User
 from app.schemas.portal import (
     PortalAccessInviteRequest,
@@ -59,6 +61,7 @@ from app.schemas.inspection import InspectionPreferredSlotInput
 
 class PortalService:
     PORTAL_UPLOAD_ROOT = Path(__file__).resolve().parents[2] / "runtime" / "portal_uploads"
+    PORTAL_SUBDOMAIN = "assicurati"
     REQUIRED_DOCUMENT_COLLECTION_CONFIRMATIONS = {
         "authentic_photos",
         "photos_match_insured_property",
@@ -482,6 +485,97 @@ class PortalService:
         return f"{base_url}/access/{token}"
 
     @staticmethod
+    def normalize_portal_host(value: str | None) -> str | None:
+        if not value:
+            return None
+        candidate = value.split(",", 1)[0].strip().lower()
+        candidate = re.sub(r"^https?://", "", candidate)
+        candidate = candidate.split("/", 1)[0].split("?", 1)[0].strip().rstrip(".")
+        if not candidate:
+            return None
+        if candidate.startswith("["):
+            return candidate
+        return candidate.rsplit(":", 1)[0]
+
+    @staticmethod
+    def portal_domain_from_host(host: str | None) -> str | None:
+        normalized = PortalService.normalize_portal_host(host)
+        if not normalized:
+            return None
+        prefix = f"{PortalService.PORTAL_SUBDOMAIN}."
+        if normalized.startswith(prefix):
+            tenant_domain = normalized[len(prefix):]
+            return tenant_domain or None
+        return normalized
+
+    @staticmethod
+    def _is_local_portal_host(host: str | None) -> bool:
+        normalized = PortalService.normalize_portal_host(host)
+        return normalized in {"localhost", "127.0.0.1", "::1", "[::1]"}
+
+    @staticmethod
+    def _requires_configured_tenant(host: str | None) -> bool:
+        normalized = PortalService.normalize_portal_host(host)
+        if not normalized or PortalService._is_local_portal_host(normalized):
+            return False
+        return normalized.startswith(f"{PortalService.PORTAL_SUBDOMAIN}.")
+
+    @staticmethod
+    async def resolve_tenant_id_for_portal_host(
+        db: AsyncSession,
+        host: str | None,
+    ) -> str | None:
+        normalized_host = PortalService.normalize_portal_host(host)
+        tenant_domain = PortalService.portal_domain_from_host(normalized_host)
+        if not normalized_host or not tenant_domain or PortalService._is_local_portal_host(normalized_host):
+            return None
+
+        candidates = {normalized_host, tenant_domain}
+        result = await db.execute(
+            select(TenantPortalDomain)
+            .where(TenantPortalDomain.domain.in_(candidates))
+            .order_by(TenantPortalDomain.is_primary.desc(), TenantPortalDomain.created_at.desc())
+            .limit(1)
+        )
+        domain = result.scalar_one_or_none()
+        return domain.tenant_id if domain else None
+
+    @staticmethod
+    async def build_magic_link_url_for_tenant(
+        db: AsyncSession,
+        tenant_id: str,
+        token: str,
+        portal_host: str | None = None,
+    ) -> str:
+        normalized_host = PortalService.normalize_portal_host(portal_host)
+        if normalized_host and not PortalService._is_local_portal_host(normalized_host):
+            scheme = "https"
+            if settings.PORTAL_APP_URL.startswith("http://"):
+                scheme = "http"
+            return f"{scheme}://{normalized_host}/access/{token}"
+
+        result = await db.execute(
+            select(TenantPortalDomain)
+            .where(TenantPortalDomain.tenant_id == tenant_id)
+            .order_by(TenantPortalDomain.is_primary.desc(), TenantPortalDomain.created_at.desc())
+            .limit(1)
+        )
+        domain = result.scalar_one_or_none()
+        if not domain:
+            return PortalService.build_magic_link_url(token)
+
+        configured_domain = PortalService.normalize_portal_host(domain.domain)
+        if not configured_domain:
+            return PortalService.build_magic_link_url(token)
+
+        host = (
+            configured_domain
+            if configured_domain.startswith(f"{PortalService.PORTAL_SUBDOMAIN}.")
+            else f"{PortalService.PORTAL_SUBDOMAIN}.{configured_domain}"
+        )
+        return f"https://{host}/access/{token}"
+
+    @staticmethod
     async def _create_claim_event(
         db: AsyncSession,
         tenant_id: str,
@@ -618,18 +712,22 @@ class PortalService:
     async def _find_claim_by_reference(
         db: AsyncSession,
         claim_reference: str,
+        tenant_id: str | None = None,
     ) -> Claim | None:
         normalized_reference = claim_reference.strip()
         if not normalized_reference:
             return None
+        conditions = [
+            or_(
+                Claim.external_ref == normalized_reference,
+                Claim.numero_sinistro == normalized_reference,
+            )
+        ]
+        if tenant_id:
+            conditions.append(Claim.tenant_id == tenant_id)
         result = await db.execute(
             select(Claim)
-            .where(
-                or_(
-                    Claim.external_ref == normalized_reference,
-                    Claim.numero_sinistro == normalized_reference,
-                )
-            )
+            .where(and_(*conditions))
             .order_by(Claim.updated_at.desc(), Claim.created_at.desc())
             .limit(1)
         )
@@ -681,6 +779,9 @@ class PortalService:
         db: AsyncSession,
         payload: PortalAuthStartRequest,
     ) -> tuple[PortalClaimAccess | None, PortalAuthChallenge | None, str | None]:
+        tenant_id = await PortalService.resolve_tenant_id_for_portal_host(db, payload.portal_host)
+        if not tenant_id and PortalService._requires_configured_tenant(payload.portal_host):
+            return None, None, None
         if (
             settings.PORTAL_DEV_CLAIM_REFERENCE_ONLY_AUTH
             and payload.claim_reference
@@ -688,7 +789,7 @@ class PortalService:
             and not payload.full_name
             and not payload.phone_number
         ):
-            claim = await PortalService._find_claim_by_reference(db, payload.claim_reference)
+            claim = await PortalService._find_claim_by_reference(db, payload.claim_reference, tenant_id)
             if not claim:
                 return None, None, None
 
@@ -697,7 +798,10 @@ class PortalService:
                 db,
                 access,
                 delivery_channel="email",
-                metadata_json={"issued_via": "dev_claim_reference_only_auth"},
+                metadata_json={
+                    "issued_via": "dev_claim_reference_only_auth",
+                    "portal_host": PortalService.normalize_portal_host(payload.portal_host),
+                },
             )
             access.last_delivery_status = "development_preview_only"
             await db.commit()
@@ -705,6 +809,9 @@ class PortalService:
             return access, challenge, raw_token
 
         conditions = [PortalClaimAccess.status == "active"]
+        if tenant_id:
+            conditions.append(PortalClaimAccess.tenant_id == tenant_id)
+            conditions.append(Claim.tenant_id == tenant_id)
         if payload.claim_reference:
             conditions.append(
                 or_(
@@ -741,7 +848,10 @@ class PortalService:
             db,
             access,
             delivery_channel=payload.channel,
-            metadata_json={"issued_via": "public_auth_start"},
+            metadata_json={
+                "issued_via": "public_auth_start",
+                "portal_host": PortalService.normalize_portal_host(payload.portal_host),
+            },
         )
         access.last_delivery_status = "pending_integration"
         await db.commit()
@@ -752,18 +862,26 @@ class PortalService:
     async def exchange_magic_token(
         db: AsyncSession,
         token: str,
+        portal_host: str | None = None,
     ) -> tuple[PortalClaimAccess, str, int]:
         hashed = hash_secret(token)
         now = datetime.now(timezone.utc)
+        tenant_id = await PortalService.resolve_tenant_id_for_portal_host(db, portal_host)
+        if not tenant_id and PortalService._requires_configured_tenant(portal_host):
+            raise ValueError("Invalid portal tenant")
+        conditions = [
+            PortalAuthChallenge.token_hash == hashed,
+            PortalAuthChallenge.status == "pending",
+            PortalAuthChallenge.expires_at >= now,
+            PortalClaimAccess.status == "active",
+        ]
+        if tenant_id:
+            conditions.append(PortalAuthChallenge.tenant_id == tenant_id)
+            conditions.append(PortalClaimAccess.tenant_id == tenant_id)
         result = await db.execute(
             select(PortalAuthChallenge, PortalClaimAccess)
             .join(PortalClaimAccess, PortalClaimAccess.id == PortalAuthChallenge.portal_access_id)
-            .where(
-                PortalAuthChallenge.token_hash == hashed,
-                PortalAuthChallenge.status == "pending",
-                PortalAuthChallenge.expires_at >= now,
-                PortalClaimAccess.status == "active",
-            )
+            .where(and_(*conditions))
         )
         row = result.first()
         if not row:

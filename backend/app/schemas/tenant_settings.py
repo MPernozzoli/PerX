@@ -57,6 +57,7 @@ class TenantInspectionProviderSettingsPayload(BaseModel):
 class TenantMailSettingsPayload(BaseModel):
     tenant_name: str = Field(..., min_length=1)
     tenant_slug: str = Field(..., min_length=1)
+    portal_domains: list[str] = Field(default_factory=list)
     internal_domains: list[str] = Field(default_factory=list)
     internal_emails: list[EmailStr] = Field(default_factory=list)
     system_emails: list[EmailStr] = Field(default_factory=list)
@@ -71,6 +72,7 @@ class TenantSettingsResponse(BaseModel):
     tenant_id: str
     tenant_name: str
     tenant_slug: str
+    portal_domains: list[str]
     internal_domains: list[str]
     internal_emails: list[EmailStr]
     system_emails: list[EmailStr]
@@ -79,3 +81,50 @@ class TenantSettingsResponse(BaseModel):
     default_claim_garanzia: str
     cat_settings: TenantCATSettingsPayload
     provider_settings: TenantInspectionProviderSettingsPayload | None = None
+
+
+class TenantUserResponse(BaseModel):
+    id: str
+    tenant_id: str
+    personal_email: EmailStr
+    professional_email: EmailStr | None = None
+    email_aliases: list[EmailStr] = Field(default_factory=list)
+    first_name: str = ""
+    last_name: str = ""
+    full_name: str
+    job_title: str | None = None
+    phone_number: str | None = None
+    contract_type: str | None = None
+    roles: list[str] = Field(default_factory=list)
+    is_active: bool
+    invite_status: str | None = None
+    invited_at: str | None = None
+    last_login_at: str | None = None
+
+
+class TenantUserCreateRequest(BaseModel):
+    personal_email: EmailStr
+    first_name: str = Field(..., min_length=1)
+    last_name: str = Field(..., min_length=1)
+    job_title: str | None = None
+    phone_number: str | None = None
+    contract_type: str | None = None
+    roles: list[str] = Field(default_factory=list)
+    send_invite: bool = True
+
+
+class TenantUserUpdateRequest(BaseModel):
+    first_name: str = Field(..., min_length=1)
+    last_name: str = Field(..., min_length=1)
+    job_title: str | None = None
+    phone_number: str | None = None
+    contract_type: str | None = None
+    roles: list[str] = Field(default_factory=list)
+    is_active: bool = True
+    professional_email: EmailStr | None = None
+
+
+class TenantUserInviteResponse(BaseModel):
+    user: TenantUserResponse
+    invite_status: str
+    invite_error: str | None = None

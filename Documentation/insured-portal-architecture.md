@@ -4,6 +4,15 @@
 
 Realizzare un portale web dedicato agli assicurati, separato dall'area interna PerX ma collegato allo stesso dominio sinistri e allo stesso backend cloud.
 
+## Routing tenant
+
+Il portale assicurati opera sul sottodominio `assicurati.[dominio_tenant]`.
+La logica di autenticazione, dashboard, documenti, IBAN, chat, sopralluogo e firma resta condivisa tra tutti i tenant.
+Il tenant viene risolto dal backend tramite la tabella `tenant_portal_domains`, popolata dalle impostazioni tenant `portal_domains`.
+
+Il front-end Next.js deriva lo stesso contesto dall'host della richiesta e carica un CSS tenant-specifico da
+`portal-web/public/tenant-themes/{themeId}.css`. In questo modo i processi restano comuni e ogni tenant puo avere stile, colori e brand gestiti in un file separato.
+
 ## Componenti introdotti
 
 - `portal-web/`

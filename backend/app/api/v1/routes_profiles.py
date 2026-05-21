@@ -17,6 +17,12 @@ from app.models.role import Role, user_roles
 from app.models.user import User
 from app.models.user_profile_asset import UserProfileAsset
 from app.schemas.profile import UserProfileAssetResponse, UserProfileResponse, UserProfileUpdateRequest
+from app.services.user_email_service import (
+    ensure_personal_email,
+    ensure_professional_email,
+    get_user_aliases,
+    set_professional_email,
+)
 
 router = APIRouter()
 
@@ -92,11 +98,15 @@ def _build_full_name(first_name: str, last_name: str, fallback: str) -> str:
 async def _to_response(db: AsyncSession, user: User) -> UserProfileResponse:
     role_names = await _fetch_role_names(db, user.id)
     assets = await _fetch_asset_map(db, user.id)
+    aliases = await get_user_aliases(db, user)
     avatar_asset = assets.get("avatar_photo")
     signature_asset = assets.get("signature_image")
     return UserProfileResponse(
         id=user.id,
-        email=user.email,
+        email=user.personal_email or user.email,
+        personal_email=user.personal_email or user.email,
+        professional_email=user.professional_email,
+        email_aliases=aliases,
         full_name=user.full_name,
         first_name=user.first_name or "",
         last_name=user.last_name or "",
@@ -165,6 +175,11 @@ async def get_my_profile(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
+    role_names = await _fetch_role_names(db, current_user.id)
+    await ensure_personal_email(db, current_user)
+    await ensure_professional_email(db, current_user, role_names)
+    await db.commit()
+    await db.refresh(current_user)
     return await _to_response(db, current_user)
 
 
@@ -199,6 +214,11 @@ async def update_my_profile(
     current_user.last_login_at = datetime.utcnow()
 
     await _ensure_roles(db, current_user, payload.roles)
+    await ensure_personal_email(db, current_user)
+    if payload.professional_email:
+        await set_professional_email(db, current_user, payload.professional_email, source="user")
+    else:
+        await ensure_professional_email(db, current_user, payload.roles)
     await db.commit()
     await db.refresh(current_user)
 

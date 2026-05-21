@@ -1,0 +1,15 @@
+:root {
+  --page-bg: #f7f9fc;
+  --ink: #20293f;
+  --ink-soft: #61708a;
+  --card: rgba(255, 255, 255, 0.96);
+  --line: rgba(32, 41, 63, 0.12);
+  --gold: #d97706;
+  --gold-soft: rgba(217, 119, 6, 0.13);
+  --green: #047857;
+  --green-soft: rgba(4, 120, 87, 0.13);
+  --navy: #1e3a5f;
+  --navy-soft: rgba(30, 58, 95, 0.09);
+  --cyan-soft: rgba(14, 116, 144, 0.12);
+  --shadow: 0 20px 25px -5px rgba(32, 41, 63, 0.08), 0 8px 10px -6px rgba(32, 41, 63, 0.05);
+}

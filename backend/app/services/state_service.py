@@ -152,6 +152,9 @@ class StateService:
         elif old_state in {"SV050", "SV051", "SV052", "SV053"}:
             StateService._merge_claim_metadata(claim, inspection_workflow_stage=None)
 
+        if payload and payload.get("stato_detail"):
+            StateService._merge_claim_metadata(claim, stato_detail=payload.get("stato_detail"))
+
         claim.version += 1
         claim.updated_at = now
         
@@ -196,6 +199,12 @@ class StateService:
                     source=event_source,
                 )
             )
+
+        if event_source != "automation":
+            from app.core.config import settings
+            if settings.FF_AUTOMATIONS_ENABLED:
+                from app.services.automation_service import AutomationService
+                await AutomationService.handle_state_change(db, tenant_id, claim_id, to_state)
 
         if commit:
             await db.commit()

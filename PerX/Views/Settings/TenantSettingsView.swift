@@ -33,6 +33,12 @@ struct TenantSettingsView: View {
                         if currentUserService.isPlatformAdmin && !apiService.availableTenants.isEmpty {
                             tenantPickerCard
                         }
+                        StudioTenantOverviewView(
+                            tenantName: tenantName,
+                            tenantSlug: tenantSlug,
+                            internalDomainsText: internalDomainsText,
+                            targetTenantId: selectedTenantId.isEmpty ? nil : selectedTenantId
+                        )
                         identityCard
                         mailCard
                         claimsCard
@@ -890,6 +896,7 @@ struct TenantSettingsView: View {
         }
         await loadSettingsFromBackend()
         _ = await apiService.loadInspectionRoutes(targetTenantId: selectedTenantId.isEmpty ? nil : selectedTenantId)
+        _ = await apiService.loadTenantUsers(targetTenantId: selectedTenantId.isEmpty ? nil : selectedTenantId)
     }
 
     private func loadSettingsFromBackend() async {
@@ -902,6 +909,7 @@ struct TenantSettingsView: View {
         TenantMailSettingsService.shared.settings = loaded
         loadSettings()
         _ = await apiService.loadInspectionRoutes(targetTenantId: targetTenantId)
+        _ = await apiService.loadTenantUsers(targetTenantId: targetTenantId)
         if apiService.lastSyncError == nil {
             saveMessage = "Configurazione tenant caricata dal backend"
         } else {

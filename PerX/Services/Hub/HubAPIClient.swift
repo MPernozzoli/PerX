@@ -1,5 +1,7 @@
 import Foundation
 
+private struct HubAPIEmptyResponse: Decodable {}
+
 /// Client HTTP per comunicare con l'Hub centralizzato
 @MainActor
 class HubAPIClient: ObservableObject {
@@ -79,8 +81,7 @@ class HubAPIClient: ObservableObject {
             let client_info: String?
         }
 
-        struct EmptyResponse: Decodable {}
-        let _: EmptyResponse = try await cloudClient.cloudPost(
+        let _: HubAPIEmptyResponse = try await cloudClient.cloudPost(
             compatEndpoint("heartbeat"),
             body: HeartbeatRequest(user_id: userId, client_info: clientInfo)
         )
@@ -217,8 +218,7 @@ class HubAPIClient: ObservableObject {
     
     /// POST generico con body, senza risposta (void)
     func post<B: Encodable>(endpoint: String, body: B, tenantSlug: String? = nil) async throws {
-        struct EmptyResponse: Decodable {}
-        let _: EmptyResponse = try await cloudClient.cloudPost(compatEndpoint(endpoint), body: body)
+        let _: HubAPIEmptyResponse = try await cloudClient.cloudPost(compatEndpoint(endpoint), body: body)
     }
     
     /// DELETE generico

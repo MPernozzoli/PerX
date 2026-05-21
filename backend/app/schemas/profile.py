@@ -10,6 +10,9 @@ from pydantic import BaseModel, Field
 class UserProfileResponse(BaseModel):
     id: str
     email: str
+    personal_email: Optional[str] = None
+    professional_email: Optional[str] = None
+    email_aliases: list[str] = Field(default_factory=list)
     full_name: str
     first_name: str = ""
     last_name: str = ""
@@ -57,6 +60,7 @@ class UserProfileUpdateRequest(BaseModel):
     send_read_receipts: bool = True
     email_signature_html: Optional[str] = None
     email_signature_text: Optional[str] = None
+    professional_email: Optional[str] = None
 
 
 class UserProfileAssetResponse(BaseModel):

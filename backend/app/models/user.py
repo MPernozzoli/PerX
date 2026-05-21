@@ -12,6 +12,8 @@ class User(Base):
     id = Column(String, primary_key=True, index=True)
     tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
     email = Column(String, unique=True, nullable=False, index=True)
+    personal_email = Column(String, unique=True, nullable=True, index=True)
+    professional_email = Column(String, unique=True, nullable=True, index=True)
     full_name = Column(String, nullable=False)
     first_name = Column(String, nullable=True)
     last_name = Column(String, nullable=True)

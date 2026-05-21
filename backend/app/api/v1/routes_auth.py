@@ -18,6 +18,7 @@ from app.core.security import (
 from app.models.role import Role, user_roles
 from app.models.user import User
 from app.schemas.auth import LoginRequest, Token, UserResponse
+from app.services.user_email_service import ensure_personal_email, ensure_professional_email, get_user_aliases
 
 router = APIRouter()
 
@@ -49,10 +50,13 @@ async def login(
 ):
     """Login with username/password, returns JWT tokens"""
     if is_supabase_auth_enabled():
-        token_response = await supabase_password_login(login_data.username, login_data.password)
+        login_email = login_data.username.strip().lower()
+        token_response = await supabase_password_login(login_email, login_data.password)
 
         result = await db.execute(
-            select(User).where(User.email == login_data.username.lower())
+            select(User).where(
+                (User.personal_email == login_email) | (User.email == login_email)
+            )
         )
         user = result.scalar_one_or_none()
 
@@ -72,8 +76,9 @@ async def login(
         }
 
     # Find user by email
+    login_email = login_data.username.strip().lower()
     result = await db.execute(
-        select(User).where(User.email == login_data.username)
+        select(User).where((User.personal_email == login_email) | (User.email == login_email))
     )
     user = result.scalar_one_or_none()
     
@@ -118,9 +123,16 @@ async def get_current_user_info(
 ):
     """Get current user information"""
     role_names = await _fetch_user_role_names(db, current_user.id)
+    await ensure_personal_email(db, current_user)
+    await ensure_professional_email(db, current_user, role_names)
+    await db.commit()
+    aliases = await get_user_aliases(db, current_user)
     return UserResponse(
         id=current_user.id,
-        email=current_user.email,
+        email=current_user.personal_email or current_user.email,
+        personal_email=current_user.personal_email or current_user.email,
+        professional_email=current_user.professional_email,
+        email_aliases=aliases,
         full_name=current_user.full_name,
         first_name=current_user.first_name or "",
         last_name=current_user.last_name or "",

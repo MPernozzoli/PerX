@@ -13,8 +13,10 @@ from app.api.v1 import (
     routes_attachments,
     routes_auth,
     routes_claims,
+    routes_cat_dispatcher,
     routes_diary,
     routes_documents,
+    routes_email_processing,
     routes_emails,
     routes_internal_chat,
     routes_inspections,
@@ -22,6 +24,7 @@ from app.api.v1 import (
     routes_ai_chat,
     routes_planning,
     routes_portal,
+    routes_process_jobs,
     routes_profiles,
     routes_reporting,
     routes_tasks,
@@ -29,6 +32,7 @@ from app.api.v1 import (
     routes_whatsapp,
 )
 from app.services.inspection_workflow_service import InspectionAutomationRuntime
+from app.services.automation_service import AutomationRuntime
 
 
 @asynccontextmanager
@@ -38,10 +42,12 @@ async def lifespan(app: FastAPI):
     setup_logging()
     # Create tables (in production, use migrations)
     # Base.metadata.create_all(bind=engine)
+    await AutomationRuntime.start()
     await InspectionAutomationRuntime.start()
     yield
     # Shutdown
     await InspectionAutomationRuntime.stop()
+    await AutomationRuntime.stop()
 
 
 app = FastAPI(
@@ -65,10 +71,13 @@ app.include_router(routes_auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(routes_profiles.router, prefix="/api/v1/profiles", tags=["profiles"])
 app.include_router(routes_reporting.router, prefix="/api/v1/reports", tags=["reporting"])
 app.include_router(routes_claims.router, prefix="/api/v1/claims", tags=["claims"])
+app.include_router(routes_cat_dispatcher.router, prefix="/api/v1/cat-dispatcher", tags=["cat-dispatcher"])
 app.include_router(routes_tasks.router, prefix="/api/v1", tags=["tasks"])
 app.include_router(routes_documents.router, prefix="/api/v1", tags=["documents"])
 app.include_router(routes_diary.router, prefix="/api/v1", tags=["diary"])
 app.include_router(routes_emails.router, prefix="/api/v1/emails", tags=["emails"])
+app.include_router(routes_email_processing.router, prefix="/api/v1/email-processing", tags=["email-processing"])
+app.include_router(routes_process_jobs.router, prefix="/api/v1/process-jobs", tags=["process-jobs"])
 app.include_router(routes_attachments.router, prefix="/api/v1/attachments", tags=["attachments"])
 app.include_router(routes_whatsapp.router, prefix="/api/v1/whatsapp", tags=["whatsapp"])
 app.include_router(routes_hub_compat.router, prefix="/api/v1/hub", tags=["hub-compat"])

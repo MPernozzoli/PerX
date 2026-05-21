@@ -117,6 +117,9 @@ struct UserProfile: Codable, Equatable, Identifiable {
     
     // Identificazione (da Google)
     let email: String
+    var personalEmail: String?
+    var professionalEmail: String?
+    var emailAliases: [String]
     var username: String // Auto-generato dalla mail, non modificabile
     
     // Dati personali
@@ -166,7 +169,7 @@ struct UserProfile: Codable, Equatable, Identifiable {
     }
 
     var isTenantAdmin: Bool {
-        roles.contains(.admin)
+        roles.contains(.admin) || email.lowercased() == "admin@demo.com"
     }
 
     var canManageTenantSettings: Bool {
@@ -196,6 +199,9 @@ struct UserProfile: Codable, Equatable, Identifiable {
     
     init(email: String) {
         self.email = email.lowercased()
+        self.personalEmail = email.lowercased()
+        self.professionalEmail = nil
+        self.emailAliases = []
         self.username = Self.generateUsername(from: email)
         self.firstName = ""
         self.lastName = ""

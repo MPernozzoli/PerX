@@ -54,6 +54,10 @@ from app.services.portal_service import PortalService
 router = APIRouter()
 
 
+def _portal_host(payload_host: str | None, forwarded_host: str | None, host: str | None) -> str | None:
+    return payload_host or forwarded_host or host
+
+
 @router.post(
     "/claims/{claim_id}/access-links",
     response_model=PortalAccessInviteResponse,
@@ -79,7 +83,7 @@ async def create_claim_access_link(
         portal_access_id=access.id,
         challenge_id=challenge.id,
         masked_destination=PortalService.mask_email(access.email),
-        magic_link_url=PortalService.build_magic_link_url(raw_token),
+        magic_link_url=await PortalService.build_magic_link_url_for_tenant(db, current_user.tenant_id, raw_token),
         expires_at=challenge.expires_at,
     )
 
@@ -87,15 +91,23 @@ async def create_claim_access_link(
 @router.post("/auth/start", response_model=PortalAuthStartResponse)
 async def start_auth(
     payload: PortalAuthStartRequest,
+    host: str | None = Header(default=None),
+    x_forwarded_host: str | None = Header(default=None, alias="x-forwarded-host"),
     db: AsyncSession = Depends(get_db),
 ):
+    payload.portal_host = _portal_host(payload.portal_host, x_forwarded_host, host)
     access, challenge, raw_token = await PortalService.start_public_auth(db, payload)
     if not access or not challenge:
         return PortalAuthStartResponse(status="accepted")
 
     preview_magic_link_url = None
     if settings.PORTAL_DEBUG_PREVIEW_LINKS and raw_token:
-        preview_magic_link_url = PortalService.build_magic_link_url(raw_token)
+        preview_magic_link_url = await PortalService.build_magic_link_url_for_tenant(
+            db,
+            access.tenant_id,
+            raw_token,
+            payload.portal_host,
+        )
 
     masked_destination = (
         PortalService.mask_email(access.email)
@@ -115,10 +127,17 @@ async def start_auth(
 @router.post("/auth/exchange", response_model=PortalAuthExchangeResponse)
 async def exchange_auth_token(
     payload: PortalAuthExchangeRequest,
+    host: str | None = Header(default=None),
+    x_forwarded_host: str | None = Header(default=None, alias="x-forwarded-host"),
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        access, session_token, expires_in = await PortalService.exchange_magic_token(db, payload.token)
+        portal_host = _portal_host(payload.portal_host, x_forwarded_host, host)
+        access, session_token, expires_in = await PortalService.exchange_magic_token(
+            db,
+            payload.token,
+            portal_host,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
 
