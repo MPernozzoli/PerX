@@ -27,12 +27,15 @@ from pydantic import BaseModel
 
 from config import (
     HUB_URL, IMAP_POLL_INTERVAL, SCHEDULED_CHECK_INTERVAL,
-    LOG_LEVEL, LOG_FILE, load_accounts, FETCH_DAYS
+    LOG_LEVEL, LOG_FILE, load_accounts, FETCH_DAYS,
+    CLOUD_API_URL, LOCAL_AI_WORKER_ID, LOCAL_AI_WORKER_SHARED_SECRET,
+    CLOUD_JOB_POLL_INTERVAL, PROCESS_JOB_BATCH_SIZE, PROCESS_JOB_LEASE_SECONDS
 )
 from services.imap_service import IMAPService
 from services.smtp_service import SMTPService
 from services.queue_service import EmailQueueService, QueueStatus
 from services.token_service import get_token_service, TokenService
+from services.process_queue_service import ProcessQueueService
 
 __version__ = "2.1.0"  # Auto-reconnect, keep-alive, improved error handling
 START_TIME = datetime.now()
@@ -71,6 +74,11 @@ class EmailWorker:
         self.imap_service = IMAPService(hub_url, fetch_days=FETCH_DAYS)
         self.smtp_service = SMTPService(hub_url)
         self.queue_service = EmailQueueService()
+        self.process_queue_service = ProcessQueueService(
+            CLOUD_API_URL,
+            LOCAL_AI_WORKER_ID,
+            LOCAL_AI_WORKER_SHARED_SECRET,
+        )
         self.stop_event = Event()
         self.accounts: List[Dict] = []
         self._session_seen_ids: Set[str] = set()  # Message-ID visti in questa sessione
@@ -89,6 +97,7 @@ class EmailWorker:
         cleanup_thread = Thread(target=self._cleanup_loop, daemon=True, name="Cleanup")
         keepalive_thread = Thread(target=self._keepalive_loop, daemon=True, name="KeepAlive")
         account_refresh_thread = Thread(target=self._account_refresh_loop, daemon=True, name="AccountRefresh")
+        process_jobs_thread = Thread(target=self._process_jobs_loop, daemon=True, name="ProcessJobs")
         
         imap_thread.start()
         processor_thread.start()
@@ -96,6 +105,7 @@ class EmailWorker:
         cleanup_thread.start()
         keepalive_thread.start()
         account_refresh_thread.start()
+        process_jobs_thread.start()
         
         logger.info("All worker threads started")
         
@@ -344,6 +354,125 @@ class EmailWorker:
             return {'success': False, 'error': 'Hub timeout'}
         except Exception as e:
             return {'success': False, 'error': str(e)}
+
+    # ========== Cloud Process Jobs ==========
+
+    def _process_jobs_loop(self):
+        """Prende pochi job cloud alla volta ed esegue lavoro locale sul Mac mini."""
+        while not self.stop_event.is_set():
+            try:
+                jobs = self.process_queue_service.claim_jobs(
+                    limit=PROCESS_JOB_BATCH_SIZE,
+                    lease_seconds=PROCESS_JOB_LEASE_SECONDS,
+                    job_types=["local_ai.diary_entry_analysis"],
+                )
+
+                for job in jobs:
+                    self._process_cloud_process_job(job)
+
+                if not jobs:
+                    time.sleep(CLOUD_JOB_POLL_INTERVAL)
+            except Exception as e:
+                logger.error(f"Error in process jobs loop: {e}", exc_info=True)
+                time.sleep(max(5, CLOUD_JOB_POLL_INTERVAL))
+
+    def _process_cloud_process_job(self, job: Dict[str, Any]):
+        job_id = job.get("id")
+        job_type = job.get("job_type")
+        try:
+            if job_type == "local_ai.diary_entry_analysis":
+                result = self._run_diary_entry_ai_analysis(job)
+            else:
+                raise ValueError(f"Unsupported process job type: {job_type}")
+
+            self.process_queue_service.complete_job(job_id, result)
+            logger.info(f"Completed process job {job_id} ({job_type})")
+        except Exception as e:
+            logger.error(f"Process job {job_id} failed: {e}", exc_info=True)
+            self.process_queue_service.fail_job(
+                job_id,
+                str(e),
+                retry=True,
+                result={"worker_id": LOCAL_AI_WORKER_ID, "job_type": job_type},
+            )
+
+    def _run_diary_entry_ai_analysis(self, job: Dict[str, Any]) -> Dict[str, Any]:
+        payload = job.get("input_json") or {}
+        title = payload.get("title") or ""
+        body = payload.get("bodyText") or ""
+        metadata = payload.get("metadata") or {}
+        sender = (
+            metadata.get("from")
+            or metadata.get("from_address")
+            or metadata.get("sender")
+            or "unknown@local.invalid"
+        )
+
+        classification = self._classify_text_with_hub_ai(title, body, sender)
+        extracted = {}
+        category = str(classification.get("category") or "").lower()
+        if "assignment" in category or "assegnazione" in category:
+            extracted = self._extract_assignment_with_hub_ai(body)
+
+        return {
+            "worker_id": LOCAL_AI_WORKER_ID,
+            "processed_at": datetime.utcnow().isoformat() + "Z",
+            "provider": "mac_mini_hub_ai",
+            "summary": self._summarize_text(title, body),
+            "classification": classification,
+            "extracted_entities": extracted,
+            "suggested_state": self._suggest_state(classification),
+            "suggested_tasks": self._suggest_tasks(classification, payload),
+        }
+
+    def _classify_text_with_hub_ai(self, title: str, body: str, sender: str) -> Dict[str, Any]:
+        response = requests.post(
+            f"{self.hub_url}/ai/classify-email",
+            json={"subject": title, "body": body, "senderEmail": sender},
+            timeout=120,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def _extract_assignment_with_hub_ai(self, body: str) -> Dict[str, Any]:
+        response = requests.post(
+            f"{self.hub_url}/ai/extract-assignment",
+            json={"body": body},
+            timeout=120,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def _summarize_text(self, title: str, body: str) -> str:
+        text = " ".join(part.strip() for part in [title, body] if part and part.strip())
+        return text[:700]
+
+    def _suggest_state(self, classification: Dict[str, Any]) -> Optional[str]:
+        category = str(classification.get("category") or "").lower()
+        mapping = {
+            "documentation_request": "SV002",
+            "documentation_received": "SV010",
+            "controlled": "SV041",
+            "revision_requested": "SV091",
+            "survey_scheduled": "SV050",
+            "survey_returned": "SV051",
+            "videocall_scheduled": "SV014",
+            "act_sent": "SV031",
+            "act_received": "SV032",
+            "outcome_sent": "SV030",
+            "verbal_acceptance": "SV033",
+        }
+        return mapping.get(category)
+
+    def _suggest_tasks(self, classification: Dict[str, Any], payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+        category = str(classification.get("category") or "").lower()
+        if category in {"documentation_request", "act_sent", "videocall_scheduled"}:
+            return [{
+                "title": "Verificare seguito comunicazione",
+                "claimRef": payload.get("claimRef"),
+                "sourceDiaryEntryId": payload.get("diaryEntryId"),
+            }]
+        return []
     
     def _mark_read_on_all_accounts(self, message_id: str):
         """Marca email come letta su tutti gli account Gmail"""

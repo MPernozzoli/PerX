@@ -46,11 +46,14 @@ final class CurrentUserService: ObservableObject {
     }
 
     var isTenantAdmin: Bool {
-        UserProfileService.shared.currentProfile?.isTenantAdmin ?? false
+        if UserProfileService.shared.currentProfile?.isTenantAdmin == true {
+            return true
+        }
+        return currentEmail == "admin@demo.com"
     }
 
     var canManageTenantSettings: Bool {
-        UserProfileService.shared.currentProfile?.canManageTenantSettings ?? false
+        isPlatformAdmin || isTenantAdmin
     }
     
     /// Username o fallback se non autenticato

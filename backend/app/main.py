@@ -23,6 +23,7 @@ from app.api.v1 import (
     routes_ai_chat,
     routes_planning,
     routes_portal,
+    routes_process_jobs,
     routes_profiles,
     routes_reporting,
     routes_tasks,
@@ -74,6 +75,7 @@ app.include_router(routes_documents.router, prefix="/api/v1", tags=["documents"]
 app.include_router(routes_diary.router, prefix="/api/v1", tags=["diary"])
 app.include_router(routes_emails.router, prefix="/api/v1/emails", tags=["emails"])
 app.include_router(routes_email_processing.router, prefix="/api/v1/email-processing", tags=["email-processing"])
+app.include_router(routes_process_jobs.router, prefix="/api/v1/process-jobs", tags=["process-jobs"])
 app.include_router(routes_attachments.router, prefix="/api/v1/attachments", tags=["attachments"])
 app.include_router(routes_whatsapp.router, prefix="/api/v1/whatsapp", tags=["whatsapp"])
 app.include_router(routes_hub_compat.router, prefix="/api/v1/hub", tags=["hub-compat"])

@@ -22,6 +22,7 @@ from app.models.claim_diary_entry import ClaimDiaryEntry
 from app.models.claim_event import ClaimEvent
 from app.models.tenant import Tenant
 from app.models.user import User
+from app.services.process_job_service import ProcessJobService
 from app.services.state_service import StateService
 
 logger = logging.getLogger(__name__)
@@ -181,6 +182,7 @@ class AutomationService:
             return
 
         await AutomationService.apply_quick_state_transition(db, tenant_id, claim, entry, user_id)
+        await AutomationService.enqueue_local_ai_analysis(db, tenant_id, claim, entry, user_id)
         await AutomationService.check_claim_passive_triggers(db, claim)
         await db.commit()
 
@@ -216,6 +218,52 @@ class AutomationService:
         )
         if success:
             await AutomationService.handle_state_change(db, tenant_id, claim.id, transition.to_state)
+
+    @staticmethod
+    async def enqueue_local_ai_analysis(
+        db: AsyncSession,
+        tenant_id: str,
+        claim: Claim,
+        entry: ClaimDiaryEntry,
+        user_id: Optional[str],
+    ) -> None:
+        if not settings.FF_LOCAL_AI_PROCESS_JOBS_ENABLED:
+            return
+        if not AutomationService._is_communication(entry) and not AutomationService._has_attachments(entry):
+            return
+
+        text = (entry.body_text or entry.title or "").strip()
+        metadata = AutomationService._metadata(entry)
+        if not text and not metadata:
+            return
+
+        await ProcessJobService.enqueue(
+            db,
+            tenant_id=tenant_id,
+            claim_id=claim.id,
+            created_by_user_id=user_id,
+            job_type="local_ai.diary_entry_analysis",
+            priority=AutomationService._task_priority(claim),
+            idempotency_key=f"local_ai.diary_entry_analysis:{tenant_id}:{entry.id}",
+            input_json={
+                "claimId": claim.id,
+                "claimRef": claim.external_ref,
+                "diaryEntryId": entry.id,
+                "entryType": entry.entry_type,
+                "title": entry.title,
+                "bodyText": entry.body_text,
+                "happenedAt": entry.happened_at.isoformat() if entry.happened_at else None,
+                "metadata": metadata,
+                "requestedOutputs": [
+                    "summary",
+                    "classification",
+                    "suggested_state",
+                    "suggested_tasks",
+                    "extracted_entities",
+                ],
+            },
+            tags_json={"source": "automation", "kind": "local_ai", "entity": "diary_entry"},
+        )
 
     @staticmethod
     async def handle_state_change(db: AsyncSession, tenant_id: str, claim_id: str, new_state: str) -> None:

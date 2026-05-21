@@ -193,8 +193,6 @@ struct TenantUserInviteDTO: Decodable {
     let invite_error: String?
 }
 
-private struct EmptyTenantPayload: Encodable {}
-
 @MainActor
 final class TenantSettingsAPIService: ObservableObject {
     static let shared = TenantSettingsAPIService()

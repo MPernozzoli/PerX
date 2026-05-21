@@ -15,7 +15,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import get_password_hash
-from app.models.email import TenantEmailDomain
 from app.core.security import get_current_active_user
 from app.models.role import Role, user_roles
 from app.models.tenant import Tenant

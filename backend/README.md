@@ -86,6 +86,11 @@ uvicorn app.main:app --reload
 - `GET /api/v1/portal/claim/inspection-scheduling` - Restituisce stato, posizione e disponibilita sopralluogo
 - `PUT /api/v1/portal/claim/inspection-scheduling/location` - Conferma indirizzo e coordinate del sopralluogo
 - `PUT /api/v1/portal/claim/inspection-scheduling/preferences` - Salva le finestre preferite dell'assicurato
+- `POST /api/v1/process-jobs/jobs` - Accoda un job di processo server-side
+- `GET /api/v1/process-jobs/jobs/claim` - Il worker Mac mini prende pochi job disponibili in lease
+- `POST /api/v1/process-jobs/jobs/{id}/heartbeat` - Il worker estende il lease mentre lavora
+- `POST /api/v1/process-jobs/jobs/{id}/complete` - Il worker salva il risultato del job
+- `POST /api/v1/process-jobs/jobs/{id}/fail` - Il worker registra errore e retry/backoff
 
 ## Portale assicurati
 
@@ -101,6 +106,12 @@ Il backend include ora un perimetro dedicato al portale web assicurati:
 In ambiente `dev` e con `PORTAL_DEV_CLAIM_REFERENCE_ONLY_AUTH=True`, il portale puo creare al volo un accesso partendo dal solo riferimento sinistro e mostrare direttamente il magic link di anteprima senza ulteriori verifiche. Questa scorciatoia e pensata solo per sviluppo locale.
 
 Per il dettaglio funzionale e dei flussi, vedere anche `Documentation/insured-portal-architecture.md`.
+
+## Process jobs e Mac mini
+
+Le automazioni restano sul backend e persistono lo stato su Supabase. Quando serve una capacita locale del Mac mini, ad esempio analisi IA con modello MLX, il backend accoda un record in `process_jobs` invece di eseguire lavoro pesante nel processo API.
+
+Il worker locale usa `X-PerX-Worker-Secret` con il valore di `LOCAL_AI_WORKER_SHARED_SECRET`, chiama `GET /api/v1/process-jobs/jobs/claim?worker_id=<id>&limit=3`, processa i job con stato `processing`, invia heartbeat se il lavoro dura a lungo, poi chiude con `complete` o `fail`. Le automazioni accodano gia `local_ai.diary_entry_analysis` per comunicazioni e allegati collegati a un sinistro.
 
 ## Deployment
 
