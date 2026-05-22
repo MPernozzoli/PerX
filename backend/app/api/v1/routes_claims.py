@@ -93,7 +93,17 @@ async def update_claim(
     )
     if not claim:
         raise HTTPException(status_code=404, detail="Claim not found")
-    return ClaimResponse.model_validate(claim)
+    response = ClaimResponse.model_validate(claim)
+    try:
+        from app.api.v1.routes_realtime import sse_manager
+        await sse_manager.broadcast(
+            current_user.tenant_id,
+            "claim_updated",
+            {"claim_id": claim.id, "updated_by": current_user.id},
+        )
+    except Exception:
+        pass
+    return response
 
 
 @router.post("/{claim_id}/state-transitions")

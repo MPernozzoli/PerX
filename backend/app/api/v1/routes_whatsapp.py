@@ -155,4 +155,19 @@ async def create_message(
         )
     await db.commit()
     await db.refresh(message)
-    return WhatsAppMessageResponse.model_validate(message)
+    response = WhatsAppMessageResponse.model_validate(message)
+    try:
+        from app.api.v1.routes_realtime import sse_manager
+        await sse_manager.broadcast(
+            current_user.tenant_id,
+            "wa_message",
+            {
+                "thread_id": thread.id,
+                "message_id": message.id,
+                "direction": message.direction,
+                "claim_id": thread.claim_id,
+            },
+        )
+    except Exception:
+        pass
+    return response

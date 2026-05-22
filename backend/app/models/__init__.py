@@ -1,2 +1,2 @@
 # Models package
-from app.models import ai_chat, attachment, audit_log, automation, case_task, claim, claim_assignment, claim_diary_entry, claim_event, claim_folder, claim_photo_analysis, claim_state, document, document_version, email, inspection, internal_chat, invitation, planning, portal, process_job, role, tenant, user, user_profile_asset, whatsapp
+from app.models import ai_chat, attachment, audit_log, automation, case_task, claim, claim_assignment, claim_diary_entry, claim_event, claim_folder, claim_photo_analysis, claim_state, document, document_version, email, inspection, internal_chat, invitation, planning, portal, process_job, role, tenant, user, user_profile_asset, whatsapp, rubrica, user_settings, folder_request

@@ -149,7 +149,7 @@ actor JFishSyncService {
     /// - Returns: Risultato dell'aggiornamento
     func updateFromJFish(riferimento: String, updates: JFishUpdateRequest) async throws -> JFishUpdateResult {
         // Verifica se il sinistro esiste
-        let existingSinistro = try await CloudKitWebService.shared.fetchSinistro(riferimento: riferimento)
+        let existingSinistro = try await BackendAPIClient.shared.fetchSinistro(riferimento: riferimento)
         let isNewSinistro = existingSinistro == nil
         
         var updatedFields: [String] = []
@@ -266,7 +266,7 @@ actor JFishSyncService {
                 dataChiusura: dataChiusura,
                 ownerEmail: nil
             )
-            try await CloudKitWebService.shared.saveSinistro(newSinistro, modifiedBy: "jfish-sync")
+            try await BackendAPIClient.shared.saveSinistro(newSinistro, modifiedBy: "jfish-sync")
             updatedFields.append("(sinistro creato)")
             print("[JFishSync] Sinistro \(riferimento) creato su PerX")
         } else if !updatedFields.isEmpty {
@@ -290,7 +290,7 @@ actor JFishSyncService {
                 definizione: definizione,
                 tipoServizio: tipoServizio
             )
-            try await CloudKitWebService.shared.updateSinistro(riferimento: riferimento, data: updateRequest)
+            try await BackendAPIClient.shared.updateSinistro(riferimento: riferimento, data: updateRequest)
         }
         
         let hasSkipped = !skippedFields.isEmpty

@@ -104,7 +104,7 @@ public actor WhatsAppDiarioService {
             let entryId = UUID(uuidString: entryIdString.md5UUID()) ?? UUID()
             
             // Salva entry diario
-            try await CloudKitSyncManager.shared.saveDiarioEntry(
+            try await BackendAPIClient.shared.saveDiarioEntry(
                 entryId: entryId,
                 sinistroRef: conversation.sinistroRef,
                 timestamp: conversation.startedAt,

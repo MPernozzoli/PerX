@@ -1424,15 +1424,15 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
             throw Abort(.badRequest, reason: "Missing user")
         }
         let email = req.query[String.self, at: "email"]
-        return try await CloudKitWebService.shared.fetchSinistri(forUser: user, fallbackEmail: email)
+        return try await BackendAPIClient.shared.fetchSinistri(forUser: user, fallbackEmail: email)
     }
-    
+
     // Dettaglio sinistro (fetch per riferimento)
     sinistri.get(":ref") { req async throws -> SinistroDTO in
         guard let ref = req.parameters.get("ref") else {
             throw Abort(.badRequest, reason: "Missing sinistro ref")
         }
-        guard let sinistro = try await CloudKitWebService.shared.fetchSinistro(riferimento: ref) else {
+        guard let sinistro = try await BackendAPIClient.shared.fetchSinistro(riferimento: ref) else {
             throw Abort(.notFound, reason: "Sinistro not found")
         }
         return sinistro
@@ -2440,17 +2440,17 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
             throw Abort(.badRequest, reason: "Missing user")
         }
         let email = req.query[String.self, at: "email"]
-        let tasks = try await CloudKitWebService.shared.fetchTasks(forUser: user, fallbackEmail: email)
+        let tasks = try await BackendAPIClient.shared.fetchTasks(forUser: user, fallbackEmail: email)
         return tasks.map { TaskDTO(from: $0) }
     }
-    
+
     // Lista task per sinistro
     tasks.get("sinistro", ":ref") { req async throws -> [TaskDTO] in
         guard let ref = req.parameters.get("ref") else {
             throw Abort(.badRequest, reason: "Missing sinistro ref")
         }
-        
-        let allTasks = try await CloudKitWebService.shared.fetchTasks(forUser: "")
+
+        let allTasks = try await BackendAPIClient.shared.fetchTasks(forUser: "")
         let filtered = allTasks.filter { $0.sinistroRef == ref }
         return filtered.map { TaskDTO(from: $0) }
     }
@@ -2475,8 +2475,8 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
             syncedToCK: false
         )
         
-        // Salva su CloudKit
-        try await CloudKitWebService.shared.saveTask(task)
+        // Salva sul backend
+        try await BackendAPIClient.shared.saveTask(task)
         
         // Crea anche sul TaskEngine locale
         _ = try await TaskEngine.shared.createTask(task)
@@ -2698,7 +2698,7 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
         let jfishData = try req.content.decode(JFishSinistroDTO.self)
         
         // Cerca sinistro in PerX
-        let perxData = try? await CloudKitWebService.shared.fetchSinistro(riferimento: jfishData.riferimento)
+        let perxData = try? await BackendAPIClient.shared.fetchSinistro(riferimento: jfishData.riferimento)
         
         // Confronta
         let result = await JFishSyncService.shared.compare(jfishData: jfishData, perxData: perxData)
@@ -2716,7 +2716,7 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
         
         print("[JFish] GET sinistro: \(ref)")
         
-        guard let sinistro = try await CloudKitWebService.shared.fetchSinistro(riferimento: ref) else {
+        guard let sinistro = try await BackendAPIClient.shared.fetchSinistro(riferimento: ref) else {
             print("[JFish] Sinistro non trovato: \(ref)")
             throw Abort(.notFound, reason: "Sinistro non trovato in PerX")
         }
@@ -2836,7 +2836,7 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
         }
         
         // Recupera diario da CloudKit
-        let entries = try await CloudKitWebService.shared.fetchDiario(sinistroRef: ref)
+        let entries = try await BackendAPIClient.shared.fetchDiario(sinistroRef: ref)
         
         // Converti in formato JFish-compatibile
         let formatter = DateFormatter()
@@ -2868,7 +2868,7 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
         let request = try req.content.decode(DiarioSyncRequest.self)
         
         // Recupera diario esistente
-        let existingEntries = try await CloudKitWebService.shared.fetchDiario(sinistroRef: ref)
+        let existingEntries = try await BackendAPIClient.shared.fetchDiario(sinistroRef: ref)
         
         // Formatter per parsing date
         let formatter = DateFormatter()
@@ -2899,7 +2899,7 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
                     createdByEmail: "jfish-import@perx.it"
                 )
                 
-                try await CloudKitWebService.shared.addDiarioEntry(sinistroRef: ref, entry: entry)
+                try await BackendAPIClient.shared.addDiarioEntry(sinistroRef: ref, entry: entry)
                 addedCount += 1
             }
         }

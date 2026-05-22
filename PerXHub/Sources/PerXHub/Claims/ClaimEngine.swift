@@ -443,8 +443,8 @@ public actor ClaimEngine {
     private func syncSinistroToCK(riferimento: String) async throws {
         // Marca come sincronizzato dopo push a CK
         do {
-            try await CloudKitSyncManager.shared.syncSinistro(riferimento: riferimento)
-            
+            try await BackendAPIClient.shared.syncSinistro(riferimento: riferimento)
+
             let conn = try await db.db()
             try conn.run(
                 DatabaseSchema.sinistri
@@ -452,7 +452,7 @@ public actor ClaimEngine {
                     .update(DatabaseSchema.SinistriColumns.syncedToCK <- true)
             )
         } catch {
-            print("[ClaimEngine] ⚠️ Sync CK fallito: \(error)")
+            print("[ClaimEngine] ⚠️ Sync backend fallito: \(error)")
         }
     }
     

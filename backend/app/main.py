@@ -32,6 +32,12 @@ from app.api.v1 import (
     routes_tasks,
     routes_tenants,
     routes_whatsapp,
+    routes_rubrica,
+    routes_user_settings,
+    routes_user_directory,
+    routes_processed_emails_sync,
+    routes_folder_packages,
+    routes_realtime,
 )
 from app.services.inspection_workflow_service import InspectionAutomationRuntime
 from app.services.automation_service import AutomationRuntime
@@ -92,6 +98,12 @@ app.include_router(routes_admin.router, prefix="/api/v1/admin", tags=["admin"])
 app.include_router(routes_invitations.router, prefix="/api/v1/invitations", tags=["invitations"])
 app.include_router(routes_tenants.router, prefix="/api/v1/tenants", tags=["tenants"])
 app.include_router(routes_routing.router, prefix="/api/v1/routing", tags=["routing"])
+app.include_router(routes_rubrica.router, prefix="/api/v1/rubrica", tags=["rubrica"])
+app.include_router(routes_user_settings.router, prefix="/api/v1/user-settings", tags=["user-settings"])
+app.include_router(routes_user_directory.router, prefix="/api/v1/user-directory", tags=["user-directory"])
+app.include_router(routes_processed_emails_sync.router, prefix="/api/v1/processed-emails", tags=["processed-emails"])
+app.include_router(routes_folder_packages.router, prefix="/api/v1/folder-packages", tags=["folder-packages"])
+app.include_router(routes_realtime.router, prefix="/api/v1/realtime", tags=["realtime"])
 
 
 @app.get("/")

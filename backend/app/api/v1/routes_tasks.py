@@ -208,7 +208,17 @@ async def create_task(
     db.add(task)
     await db.commit()
     await db.refresh(task)
-    return await _serialize_task(db, task)
+    serialized = await _serialize_task(db, task)
+    try:
+        from app.api.v1.routes_realtime import sse_manager
+        await sse_manager.broadcast(
+            current_user.tenant_id,
+            "task_updated",
+            {"task_id": task.id, "action": "created", "updated_by": current_user.id},
+        )
+    except Exception:
+        pass
+    return serialized
 
 
 @router.put("/tasks/{task_id}", response_model=TaskResponse)
@@ -241,7 +251,17 @@ async def update_task(
 
     await db.commit()
     await db.refresh(task)
-    return await _serialize_task(db, task)
+    serialized = await _serialize_task(db, task)
+    try:
+        from app.api.v1.routes_realtime import sse_manager
+        await sse_manager.broadcast(
+            current_user.tenant_id,
+            "task_updated",
+            {"task_id": task.id, "action": "updated", "updated_by": current_user.id},
+        )
+    except Exception:
+        pass
+    return serialized
 
 
 @router.post("/tasks/{task_id}/complete", response_model=TaskResponse)
@@ -263,7 +283,17 @@ async def complete_task(
     task.completed_at = datetime.utcnow()
     await db.commit()
     await db.refresh(task)
-    return await _serialize_task(db, task)
+    serialized = await _serialize_task(db, task)
+    try:
+        from app.api.v1.routes_realtime import sse_manager
+        await sse_manager.broadcast(
+            current_user.tenant_id,
+            "task_updated",
+            {"task_id": task.id, "action": "completed", "updated_by": current_user.id},
+        )
+    except Exception:
+        pass
+    return serialized
 
 
 @router.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -284,5 +314,15 @@ async def delete_task(
     if task.created_by_user_id != current_user.id and not current_user.is_platform_admin:
         raise HTTPException(status_code=403, detail="Non autorizzato a eliminare questo task")
 
+    task_id_copy = task.id
     await db.delete(task)
     await db.commit()
+    try:
+        from app.api.v1.routes_realtime import sse_manager
+        await sse_manager.broadcast(
+            current_user.tenant_id,
+            "task_updated",
+            {"task_id": task_id_copy, "action": "deleted", "updated_by": current_user.id},
+        )
+    except Exception:
+        pass

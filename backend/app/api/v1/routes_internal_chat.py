@@ -163,4 +163,19 @@ async def create_message(
         )
     await db.commit()
     await db.refresh(message)
-    return InternalChatMessageResponse.model_validate(message)
+    response = InternalChatMessageResponse.model_validate(message)
+    try:
+        from app.api.v1.routes_realtime import sse_manager
+        await sse_manager.broadcast(
+            current_user.tenant_id,
+            "chat_message",
+            {
+                "thread_id": thread.id,
+                "message_id": message.id,
+                "sender_user_id": current_user.id,
+                "claim_id": thread.claim_id,
+            },
+        )
+    except Exception:
+        pass
+    return response

@@ -82,6 +82,9 @@ print("[Hub] Hub ID: \(HubConfiguration.hubID)")
 print("[Hub] Default tenant: \(HubConfiguration.defaultTenantSlug)")
 print("[Hub] Supabase configured: \(HubConfiguration.supabaseURL != nil && HubConfiguration.supabaseServiceRoleKey != nil ? "yes" : "no")")
 
+// Configure BackendAPIClient (drop-in replacement per CloudKitWebService)
+await BackendAPIClient.shared.configureFromEnvironment()
+
 // Create directories if needed
 do {
     let fm = FileManager.default
