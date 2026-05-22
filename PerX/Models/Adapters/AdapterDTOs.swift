@@ -107,6 +107,8 @@ struct CreateTaskRequest: Codable {
     let dueDate: Date?
     let assignedTo: String?
     let createdBy: String
+    /// UUID locale generato dal client, usato come chiave di idempotenza.
+    let clientId: String?
 }
 
 struct UpdateTaskRequest: Codable {

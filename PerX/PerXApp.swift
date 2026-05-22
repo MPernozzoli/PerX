@@ -68,7 +68,9 @@ struct PerXApp: App {
                 showOnboarding = newValue
             }
             .onChange(of: authService.isAuthenticated) { newValue in
-                if !newValue {
+                if newValue {
+                    Task { await TenantAIKeysService.shared.fetchIfNeeded() }
+                } else {
                     // Logout: ferma tutti i servizi, ma SEMPRE fuori dal ciclo di rendering SwiftUI
                     DispatchQueue.main.async {
                         handleLogout()

@@ -54,6 +54,20 @@ class TenantInspectionProviderSettingsPayload(BaseModel):
     messaging_api_key: str = ""
 
 
+class TenantAISettingsPayload(BaseModel):
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o"
+    anthropic_api_key: str = ""
+    anthropic_model: str = "claude-opus-4-7"
+
+
+class TenantAIKeysResponse(BaseModel):
+    openai_api_key: str
+    openai_model: str
+    anthropic_api_key: str
+    anthropic_model: str
+
+
 class TenantMailSettingsPayload(BaseModel):
     tenant_name: str = Field(..., min_length=1)
     tenant_slug: str = Field(..., min_length=1)
@@ -66,6 +80,7 @@ class TenantMailSettingsPayload(BaseModel):
     default_claim_garanzia: str = "Fenomeno Elettrico"
     cat_settings: TenantCATSettingsPayload = Field(default_factory=TenantCATSettingsPayload)
     provider_settings: TenantInspectionProviderSettingsPayload | None = None
+    ai_settings: TenantAISettingsPayload | None = None
 
 
 class TenantSettingsResponse(BaseModel):
@@ -81,6 +96,7 @@ class TenantSettingsResponse(BaseModel):
     default_claim_garanzia: str
     cat_settings: TenantCATSettingsPayload
     provider_settings: TenantInspectionProviderSettingsPayload | None = None
+    ai_settings: TenantAISettingsPayload | None = None
 
 
 class TenantUserResponse(BaseModel):

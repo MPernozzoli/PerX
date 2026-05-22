@@ -154,7 +154,7 @@ struct iPadDiarioView: View {
         newNoteText = ""
         isInputFocused = false
         
-        if let syncService = session.cloudKitSyncService {
+        if let syncService = session.syncService {
             do {
                 let entry = try await syncService.addDiarioEntry(riferimento: riferimento, testo: text, tipo: "nota")
                 entries.append(entry)

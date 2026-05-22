@@ -752,10 +752,10 @@ struct iPadSinistroDetailView: View {
         isLoading = true
         defer { isLoading = false }
         
-        async let fullDataTask = session.cloudKitSyncService?.fetchSinistroFull(riferimento: sinistro.riferimento)
-        async let diarioTask = session.cloudKitSyncService?.fetchDiarioEntries(riferimento: sinistro.riferimento)
-        async let emailsTask = session.cloudKitSyncService?.fetchProcessedEmails(riferimento: sinistro.riferimento)
-        async let waTask = session.cloudKitSyncService?.fetchWhatsAppMessages(riferimento: sinistro.riferimento)
+        async let fullDataTask = session.syncService?.fetchSinistroFull(riferimento: sinistro.riferimento)
+        async let diarioTask = session.syncService?.fetchDiarioEntries(riferimento: sinistro.riferimento)
+        async let emailsTask = session.syncService?.fetchProcessedEmails(riferimento: sinistro.riferimento)
+        async let waTask = session.syncService?.fetchWhatsAppMessages(riferimento: sinistro.riferimento)
         
         do {
             fullData = try await fullDataTask

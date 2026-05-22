@@ -276,7 +276,7 @@ struct CreateTaskView: View {
     
     private func createTask() {
         var metadata: [String: AnyCodable] = [:]
-        
+
         // Aggiungi metadata sorgente solo se presenti
         if let emailId = email?.id, !emailId.isEmpty {
             metadata["sourceEmailId"] = AnyCodable(emailId)
@@ -287,11 +287,11 @@ struct CreateTaskView: View {
             metadata["whatsAppChatId"] = AnyCodable(chatId)
             metadata["sourceType"] = AnyCodable("whatsapp")
         }
-        
+
         if let messageId = whatsAppMessage?.id, !messageId.isEmpty {
             metadata["sourceWhatsAppMessageId"] = AnyCodable(messageId)
         }
-        
+
         // Aggiungi contatti se presenti
         if !contactEmail.isEmpty {
             metadata["contactEmail"] = AnyCodable(contactEmail)
@@ -299,10 +299,10 @@ struct CreateTaskView: View {
         if !contactPhone.isEmpty {
             metadata["contactPhone"] = AnyCodable(contactPhone)
         }
-        
+
         // Se c'è una scadenza, la task è automaticamente time-sensitive
         let finalIsTimeSensitive = isTimeSensitive || deadline != nil
-        
+
         let task = DailyTask(
             title: taskTitle,
             description: taskDescription.isEmpty ? sourceText : taskDescription,
@@ -310,13 +310,20 @@ struct CreateTaskView: View {
             sinistroID: selectedSinistroID,
             priority: priority,
             deadline: deadline,
-            estimatedDuration: estimatedMinutes * 60, // Converti minuti in secondi
+            estimatedDuration: estimatedMinutes * 60,
             metadata: metadata,
             isTimeSensitive: finalIsTimeSensitive,
             fixedDateTime: fixedDateTime
         )
-        
+
+        // Salva localmente per risposta UI immediata
         taskManager.addTask(task)
+
+        // Sincronizza con il server (immediato se online, accodato se offline)
+        Task {
+            await TaskSyncQueue.shared.enqueueCreate(task)
+        }
+
         dismiss()
     }
 }
@@ -598,7 +605,9 @@ struct EditTaskView: View {
             // Pulsanti azione
             HStack {
                 Button("Elimina") {
-                    taskManager.deleteTask(taskID: task.id)
+                    let taskId = task.id
+                    taskManager.deleteTask(taskID: taskId)
+                    Task { await TaskSyncQueue.shared.enqueueDelete(localId: taskId) }
                     dismiss()
                 }
                 .buttonStyle(.bordered)
@@ -671,38 +680,47 @@ struct EditTaskView: View {
             dismiss()
             return
         }
-        
+
         var updatedTask = taskManager.tasks[index]
         updatedTask.title = taskTitle
         updatedTask.description = taskDescription
         updatedTask.sinistroID = selectedSinistroID
         updatedTask.deadline = deadline
         updatedTask.priority = priority
-        // Se c'è un orario fisso o una scadenza, la task è time-sensitive
         updatedTask.isTimeSensitive = fixedDateTime != nil || deadline != nil || isTimeSensitive
         updatedTask.fixedDateTime = fixedDateTime
         updatedTask.estimatedDuration = estimatedMinutes * 60
-        
+
         // Aggiorna metadata contatti
         if !contactEmail.isEmpty {
             updatedTask.metadata["contactEmail"] = AnyCodable(contactEmail)
         } else {
             updatedTask.metadata.removeValue(forKey: "contactEmail")
         }
-        
         if !contactPhone.isEmpty {
             updatedTask.metadata["contactPhone"] = AnyCodable(contactPhone)
         } else {
             updatedTask.metadata.removeValue(forKey: "contactPhone")
         }
-        
+
         taskManager.tasks[index] = updatedTask
         taskManager.saveTasks()
         taskManager.updateCounter += 1
-        
-        // Riorganizza le task dopo la modifica (user-initiated, bypassa cooldown)
+
+        // Sincronizza aggiornamento col server (immediato se online, accodato se offline)
+        let localId = updatedTask.id
+        Task {
+            await TaskSyncQueue.shared.enqueueUpdate(
+                localId: localId,
+                title: updatedTask.title,
+                description: updatedTask.description.isEmpty ? nil : updatedTask.description,
+                priority: updatedTask.priority,
+                dueDate: updatedTask.deadline,
+                status: updatedTask.status
+            )
+        }
+
         ScheduleManager.shared.reorganizeAllTasksBasedOnSchedule(userInitiated: true)
-        
         dismiss()
     }
 }

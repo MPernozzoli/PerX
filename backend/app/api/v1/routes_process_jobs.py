@@ -11,6 +11,8 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import get_current_active_user
 from app.models.claim import Claim
+from app.models.claim_event import ClaimEvent
+from app.models.claim_photo_analysis import ClaimPhotoAnalysis
 from app.models.process_job import ProcessJob
 from app.models.user import User
 from app.schemas.process_jobs import (
@@ -148,6 +150,10 @@ async def complete_process_job(
     job.lease_expires_at = None
     job.last_error = None
     await ProcessJobService.record_completion(db, job)
+
+    if job.job_type == "ai_asset_photo_analysis" and job.claim_id and payload.result_json:
+        await _apply_photo_analysis_result(db, job, now)
+
     await db.commit()
     return {"status": "completed", "job_id": job.id}
 
@@ -188,3 +194,145 @@ async def fail_process_job(
 
     await db.commit()
     return {"status": job.status, "job_id": job.id, "retry_count": job.retry_count}
+
+
+# ---------------------------------------------------------------------------
+# Post-completion handlers
+# ---------------------------------------------------------------------------
+
+async def _apply_photo_analysis_result(
+    db: AsyncSession,
+    job: ProcessJob,
+    now: datetime,
+) -> None:
+    """
+    Apply AI photo-analysis results to the claim.
+
+    The worker sends numeric contribution values; this function owns the final
+    score computation and label derivation so the logic stays server-side.
+
+    Expected result_json keys (all optional):
+      complexity_ai_contribution  float  additive score from photo analysis (0.0–0.5)
+      priority_ai_contribution    float  additive priority from photo analysis (0.0–0.5)
+      relazione_complessiva       str    overall analysis narrative (PerxiaAnalisi.relazioneComplessiva)
+      analysis_provider           str    local_multimodal | cloud_openai | cloud_claude
+      model                       str    model identifier
+      analysis_confidence         float  0.0–1.0
+      beni                        list   PerxiaBene-shaped objects:
+        ordine, tipo_bene, foto_associate,
+        tipologia, componenti, modello, anno,
+        osservazioni_visive, valutazione_test, compatibilita_garanzia,
+        compatibilita_danno, stima_economica, note_aggiuntive,
+        certezza_tipologia, certezza_modello, certezza_anno,
+        certezza_osservazioni, certezza_test, certezza_compatibilita, certezza_stima,
+        componenti_dettaglio (recursive list)
+    """
+    import uuid as _uuid
+    from app.services.claim_complexity_service import (
+        compute_complexity_score,
+        compute_priority_score,
+    )
+
+    result = job.result_json or {}
+    claim = await db.get(Claim, job.claim_id)
+    if not claim or claim.tenant_id != job.tenant_id:
+        return
+
+    # --- Parse AI contributions (numeric floats from worker) ---
+    def _safe_float(val, default: float = 0.0) -> float:
+        try:
+            return float(val) if val is not None else default
+        except (TypeError, ValueError):
+            return default
+
+    complexity_ai = _safe_float(result.get("complexity_ai_contribution"))
+    priority_ai = _safe_float(result.get("priority_ai_contribution"))
+    confidence_raw = result.get("analysis_confidence")
+    confidence = round(_safe_float(confidence_raw), 3) if confidence_raw is not None else None
+
+    # --- Server-side scoring (replicates AssignmentPlannerService.swift) ---
+    complexity_base, _ = compute_complexity_score(claim, ai_contribution=0.0)
+    complexity_total, complessita_label = compute_complexity_score(claim, ai_contribution=complexity_ai)
+
+    priority_base, _ = compute_priority_score(claim, ai_contribution=0.0)
+    priority_total, normalized_priority = compute_priority_score(claim, ai_contribution=priority_ai)
+
+    # --- Apply to claim ---
+    changed: list[str] = []
+
+    if claim.complessita != complessita_label:
+        claim.complessita = complessita_label
+        changed.append("complessita")
+
+    if claim.complexity_score != complexity_total:
+        claim.complexity_score = complexity_total
+        changed.append("complexity_score")
+
+    if claim.priority != normalized_priority:
+        claim.priority = normalized_priority
+        changed.append("priority")
+
+    # --- Persist analysis record ---
+    beni = result.get("beni") or []
+    db.add(
+        ClaimPhotoAnalysis(
+            id=str(_uuid.uuid4()),
+            tenant_id=job.tenant_id,
+            claim_id=job.claim_id,
+            process_job_id=job.id,
+            submission_id=(job.input_json or {}).get("submission_id"),
+            status="completed",
+            analysis_provider=result.get("analysis_provider"),
+            model=result.get("model"),
+            complexity_base_score=round(complexity_base, 4),
+            complexity_ai_contribution=round(complexity_ai, 4),
+            complexity_score=round(complexity_total, 4),
+            complessita=complessita_label,
+            priority_base_score=round(priority_base, 4),
+            priority_ai_contribution=round(priority_ai, 4),
+            priority_score=round(priority_total, 4),
+            ai_priority=normalized_priority,
+            analysis_confidence=confidence,
+            relazione_complessiva=result.get("relazione_complessiva"),
+            beni_json=beni,
+            raw_result_json=result,
+            completed_at=now,
+        )
+    )
+
+    if changed:
+        claim.updated_at = now
+
+        existing_meta = dict(claim.metadata_json or {})
+        existing_meta["ai_photo_analysis"] = {
+            "job_id": job.id,
+            "completed_at": now.isoformat(),
+            "provider": result.get("analysis_provider", "unknown"),
+            "model": result.get("model"),
+            "complexity_score": complexity_total,
+            "complessita": complessita_label,
+            "priority_score": priority_total,
+            "ai_priority": normalized_priority,
+            "beni_count": len(beni),
+        }
+        claim.metadata_json = existing_meta
+
+        db.add(
+            ClaimEvent(
+                id=str(_uuid.uuid4()),
+                tenant_id=job.tenant_id,
+                claim_id=job.claim_id,
+                event_type="ai_photo_analysis_applied",
+                actor_user_id=None,
+                data_json={
+                    "job_id": job.id,
+                    "changed_fields": changed,
+                    "complexity_score": complexity_total,
+                    "complessita": complessita_label,
+                    "priority_score": priority_total,
+                    "ai_priority": normalized_priority,
+                    "provider": result.get("analysis_provider"),
+                },
+                source="local_worker",
+            )
+        )

@@ -22,7 +22,9 @@ class Settings(BaseSettings):
     SUPABASE_URL: Optional[str] = None
     SUPABASE_ANON_KEY: Optional[str] = None
     SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None
+    SUPABASE_STORAGE_BUCKET: str = "perx-portal-uploads"
     APP_PUBLIC_URL: str = "https://app.perx.it"
+    LOGIN_PUBLIC_URL: str = "https://login.perx.it"
     
     # Security
     SECRET_KEY: str = "change-me-in-production"
@@ -76,6 +78,8 @@ class Settings(BaseSettings):
     FF_AUTOMATIONS_ENABLED: bool = False
     FF_LOCAL_AI_PROCESS_JOBS_ENABLED: bool = True
     FF_INSPECTION_AUTOMATIONS_ENABLED: bool = True
+    FF_PORTAL_PHOTO_AI_ANALYSIS_ENABLED: bool = True
+    PORTAL_PHOTO_SIGNED_URL_EXPIRE_SECONDS: int = 86400  # 24h
     AUTOMATION_POLL_SECONDS: int = 3600
     INSPECTION_AUTOMATION_POLL_SECONDS: int = 60
     

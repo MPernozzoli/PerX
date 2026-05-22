@@ -28,6 +28,7 @@ enum AIModelProvider: String, Codable, CaseIterable {
     case localText = "local_text"              // Microsoft Phi-3/4
     case appleIntelligence = "apple_intelligence"
     case cloudOpenAI = "cloud_openai"
+    case cloudClaude = "cloud_claude"
     
     /// Nome user-friendly del provider
     var displayName: String {
@@ -36,6 +37,7 @@ enum AIModelProvider: String, Codable, CaseIterable {
         case .localText: return "Modello Locale Testo (Phi-4)"
         case .appleIntelligence: return "Apple Intelligence"
         case .cloudOpenAI: return "OpenAI Cloud"
+        case .cloudClaude: return "Claude Cloud (Anthropic)"
         }
     }
 }

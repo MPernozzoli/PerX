@@ -43,8 +43,8 @@ struct SinistriListView: View {
     // Sinistri ultimi 24h
     @State private var recentInteractions: Set<String> = []
     
-    private var syncService: iPadCloudKitSyncService? {
-        session.cloudKitSyncService
+    private var syncService: iPadSyncService? {
+        session.syncService
     }
     
     private var allSinistri: [SinistroMinimal] {

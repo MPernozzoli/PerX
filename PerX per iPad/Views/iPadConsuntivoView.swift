@@ -394,7 +394,7 @@ struct iPadConsuntivoView: View {
     }
 
     private func loadStatsFromLocalSnapshot() async {
-        let sinistri = session.cloudKitSyncService?.sinistri ?? []
+        let sinistri = session.syncService?.sinistri ?? []
         let calendar = Calendar.current
         let monthStart = calendar.date(from: calendar.dateComponents([.year, .month], from: selectedMonth))!
         let monthEnd = calendar.date(byAdding: .month, value: 1, to: monthStart)!
@@ -478,7 +478,7 @@ struct iPadConsuntivoView: View {
             sinistriDelMese: sinistriDelMese
         )
 
-        dataSource = session.cloudKitSyncService?.dataSource.rawValue ?? "Locale"
+        dataSource = session.syncService?.dataSource.rawValue ?? "Locale"
     }
     
     private func formatCurrency(_ value: Double) -> String {

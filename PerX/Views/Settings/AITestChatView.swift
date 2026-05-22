@@ -546,6 +546,7 @@ struct ChatMessageRow: View {
         case .localMultimodal: return "Llama 3.1 8B Vision"
         case .appleIntelligence: return "Apple Intelligence"
         case .cloudOpenAI: return "OpenAI"
+        case .cloudClaude: return "Claude"
         }
     }
 }

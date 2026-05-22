@@ -268,7 +268,7 @@ struct iPadMailView: View {
         isLoading = true
         defer { isLoading = false }
         
-        guard let syncService = session.cloudKitSyncService else { return }
+        guard let syncService = session.syncService else { return }
         
         // Load all processed emails
         allEmails = await syncService.fetchAllProcessedEmails()
@@ -825,12 +825,15 @@ struct HTMLContentView: UIViewRepresentable {
     }
 }
 
-// MARK: - iPadCloudKitSyncService Extension
-
-extension iPadCloudKitSyncService {
+extension iPadSyncService {
     func fetchAllProcessedEmails() async -> [ProcessedEmailDTO] {
-        // TODO: Implementare fetch da CloudKit
-        // Per ora ritorna array vuoto
-        return []
+        guard hubClient.isCloudConfigured else { return [] }
+        var emails: [ProcessedEmailDTO] = []
+        for rif in sinistri.prefix(30).map({ $0.riferimento }) {
+            if let fetched = try? await fetchProcessedEmails(riferimento: rif) {
+                emails.append(contentsOf: fetched)
+            }
+        }
+        return emails.sorted { ($0.date ?? .distantPast) > ($1.date ?? .distantPast) }
     }
 }

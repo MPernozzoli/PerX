@@ -168,19 +168,19 @@ struct SettingsView: View {
                 Section("Sincronizzazione") {
                     HStack {
                         Circle()
-                            .fill(session.cloudKitSyncService != nil ? Color.green : Color.red)
+                            .fill(session.syncService != nil ? Color.green : Color.red)
                             .frame(width: 8, height: 8)
                         
                         Text("Dati")
                         
                         Spacer()
                         
-                        Text(session.cloudKitSyncService?.dataSource.rawValue ?? "Non attivo")
+                        Text(session.syncService?.dataSource.rawValue ?? "Non attivo")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
                     
-                    if let lastSync = session.cloudKitSyncService?.lastSyncAt {
+                    if let lastSync = session.syncService?.lastSyncAt {
                         HStack {
                             Text("Ultimo sync")
                             Spacer()
@@ -212,7 +212,7 @@ struct SettingsView: View {
                     
                     Button {
                         Task {
-                            await session.cloudKitSyncService?.syncNow()
+                            await session.syncService?.syncNow()
                             await session.chatService?.fetchRooms()
                         }
                     } label: {

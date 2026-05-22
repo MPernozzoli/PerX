@@ -20,6 +20,8 @@ from app.models.role import Role, user_roles
 from app.models.tenant import Tenant, TenantPortalDomain
 from app.models.user import User
 from app.schemas.tenant_settings import (
+    TenantAIKeysResponse,
+    TenantAISettingsPayload,
     TenantMailSettingsPayload,
     TenantSettingsResponse,
     TenantUserCreateRequest,
@@ -131,6 +133,15 @@ def _default_provider_settings() -> dict:
     }
 
 
+def _default_ai_settings() -> dict:
+    return {
+        "openai_api_key": "",
+        "openai_model": "gpt-4o",
+        "anthropic_api_key": "",
+        "anthropic_model": "claude-opus-4-7",
+    }
+
+
 def _normalized_settings(tenant: Tenant, include_provider_secrets: bool) -> dict:
     settings = tenant.settings_json or {}
     garanzie = [
@@ -154,6 +165,10 @@ def _normalized_settings(tenant: Tenant, include_provider_secrets: bool) -> dict
     if not isinstance(provider_settings, dict):
         provider_settings = _default_provider_settings()
 
+    ai_settings = settings.get("ai_settings", _default_ai_settings())
+    if not isinstance(ai_settings, dict):
+        ai_settings = _default_ai_settings()
+
     return {
         "tenant_name": tenant.name,
         "tenant_slug": tenant.slug,
@@ -166,6 +181,7 @@ def _normalized_settings(tenant: Tenant, include_provider_secrets: bool) -> dict
         "default_claim_garanzia": default_garanzia,
         "cat_settings": cat_settings,
         "provider_settings": provider_settings if include_provider_secrets else None,
+        "ai_settings": ai_settings if include_provider_secrets else None,
     }
 
 
@@ -355,6 +371,26 @@ async def get_my_tenant_settings(
     return TenantSettingsResponse(tenant_id=tenant.id, **settings)
 
 
+@router.get("/me/ai-keys", response_model=TenantAIKeysResponse)
+async def get_my_tenant_ai_keys(
+    tenant_id: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Returns AI API keys for the authenticated user's tenant. All tenant members can read."""
+    tenant = await _resolve_target_tenant(db, current_user, tenant_id)
+    settings = tenant.settings_json or {}
+    ai = settings.get("ai_settings", _default_ai_settings())
+    if not isinstance(ai, dict):
+        ai = _default_ai_settings()
+    return TenantAIKeysResponse(
+        openai_api_key=ai.get("openai_api_key", ""),
+        openai_model=ai.get("openai_model", "gpt-4o"),
+        anthropic_api_key=ai.get("anthropic_api_key", ""),
+        anthropic_model=ai.get("anthropic_model", "claude-opus-4-7"),
+    )
+
+
 @router.put("/me/settings", response_model=TenantSettingsResponse)
 async def update_my_tenant_settings(
     payload: TenantMailSettingsPayload,
@@ -387,6 +423,8 @@ async def update_my_tenant_settings(
     }
     if current_user.is_platform_admin and payload.provider_settings is not None:
         updated_settings["provider_settings"] = payload.provider_settings.model_dump()
+    if current_user.is_platform_admin and payload.ai_settings is not None:
+        updated_settings["ai_settings"] = payload.ai_settings.model_dump()
 
     tenant.settings_json = updated_settings
     await db.execute(delete(TenantPortalDomain).where(TenantPortalDomain.tenant_id == tenant.id))

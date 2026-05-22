@@ -20,7 +20,9 @@ final class OpenAIEmbeddingProvider: EmbeddingProvider {
     static let shared = OpenAIEmbeddingProvider()
     
     private var apiKey: String {
-        UserDefaults.standard.string(forKey: "ai_openai_api_key") ?? ""
+        let tenantKey = TenantAIKeysService.shared.openAIKey
+        if !tenantKey.isEmpty { return tenantKey }
+        return UserDefaults.standard.string(forKey: "ai_openai_api_key") ?? ""
     }
     
     private var baseURL: String {

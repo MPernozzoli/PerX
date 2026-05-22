@@ -170,7 +170,8 @@ final class TaskAdapter: ObservableObject {
             sinistroRef: sinistroRef,
             dueDate: dueDate,
             assignedTo: assignedTo,
-            createdBy: CurrentUserService.shared.currentEmail ?? "unknown"
+            createdBy: CurrentUserService.shared.currentEmail ?? "unknown",
+            clientId: nil
         )
 
         let response: TaskDTO = try await hubClient.cloudPost("/api/v1/tasks", body: request)
@@ -229,7 +230,8 @@ final class TaskAdapter: ObservableObject {
             sinistroRef: sinistroRef,
             dueDate: dueDate,
             assignedTo: assignedTo,
-            createdBy: assignedTo ?? "unknown"
+            createdBy: assignedTo ?? "unknown",
+            clientId: nil
         )
         
         let response: TaskDTO = try await hubClient.post("/tasks", body: request)

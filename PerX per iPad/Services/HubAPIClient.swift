@@ -280,7 +280,99 @@ class HubAPIClient: ObservableObject {
         let response: CloudEmailListResponseDTO = try await cloudGet(endpoint: "/api/v1/emails?claim_id=\(riferimento)")
         return response.items.map { ProcessedEmailDTO(from: $0, sinistroRiferimento: riferimento) }
     }
-    
+
+    func getWhatsAppMessagesFromCloud(riferimento: String) async throws -> [WhatsAppMessageDTO] {
+        struct WAThreadListDTO: Decodable {
+            struct WAThreadDTO: Decodable { let id: String }
+            let items: [WAThreadDTO]
+        }
+        struct WAMessageListDTO: Decodable {
+            struct WAMessageDTO: Decodable {
+                let id: String
+                let thread_id: String
+                let direction: String
+                let body_text: String?
+                let sender_name: String?
+                let created_at: Date
+                let media_type: String?
+            }
+            let items: [WAMessageDTO]
+        }
+        let threads: WAThreadListDTO = try await cloudGet(endpoint: "/api/v1/whatsapp/threads?claim_id=\(riferimento)")
+        var result: [WhatsAppMessageDTO] = []
+        for thread in threads.items {
+            let msgs: WAMessageListDTO = try await cloudGet(endpoint: "/api/v1/whatsapp/threads/\(thread.id)/messages")
+            for m in msgs.items {
+                result.append(WhatsAppMessageDTO(
+                    id: m.id, chatId: m.thread_id,
+                    from: m.sender_name ?? "", body: m.body_text ?? "",
+                    timestamp: m.created_at, direction: m.direction, mediaType: m.media_type
+                ))
+            }
+        }
+        return result
+    }
+
+    // MARK: - Internal Chat (Supabase backend)
+
+    func getChatThreads() async throws -> [ChatRoomDTO] {
+        struct ThreadListDTO: Decodable {
+            struct ThreadDTO: Decodable {
+                let id: String
+                let title: String
+                let created_at: Date
+                let metadata_json: [String: String]?
+            }
+            let items: [ThreadDTO]
+        }
+        let list: ThreadListDTO = try await cloudGet(endpoint: "/api/v1/internal-chat/threads")
+        return list.items.map {
+            ChatRoomDTO(id: $0.id, name: $0.title, lastMessageAt: $0.created_at,
+                        lastMessagePreview: nil, lastMessageSender: nil)
+        }
+    }
+
+    func getChatMessages(threadId: String) async throws -> [ChatMessageDTO] {
+        struct MessageListDTO: Decodable {
+            struct MessageDTO: Decodable {
+                let id: String
+                let sender_user_id: String?
+                let body_text: String?
+                let created_at: Date
+            }
+            let items: [MessageDTO]
+        }
+        let list: MessageListDTO = try await cloudGet(endpoint: "/api/v1/internal-chat/threads/\(threadId)/messages")
+        return list.items.map {
+            ChatMessageDTO(id: $0.id, senderName: $0.sender_user_id ?? "Utente",
+                           content: $0.body_text ?? "", timestamp: $0.created_at)
+        }
+    }
+
+    func sendChatMessage(threadId: String, content: String) async throws -> ChatMessageDTO {
+        struct CreateMsg: Encodable { let body_text: String; let message_type: String }
+        struct MessageDTO: Decodable {
+            let id: String; let sender_user_id: String?; let body_text: String?; let created_at: Date
+        }
+        let response: MessageDTO = try await cloudPost(
+            endpoint: "/api/v1/internal-chat/threads/\(threadId)/messages",
+            body: CreateMsg(body_text: content, message_type: "text")
+        )
+        return ChatMessageDTO(id: response.id, senderName: response.sender_user_id ?? "Tu",
+                              content: response.body_text ?? content, timestamp: response.created_at)
+    }
+
+    func createChatThread(with otherUserEmail: String) async throws -> ChatRoomDTO {
+        struct CreateThread: Encodable { let title: String; let thread_type: String }
+        struct ThreadDTO: Decodable { let id: String; let title: String; let created_at: Date }
+        let response: ThreadDTO = try await cloudPost(
+            endpoint: "/api/v1/internal-chat/threads",
+            body: CreateThread(title: otherUserEmail, thread_type: "direct")
+        )
+        return ChatRoomDTO(id: response.id, name: response.title, lastMessageAt: response.created_at,
+                           lastMessagePreview: nil, lastMessageSender: nil)
+    }
+
     // MARK: - Vault Operations
     
     /// Lista file di un sinistro

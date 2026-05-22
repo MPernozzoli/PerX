@@ -1,15 +1,15 @@
 """Add personal and professional user email identities
 
-Revision ID: 009_user_personal_professional_email
-Revises: 008_server_automation_trigger_states
+Revision ID: 009_user_profile_emails
+Revises: 008_automation_trigger_states
 Create Date: 2026-05-21 00:00:00.000000
 """
 from alembic import op
 import sqlalchemy as sa
 
 
-revision = "009_user_personal_professional_email"
-down_revision = "008_server_automation_trigger_states"
+revision = "009_user_profile_emails"
+down_revision = "008_automation_trigger_states"
 branch_labels = None
 depends_on = None
 

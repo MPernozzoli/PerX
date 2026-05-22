@@ -222,7 +222,10 @@ class AIManager: ObservableObject {
     
     private func processQueue() {
         // Conta i task effettivamente in esecuzione
-        let runningCloudTasks = activeTasks.filter { $0.status == .running && $0.task.preferredProvider == .cloudOpenAI }.count
+        let runningCloudTasks = activeTasks.filter {
+            $0.status == .running &&
+            ($0.task.preferredProvider == .cloudOpenAI || $0.task.preferredProvider == .cloudClaude)
+        }.count
         let totalRunning = runningTasks.count
         
         // Controlla limiti globali
@@ -576,15 +579,15 @@ class AIManager: ObservableObject {
     private func getDefaultFallbacks(for taskType: AITaskType) -> [AIModelProvider] {
         switch taskType {
         case .textGeneration, .chat:
-            return [.localText, .localMultimodal, .cloudOpenAI]
+            return [.localText, .localMultimodal, .cloudOpenAI, .cloudClaude]
         case .documentAnalysis, .imageAnalysis:
-            return [.localMultimodal, .cloudOpenAI]
+            return [.localMultimodal, .cloudOpenAI, .cloudClaude]
         case .emailSummary, .textAnalysis:
-            return [.appleIntelligence, .localText, .cloudOpenAI]
+            return [.appleIntelligence, .localText, .cloudOpenAI, .cloudClaude]
         case .documentExtraction:
-            return [.localMultimodal, .cloudOpenAI]
+            return [.localMultimodal, .cloudOpenAI, .cloudClaude]
         case .guardrailing:
-            return [.appleIntelligence, .cloudOpenAI]
+            return [.appleIntelligence, .cloudOpenAI, .cloudClaude]
         }
     }
     
@@ -606,6 +609,12 @@ class AIManager: ObservableObject {
                 result = await CloudAIService.shared.executeTaskStreaming(task, streamCallback: streamCb)
             } else {
                 result = await CloudAIService.shared.executeTask(task)
+            }
+        case .cloudClaude:
+            if wantsStreaming, let streamCb = streamCallbacks[task.id] {
+                result = await ClaudeAIService.shared.executeTaskStreaming(task, streamCallback: streamCb)
+            } else {
+                result = await ClaudeAIService.shared.executeTask(task)
             }
         }
         
@@ -750,6 +759,17 @@ class AIManager: ObservableObject {
             } else {
                 return (false, "Risorse di sistema insufficienti per operazioni cloud")
             }
+
+        case .cloudClaude:
+            let apiAvailable = ClaudeAIService.shared.isAvailable
+            let canWorkInBackground = resourceMonitor.canWorkInBackground()
+            if apiAvailable && canWorkInBackground {
+                return (true, nil)
+            } else if !apiAvailable {
+                return (false, "API key Anthropic non configurata")
+            } else {
+                return (false, "Risorse di sistema insufficienti per operazioni cloud")
+            }
         }
     }
     
@@ -764,6 +784,8 @@ class AIManager: ObservableObject {
         case (.localText, .chat), (.localText, .textGeneration):
             return true
         case (.cloudOpenAI, _):
+            return true
+        case (.cloudClaude, _):
             return true
         case (.appleIntelligence, .emailSummary), (.appleIntelligence, .textAnalysis), (.appleIntelligence, .guardrailing):
             return true

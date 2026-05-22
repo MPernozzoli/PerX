@@ -4,11 +4,7 @@ import UniformTypeIdentifiers
 
 struct AISettingsView: View {
     @Environment(\.managedObjectContext) private var viewContext
-    @AppStorage("ai_openai_api_key") private var openAIKey = ""
-    @AppStorage("ai_openai_base_url") private var openAIBaseURL = "https://api.openai.com/v1"
-    @AppStorage("ai_openai_model") private var openAIModel = "gpt-4o"
-    @AppStorage("ai_openai_timeout") private var openAITimeout = 30.0
-    
+
     @AppStorage("ai_mlx_vision_model_path") private var mlxVisionModelPath = ""
     @AppStorage("ai_local_text_endpoint") private var textEndpoint = "http://localhost:11434/api/generate"
     @AppStorage("ai_local_text_model") private var textModel = ""
@@ -25,9 +21,6 @@ struct AISettingsView: View {
     @AppStorage("ai_enable_apple_intelligence") private var enableAppleIntelligence = true
     @AppStorage("ai_enable_cloud_fallback") private var enableCloudFallback = true
     
-    @State private var showOpenAIKey = false
-    @State private var testingConnection = false
-    @State private var connectionStatus: ConnectionStatus?
     @State private var loadingModel: ModelType?
     @State private var modelLoadStatus: String?
     @State private var loadingMLXModel = false
@@ -36,6 +29,7 @@ struct AISettingsView: View {
     @StateObject private var aiManager = AIManager.shared
     @StateObject private var resourceMonitor = ResourceMonitor.shared
     @StateObject private var mlxVisionService = MLXVisionService.shared
+    @State private var isRefreshingKeys = false
     
     @FetchRequest(
         sortDescriptors: [NSSortDescriptor(keyPath: \AIKnowledgeDocument.ordine, ascending: true)],
@@ -57,109 +51,76 @@ struct AISettingsView: View {
         case text
     }
     
-    enum ConnectionStatus {
-        case success(String)
-        case failure(String)
-        
-        var isSuccess: Bool {
-            if case .success = self {
-                return true
-            }
-            return false
-        }
-        
-        var message: String {
-            switch self {
-            case .success(let msg):
-                return msg
-            case .failure(let msg):
-                return msg
-            }
-        }
-    }
-    
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
-                // OpenAI Configuration
-                GroupBox("OpenAI (Cloud Fallback)") {
+                // Cloud AI — status (chiavi gestite da Supabase)
+                GroupBox("AI Cloud (OpenAI + Claude)") {
                     VStack(alignment: .leading, spacing: 12) {
-                        Toggle("Abilita OpenAI come fallback", isOn: $enableCloudFallback)
-                        
-                        if enableCloudFallback {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("API Key")
+                        HStack {
+                            Image(systemName: "info.circle")
+                                .foregroundColor(.blue)
+                            Text("Le chiavi API vengono configurate dall'amministratore su Supabase e sincronizzate automaticamente.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+
+                        Divider()
+
+                        // OpenAI
+                        HStack {
+                            Label("OpenAI", systemImage: "cloud")
+                                .font(.callout)
+                            Spacer()
+                            if TenantAIKeysService.shared.hasOpenAIKey {
+                                Label(TenantAIKeysService.shared.openAIModel, systemImage: "checkmark.circle.fill")
+                                    .font(.caption)
+                                    .foregroundColor(.green)
+                            } else {
+                                Label("Non configurato", systemImage: "xmark.circle")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
-                                
-                                HStack {
-                                    if showOpenAIKey {
-                                        TextField("sk-...", text: $openAIKey)
-                                            .textFieldStyle(.roundedBorder)
-                                    } else {
-                                        SecureField("sk-...", text: $openAIKey)
-                                            .textFieldStyle(.roundedBorder)
-                                    }
-                                    
-                                    Button(action: { showOpenAIKey.toggle() }) {
-                                        Image(systemName: showOpenAIKey ? "eye.slash" : "eye")
-                                            .foregroundColor(.secondary)
-                                    }
-                                    .buttonStyle(.plain)
-                                    
-                                    if !openAIKey.isEmpty {
-                                        Button(action: testOpenAIConnection) {
-                                            if testingConnection {
-                                                ProgressView()
-                                                    .scaleEffect(0.7)
-                                            } else {
-                                                Image(systemName: "checkmark.circle")
-                                                    .foregroundColor(.blue)
-                                            }
-                                        }
-                                        .buttonStyle(.plain)
-                                        .disabled(testingConnection)
-                                    }
+                            }
+                        }
+
+                        // Claude
+                        HStack {
+                            Label("Claude (Anthropic)", systemImage: "cloud")
+                                .font(.callout)
+                            Spacer()
+                            if TenantAIKeysService.shared.hasAnthropicKey {
+                                Label(TenantAIKeysService.shared.anthropicModel, systemImage: "checkmark.circle.fill")
+                                    .font(.caption)
+                                    .foregroundColor(.green)
+                            } else {
+                                Label("Non configurato", systemImage: "xmark.circle")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+
+                        Divider()
+
+                        Toggle("Abilita fallback cloud", isOn: $enableCloudFallback)
+                            .font(.callout)
+
+                        HStack {
+                            Spacer()
+                            Button {
+                                isRefreshingKeys = true
+                                Task {
+                                    await TenantAIKeysService.shared.forceRefresh()
+                                    isRefreshingKeys = false
                                 }
-                                
-                                if let status = connectionStatus {
-                                    HStack {
-                                        Image(systemName: status.isSuccess ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                            .foregroundColor(status.isSuccess ? .green : .red)
-                                        Text(status.message)
-                                            .font(.caption)
-                                            .foregroundColor(status.isSuccess ? .green : .red)
-                                    }
-                                }
-                            }
-                            
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Base URL")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                TextField("https://api.openai.com/v1", text: $openAIBaseURL)
-                                    .textFieldStyle(.roundedBorder)
-                            }
-                            
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Modello")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                TextField("gpt-4o", text: $openAIModel)
-                                    .textFieldStyle(.roundedBorder)
-                            }
-                            
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Timeout (secondi)")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                Stepper(value: $openAITimeout, in: 10...120, step: 5) {
-                                    Text("\(Int(openAITimeout))s")
+                            } label: {
+                                if isRefreshingKeys {
+                                    ProgressView().scaleEffect(0.7)
+                                } else {
+                                    Label("Sincronizza chiavi", systemImage: "arrow.clockwise")
                                 }
                             }
-                            
-                            Divider()
-                            
+                            .buttonStyle(.bordered)
+                            .disabled(isRefreshingKeys)
                         }
                     }
                     .padding()
@@ -617,33 +578,6 @@ struct AISettingsView: View {
         }
     }
     
-    private func testOpenAIConnection() {
-        testingConnection = true
-        connectionStatus = nil
-        
-        Task {
-            // Test semplice della connessione
-            let testTask = AITask(
-                type: .textGeneration,
-                priority: .primary,
-                preferredProvider: .cloudOpenAI,
-                parameters: ["prompt": AnyCodable("Test")]
-            )
-            
-            let result = await CloudAIService.shared.executeTask(testTask)
-            
-            await MainActor.run {
-                testingConnection = false
-                switch result {
-                case .success:
-                    connectionStatus = .success("Connessione riuscita")
-                case .failure(let error):
-                    connectionStatus = .failure("Errore: \(error.localizedDescription)")
-                }
-            }
-        }
-    }
-    
     private func formatBytes(_ bytes: UInt64) -> String {
         let formatter = ByteCountFormatter()
         formatter.allowedUnits = [.useGB, .useMB]
@@ -979,10 +913,13 @@ final class RAGBuildManager: ObservableObject {
     
     private func openAIEnv() -> [String: String] {
         var env = ProcessInfo.processInfo.environment
+        // Usa la chiave dal backend (Supabase); fallback a UserDefaults per retrocompatibilità
+        let tenantKey = TenantAIKeysService.shared.openAIKey
         if env["OPENAI_API_KEY"]?.isEmpty ?? true {
-            if let key = UserDefaults.standard.string(forKey: "ai_openai_api_key"), !key.isEmpty {
-                env["OPENAI_API_KEY"] = key
-            }
+            let key = tenantKey.isEmpty
+                ? (UserDefaults.standard.string(forKey: "ai_openai_api_key") ?? "")
+                : tenantKey
+            if !key.isEmpty { env["OPENAI_API_KEY"] = key }
         }
         if env["OPENAI_BASE_URL"]?.isEmpty ?? true {
             if let base = UserDefaults.standard.string(forKey: "ai_openai_base_url"), !base.isEmpty {

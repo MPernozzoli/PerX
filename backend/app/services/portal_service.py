@@ -55,7 +55,9 @@ from app.schemas.portal import (
 from app.services.iban_service import IbanService
 from app.services.inspection_workflow_service import InspectionWorkflowService
 from app.services.portal_status_service import PortalStatusService
+from app.services.process_job_service import ProcessJobService
 from app.services.state_service import StateService
+from app.services.supabase_storage_service import SupabaseStorageService
 from app.schemas.inspection import InspectionPreferredSlotInput
 
 
@@ -409,27 +411,39 @@ class PortalService:
             raise ValueError("Documento non trovato.")
 
         insured_folder = await PortalService._ensure_insured_claim_folder(db, session.tenant_id, claim)
-        previous_path = Path(document.storage_path) if document.storage_path else None
-        storage_path = PortalService._build_insured_storage_path(
-            claim,
-            session.tenant_id,
-            document.id,
-            file_name or document.file_name,
-        )
-        storage_path.write_bytes(content)
-        if previous_path and previous_path != storage_path and previous_path.exists():
-            previous_path.unlink(missing_ok=True)
-
+        safe_name = PortalService._safe_filename(file_name or document.file_name, document.id)
         checksum_sha256 = hashlib.sha256(content).hexdigest()
-        safe_name = PortalService._safe_filename(file_name or document.file_name, storage_path.name)
+
+        if SupabaseStorageService.is_configured():
+            claim_ref = PortalService._claim_reference_for_paths(claim)
+            object_path = SupabaseStorageService.build_object_path(
+                session.tenant_id, claim_ref, document.id, safe_name
+            )
+            blob = await SupabaseStorageService.upload(
+                object_path=object_path,
+                content=content,
+                mime_type=mime_type,
+            )
+            document.storage_provider = "supabase"
+            document.storage_bucket = blob.bucket
+            document.storage_path = blob.storage_path
+        else:
+            storage_path = PortalService._build_insured_storage_path(
+                claim, session.tenant_id, document.id, safe_name
+            )
+            previous_path = Path(document.storage_path) if document.storage_path else None
+            storage_path.write_bytes(content)
+            if previous_path and previous_path != storage_path and previous_path.exists():
+                previous_path.unlink(missing_ok=True)
+            document.storage_provider = "local"
+            document.storage_bucket = None
+            document.storage_path = str(storage_path)
+
         document.file_name = safe_name
         document.original_file_name = safe_name
         document.mime_type = mime_type or document.mime_type
         document.extension = Path(safe_name).suffix.lstrip(".") or None
         document.size_bytes = len(content)
-        document.storage_provider = "local"
-        document.storage_bucket = None
-        document.storage_path = str(storage_path)
         document.folder_id = insured_folder.id
         document.logical_path = f"{insured_folder.path}/{safe_name}"
         document.status = "uploaded"
@@ -1622,8 +1636,113 @@ class PortalService:
         else:
             await db.commit()
 
+        if settings.FF_PORTAL_PHOTO_AI_ANALYSIS_ENABLED and payload.photos_count > 0:
+            await PortalService._enqueue_photo_analysis_job(
+                db,
+                tenant_id=session.tenant_id,
+                claim=claim,
+                upload_registrations=upload_registrations,
+                submission_id=submission.id,
+            )
+            await db.commit()
+
         await db.refresh(submission)
         return submission
+
+    @staticmethod
+    async def _enqueue_photo_analysis_job(
+        db: AsyncSession,
+        *,
+        tenant_id: str,
+        claim: Claim,
+        upload_registrations: list[dict],
+        submission_id: str,
+    ) -> None:
+        """
+        Build the input payload for ai_asset_photo_analysis and enqueue it.
+
+        For each uploaded photo we include a signed Supabase URL (or a flag that
+        the worker should fetch via the vault API if Supabase is not configured).
+        """
+        photo_kinds = {
+            "building_photo", "whole_item_photo", "component_photo", "video",
+        }
+        photo_entries: list[dict] = []
+
+        if upload_registrations:
+            from sqlalchemy import select as sa_select
+            from app.models.document import Document as DocumentModel
+
+            doc_ids = [
+                str(r.get("document_id"))
+                for r in upload_registrations
+                if isinstance(r, dict) and r.get("document_id") and r.get("kind") in photo_kinds
+            ]
+            if not doc_ids:
+                return
+
+            result = await db.execute(
+                sa_select(DocumentModel).where(
+                    DocumentModel.tenant_id == tenant_id,
+                    DocumentModel.claim_id == claim.id,
+                    DocumentModel.id.in_(doc_ids),
+                    DocumentModel.status == "uploaded",
+                )
+            )
+            docs_by_id = {d.id: d for d in result.scalars().all()}
+
+            for reg in upload_registrations:
+                if not isinstance(reg, dict) or reg.get("kind") not in photo_kinds:
+                    continue
+                doc = docs_by_id.get(str(reg.get("document_id")))
+                if not doc:
+                    continue
+
+                entry: dict = {
+                    "document_id": doc.id,
+                    "file_name": doc.file_name,
+                    "mime_type": doc.mime_type,
+                    "kind": reg.get("kind"),
+                    "item_label": reg.get("item_label"),
+                    "component_name": reg.get("component_name"),
+                    "storage_provider": doc.storage_provider,
+                    "storage_bucket": doc.storage_bucket,
+                    "storage_path": doc.storage_path,
+                    "download_url": None,
+                }
+
+                if doc.storage_provider == "supabase" and SupabaseStorageService.is_configured():
+                    try:
+                        entry["download_url"] = await SupabaseStorageService.create_signed_url(
+                            doc.storage_path,
+                            expires_in_seconds=settings.PORTAL_PHOTO_SIGNED_URL_EXPIRE_SECONDS,
+                        )
+                    except Exception:
+                        pass  # worker falls back to vault API
+
+                photo_entries.append(entry)
+
+        if not photo_entries:
+            return
+
+        await ProcessJobService.enqueue(
+            db,
+            tenant_id=tenant_id,
+            claim_id=claim.id,
+            job_type="ai_asset_photo_analysis",
+            priority=5,
+            max_retries=3,
+            idempotency_key=f"photo_analysis_{submission_id}",
+            input_json={
+                "submission_id": submission_id,
+                "claim_id": claim.id,
+                "tenant_id": tenant_id,
+                "claim_ref": claim.external_ref or claim.numero_sinistro or claim.id,
+                "garanzia": claim.garanzia,
+                "photos": photo_entries,
+            },
+            tags_json={"source": "portal_document_collection"},
+        )
 
     @staticmethod
     async def submit_bank_account(

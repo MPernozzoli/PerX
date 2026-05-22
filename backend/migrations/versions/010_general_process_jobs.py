@@ -1,7 +1,7 @@
 """Add general process jobs queue
 
 Revision ID: 010_general_process_jobs
-Revises: 009_user_personal_professional_email
+Revises: 009_user_profile_emails
 Create Date: 2026-05-21 00:00:00.000000
 """
 from alembic import op
@@ -9,7 +9,7 @@ import sqlalchemy as sa
 
 
 revision = "010_general_process_jobs"
-down_revision = "009_user_personal_professional_email"
+down_revision = "009_user_profile_emails"
 branch_labels = None
 depends_on = None
 

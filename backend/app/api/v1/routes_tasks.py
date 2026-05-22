@@ -27,6 +27,8 @@ class TaskCreateRequest(BaseModel):
     dueDate: datetime | None = None
     assignedTo: str | None = None
     createdBy: str | None = None
+    # UUID generato lato client — usato come chiave di idempotenza offline
+    clientId: str | None = None
 
 
 class TaskUpdateRequest(BaseModel):
@@ -177,6 +179,17 @@ async def create_task(
             raise HTTPException(status_code=404, detail="Assigned user not found")
         assignee_user_id = assignee.id
 
+    # Idempotenza offline: se clientId già presente, restituisci il task esistente
+    if request.clientId:
+        existing_result = await db.execute(
+            select(CaseTask).where(
+                CaseTask.tenant_id == current_user.tenant_id,
+                CaseTask.metadata_json["clientId"].astext == request.clientId,
+            )
+        )
+        if existing := existing_result.scalar_one_or_none():
+            return await _serialize_task(db, existing)
+
     task = CaseTask(
         id=str(uuid.uuid4()),
         tenant_id=current_user.tenant_id,
@@ -190,7 +203,7 @@ async def create_task(
         completed_at=None,
         priority=_priority_to_int(request.priority),
         type=request.type,
-        metadata_json=None,
+        metadata_json={"clientId": request.clientId} if request.clientId else None,
     )
     db.add(task)
     await db.commit()
@@ -251,3 +264,25 @@ async def complete_task(
     await db.commit()
     await db.refresh(task)
     return await _serialize_task(db, task)
+
+
+@router.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_task(
+    task_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Elimina un task. Solo il creatore o un admin può eliminarlo."""
+    query = select(CaseTask).where(
+        CaseTask.id == task_id,
+        CaseTask.tenant_id == current_user.tenant_id,
+    )
+    result = await db.execute(query)
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.created_by_user_id != current_user.id and not current_user.is_platform_admin:
+        raise HTTPException(status_code=403, detail="Non autorizzato a eliminare questo task")
+
+    await db.delete(task)
+    await db.commit()

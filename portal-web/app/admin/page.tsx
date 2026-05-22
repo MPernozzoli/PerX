@@ -7,7 +7,7 @@ export default function AdminGatewayPage() {
         <p className="text-sm uppercase tracking-[0.18em] text-cyan-300">PerX Admin</p>
         <h1 className="mt-4 text-4xl font-semibold">Pannello di controllo</h1>
         <p className="mt-4 text-zinc-300">
-          Gestisci le route dominio per CatDispatcher, admin PerX e portali assicurati dei tenant.
+          Gestisci tenant, domini, portali assicurati e accessi collegati al progetto PerX.
         </p>
         <AdminDomainRoutes />
       </section>

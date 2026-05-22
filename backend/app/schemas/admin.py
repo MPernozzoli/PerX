@@ -1,7 +1,7 @@
 """
 Schemas for platform-admin APIs
 """
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Any, Literal
 
 
@@ -12,6 +12,12 @@ class TenantResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class TenantUpsert(BaseModel):
+    name: str = Field(..., min_length=1)
+    slug: str = Field(..., min_length=1)
+    settings_json: dict[str, Any] | None = None
 
 
 class AdminUserResponse(BaseModel):

@@ -86,7 +86,8 @@ class Claim(Base):
     fulminazione = Column(String, nullable=True)
     gruppo = Column(String, nullable=True)
     area = Column(String, nullable=True)
-    complessita = Column(String, nullable=True)
+    complessita = Column(String, nullable=True)          # label: Bassa/Media/Alta/Molto Alta
+    complexity_score = Column(Numeric(6, 4), nullable=True)  # numeric score (server-computed)
     definizione = Column(String, nullable=True)
     propensione_perito = Column(String, nullable=True)
     ubicazione_note = Column(String, nullable=True)

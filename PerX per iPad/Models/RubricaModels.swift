@@ -8,7 +8,6 @@
 
 import Foundation
 import SwiftUI
-import CloudKit
 
 // MARK: - Gruppi Assicurativi (fissi, non editabili)
 
@@ -204,66 +203,6 @@ struct RubricaAgenzia: Identifiable, Codable, Hashable {
         email.first
     }
     
-    // MARK: - CloudKit
-    
-    static let recordType = "RubricaAgenzia"
-    
-    enum CKKeys: String {
-        case id, compagniaId, agenziaParentId, codice, nome, suffissoNome
-        case indirizzo, citta, provincia, cap
-        case telefoni, email, fax, orariApertura, note
-        case idAreaLegacy, descrAreaLegacy, lastModified
-    }
-    
-    init(from record: CKRecord) {
-        self.id = record.recordID.recordName
-        self.compagniaId = record[CKKeys.compagniaId.rawValue] as? String ?? ""
-        self.agenziaParentId = record[CKKeys.agenziaParentId.rawValue] as? String
-        self.codice = record[CKKeys.codice.rawValue] as? String ?? ""
-        self.nome = record[CKKeys.nome.rawValue] as? String ?? ""
-        self.suffissoNome = record[CKKeys.suffissoNome.rawValue] as? String
-        self.indirizzo = record[CKKeys.indirizzo.rawValue] as? String
-        self.citta = record[CKKeys.citta.rawValue] as? String
-        self.provincia = record[CKKeys.provincia.rawValue] as? String
-        self.cap = record[CKKeys.cap.rawValue] as? String
-        self.telefoni = record[CKKeys.telefoni.rawValue] as? [String] ?? []
-        self.email = record[CKKeys.email.rawValue] as? [String] ?? []
-        self.fax = record[CKKeys.fax.rawValue] as? String
-        if let orariData = record[CKKeys.orariApertura.rawValue] as? Data {
-            self.orariApertura = try? JSONDecoder().decode(OrariApertura.self, from: orariData)
-        } else {
-            self.orariApertura = nil
-        }
-        self.note = record[CKKeys.note.rawValue] as? String
-        self.idAreaLegacy = record[CKKeys.idAreaLegacy.rawValue] as? Int
-        self.descrAreaLegacy = record[CKKeys.descrAreaLegacy.rawValue] as? String
-        self.lastModified = record[CKKeys.lastModified.rawValue] as? Date ?? Date()
-    }
-    
-    func toCKRecord() -> CKRecord {
-        let recordID = CKRecord.ID(recordName: id)
-        let record = CKRecord(recordType: Self.recordType, recordID: recordID)
-        record[CKKeys.compagniaId.rawValue] = compagniaId
-        record[CKKeys.agenziaParentId.rawValue] = agenziaParentId
-        record[CKKeys.codice.rawValue] = codice
-        record[CKKeys.nome.rawValue] = nome
-        record[CKKeys.suffissoNome.rawValue] = suffissoNome
-        record[CKKeys.indirizzo.rawValue] = indirizzo
-        record[CKKeys.citta.rawValue] = citta
-        record[CKKeys.provincia.rawValue] = provincia
-        record[CKKeys.cap.rawValue] = cap
-        record[CKKeys.telefoni.rawValue] = telefoni
-        record[CKKeys.email.rawValue] = email
-        record[CKKeys.fax.rawValue] = fax
-        if let orari = orariApertura, let data = try? JSONEncoder().encode(orari) {
-            record[CKKeys.orariApertura.rawValue] = data
-        }
-        record[CKKeys.note.rawValue] = note
-        record[CKKeys.idAreaLegacy.rawValue] = idAreaLegacy
-        record[CKKeys.descrAreaLegacy.rawValue] = descrAreaLegacy
-        record[CKKeys.lastModified.rawValue] = lastModified
-        return record
-    }
 }
 
 // MARK: - Agente
@@ -304,37 +243,6 @@ struct RubricaAgente: Identifiable, Codable, Hashable {
         "\(nome) \(cognome)"
     }
     
-    static let recordType = "RubricaAgente"
-    
-    enum CKKeys: String {
-        case id, agenziaId, nome, cognome, ruolo, telefoni, email, note, lastModified
-    }
-    
-    init(from record: CKRecord) {
-        self.id = record.recordID.recordName
-        self.agenziaId = record[CKKeys.agenziaId.rawValue] as? String ?? ""
-        self.nome = record[CKKeys.nome.rawValue] as? String ?? ""
-        self.cognome = record[CKKeys.cognome.rawValue] as? String ?? ""
-        self.ruolo = record[CKKeys.ruolo.rawValue] as? String
-        self.telefoni = record[CKKeys.telefoni.rawValue] as? [String] ?? []
-        self.email = record[CKKeys.email.rawValue] as? [String] ?? []
-        self.note = record[CKKeys.note.rawValue] as? String
-        self.lastModified = record[CKKeys.lastModified.rawValue] as? Date ?? Date()
-    }
-    
-    func toCKRecord() -> CKRecord {
-        let recordID = CKRecord.ID(recordName: id)
-        let record = CKRecord(recordType: Self.recordType, recordID: recordID)
-        record[CKKeys.agenziaId.rawValue] = agenziaId
-        record[CKKeys.nome.rawValue] = nome
-        record[CKKeys.cognome.rawValue] = cognome
-        record[CKKeys.ruolo.rawValue] = ruolo
-        record[CKKeys.telefoni.rawValue] = telefoni
-        record[CKKeys.email.rawValue] = email
-        record[CKKeys.note.rawValue] = note
-        record[CKKeys.lastModified.rawValue] = lastModified
-        return record
-    }
 }
 
 // MARK: - Liquidatore
@@ -378,39 +286,6 @@ struct RubricaLiquidatore: Identifiable, Codable, Hashable {
         "\(nome) \(cognome)"
     }
     
-    static let recordType = "RubricaLiquidatore"
-    
-    enum CKKeys: String {
-        case id, gruppoId, compagniaId, nome, cognome, telefoni, email, area, note, lastModified
-    }
-    
-    init(from record: CKRecord) {
-        self.id = record.recordID.recordName
-        self.gruppoId = record[CKKeys.gruppoId.rawValue] as? String
-        self.compagniaId = record[CKKeys.compagniaId.rawValue] as? String
-        self.nome = record[CKKeys.nome.rawValue] as? String ?? ""
-        self.cognome = record[CKKeys.cognome.rawValue] as? String ?? ""
-        self.telefoni = record[CKKeys.telefoni.rawValue] as? [String] ?? []
-        self.email = record[CKKeys.email.rawValue] as? [String] ?? []
-        self.area = record[CKKeys.area.rawValue] as? String
-        self.note = record[CKKeys.note.rawValue] as? String
-        self.lastModified = record[CKKeys.lastModified.rawValue] as? Date ?? Date()
-    }
-    
-    func toCKRecord() -> CKRecord {
-        let recordID = CKRecord.ID(recordName: id)
-        let record = CKRecord(recordType: Self.recordType, recordID: recordID)
-        record[CKKeys.gruppoId.rawValue] = gruppoId
-        record[CKKeys.compagniaId.rawValue] = compagniaId
-        record[CKKeys.nome.rawValue] = nome
-        record[CKKeys.cognome.rawValue] = cognome
-        record[CKKeys.telefoni.rawValue] = telefoni
-        record[CKKeys.email.rawValue] = email
-        record[CKKeys.area.rawValue] = area
-        record[CKKeys.note.rawValue] = note
-        record[CKKeys.lastModified.rawValue] = lastModified
-        return record
-    }
 }
 
 // MARK: - Orari Apertura

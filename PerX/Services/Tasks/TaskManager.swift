@@ -478,6 +478,9 @@ class TaskManager: ObservableObject {
             ScheduleManager.shared.rebalanceDayAfterCompletion(for: calendar.startOfDay(for: scheduledDate))
         }
 
+        // Sincronizza completamento sul server (no-op se task mai sync'd)
+        Task { await TaskSyncQueue.shared.enqueueComplete(localId: taskID) }
+
         if let sinistroID = sinistroID {
             Task {
                 await addTaskCompletionNoteToDiario(task: task, sinistroID: sinistroID)
@@ -487,7 +490,7 @@ class TaskManager: ObservableObject {
             }
         }
     }
-    
+
     private func addTaskCompletionNoteToDiario(task: DailyTask, sinistroID: String) async {
         let context = PersistenceController.shared.container.viewContext
         let request = NSFetchRequest<Sinistro>(entityName: "Sinistro")
@@ -563,12 +566,23 @@ class TaskManager: ObservableObject {
         let task = tasks[index]
         tasks[index].status = .cancelled
         tasks[index].completedAt = Date()
-        
-        // Aggiungi alla lista dei soppressi se è un baseTask
+
         suppressTaskIfNeeded(task)
-        
+
         saveTasks()
         updateCounter += 1
+
+        // Propaga cancellazione al server (no-op se task mai sync'd)
+        Task {
+            await TaskSyncQueue.shared.enqueueUpdate(
+                localId: taskID,
+                title: nil,
+                description: nil,
+                priority: nil,
+                dueDate: nil,
+                status: .cancelled
+            )
+        }
     }
     
     // MARK: - Task Suppression (Prevenzione Rigenerazione)
@@ -700,22 +714,24 @@ class TaskManager: ObservableObject {
     
     private func completeTaskWithEvent(taskID: UUID, eventDate: Date, eventId: String) {
         guard let index = tasks.firstIndex(where: { $0.id == taskID }) else { return }
-        
-        // Salva una copia del task prima di modificare l'array
+
         let task = tasks[index]
         let sinistroID = task.sinistroID
-        
+
         tasks[index].status = .completed
         tasks[index].completedAt = eventDate
         tasks[index].completionEventId = eventId
-        
+
         if let startedAt = task.startedAt {
             tasks[index].actualDuration = eventDate.timeIntervalSince(startedAt)
         }
-        
+
         saveTasks()
         updateCounter += 1
-        
+
+        // Sincronizza completamento sul server (no-op se task mai sync'd)
+        Task { await TaskSyncQueue.shared.enqueueComplete(localId: taskID) }
+
         if let sinistroID = sinistroID {
             Task {
                 await addTaskCompletionNoteToDiario(task: task, sinistroID: sinistroID)
@@ -992,9 +1008,11 @@ class TaskManager: ObservableObject {
                         tasks[index].status = .completed
                         tasks[index].completedAt = now
                     }
+                    // Sincronizza con il server (no-op se task mai sync'd)
+                    Task { await TaskSyncQueue.shared.enqueueComplete(localId: taskId) }
                 }
             }
-            
+
             if !tasksToRemove.isEmpty || !tasksToComplete.isEmpty {
                 saveTasks()
                 updateCounter += 1

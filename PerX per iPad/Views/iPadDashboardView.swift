@@ -77,7 +77,7 @@ struct iPadDashboardView: View {
                 Text(Date(), style: .date)
                     .font(.headline)
                 
-                if let lastSync = session.cloudKitSyncService?.lastSyncAt {
+                if let lastSync = session.syncService?.lastSyncAt {
                     Text("Sync: \(lastSync, style: .relative)")
                         .font(.caption)
                         .foregroundColor(.secondary)
@@ -207,14 +207,14 @@ struct iPadDashboardView: View {
     
     private func refresh() async {
         isRefreshing = true
-        await session.cloudKitSyncService?.syncNow()
+        await session.syncService?.syncNow()
         await loadStats()
         isRefreshing = false
     }
     
     private func loadStats() async {
         // Carica statistiche da CloudKit sync service
-        let sinistri = session.cloudKitSyncService?.sinistri ?? []
+        let sinistri = session.syncService?.sinistri ?? []
         
         stats = DashboardStats(
             sinistriAperti: sinistri.filter { $0.isOpen }.count,

@@ -1,7 +1,7 @@
 """Server automation trigger states
 
-Revision ID: 008_server_automation_trigger_states
-Revises: 007_resend_inbound_email_pipeline
+Revision ID: 008_automation_trigger_states
+Revises: 007_resend_inbound_email
 Create Date: 2026-05-21 00:00:00.000000
 
 """
@@ -9,8 +9,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "008_server_automation_trigger_states"
-down_revision = "007_resend_inbound_email_pipeline"
+revision = "008_automation_trigger_states"
+down_revision = "007_resend_inbound_email"
 branch_labels = None
 depends_on = None
 

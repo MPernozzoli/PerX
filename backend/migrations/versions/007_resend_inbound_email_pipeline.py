@@ -1,6 +1,6 @@
 """Add Resend inbound email pipeline tables
 
-Revision ID: 007_resend_inbound_email_pipeline
+Revision ID: 007_resend_inbound_email
 Revises: 006_document_versions
 Create Date: 2026-05-21 00:00:00.000000
 """
@@ -8,7 +8,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "007_resend_inbound_email_pipeline"
+revision = "007_resend_inbound_email"
 down_revision = "006_document_versions"
 branch_labels = None
 depends_on = None

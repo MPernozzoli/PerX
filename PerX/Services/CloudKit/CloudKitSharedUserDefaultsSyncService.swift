@@ -25,13 +25,8 @@ final class CloudKitSharedUserDefaultsSyncService {
     private let lastAppliedKey = "cloudKitSharedUserDefaults_lastAppliedAt"
 
     // Whitelist: solo quello che vogliamo condividere tra tutti
+    // Le chiavi AI cloud (OpenAI, Claude) vengono dal backend Supabase, non vanno sincronizzate qui
     private let syncedKeys: [String] = [
-        // OpenAI (comune)
-        "ai_openai_api_key",
-        "ai_openai_base_url",
-        "ai_openai_model",
-        "ai_openai_timeout",
-        
         // Parametri compagnie (override + logo base64)
         "compagniaOverrides_v1"
     ]

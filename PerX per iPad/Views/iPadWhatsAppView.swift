@@ -239,7 +239,7 @@ struct iPadWhatsAppView: View {
         isLoading = true
         defer { isLoading = false }
         
-        guard let syncService = session.cloudKitSyncService else { return }
+        guard let syncService = session.syncService else { return }
         
         // Load all chats
         allChats = await syncService.fetchAllWhatsAppChats()
@@ -426,11 +426,27 @@ struct WhatsAppThreadDetailView: View {
     }
 }
 
-// MARK: - iPadCloudKitSyncService Extension
-
-extension iPadCloudKitSyncService {
+extension iPadSyncService {
     func fetchAllWhatsAppChats() async -> [WhatsAppChatDTO] {
-        // TODO: Implementare fetch da CloudKit
-        return []
+        guard hubClient.isCloudConfigured else { return [] }
+        var chats: [WhatsAppChatDTO] = []
+        for rif in sinistri.prefix(30).map({ $0.riferimento }) {
+            if let msgs = try? await fetchWhatsAppMessages(riferimento: rif) {
+                let grouped = Dictionary(grouping: msgs, by: { $0.chatId })
+                for (chatId, messages) in grouped {
+                    let last = messages.max(by: { $0.timestamp < $1.timestamp })
+                    chats.append(WhatsAppChatDTO(
+                        id: chatId,
+                        name: last?.from ?? chatId,
+                        phoneNumber: last?.from ?? "",
+                        lastMessage: last?.body,
+                        lastMessageDate: last?.timestamp,
+                        unreadCount: 0,
+                        sinistroRiferimento: rif
+                    ))
+                }
+            }
+        }
+        return chats
     }
 }

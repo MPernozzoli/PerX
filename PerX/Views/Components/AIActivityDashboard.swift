@@ -366,9 +366,11 @@ struct ProviderBadge: View {
             return "Apple AI"
         case .cloudOpenAI:
             return "OpenAI"
+        case .cloudClaude:
+            return "Claude"
         }
     }
-    
+
     private var providerColor: Color {
         switch provider {
         case .localMultimodal, .localText:
@@ -377,6 +379,8 @@ struct ProviderBadge: View {
             return .purple
         case .cloudOpenAI:
             return .green
+        case .cloudClaude:
+            return .orange
         }
     }
 }

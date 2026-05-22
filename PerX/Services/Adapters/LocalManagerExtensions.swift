@@ -48,7 +48,6 @@ extension TaskManager {
     func completeTaskForAdapter(id: String) async {
         guard let uuid = UUID(uuidString: id) else { return }
         await MainActor.run {
-            // Trova e completa il task
             if let index = tasks.firstIndex(where: { $0.id == uuid }) {
                 var task = tasks[index]
                 task.status = .completed
@@ -57,6 +56,8 @@ extension TaskManager {
                 saveTasks()
             }
         }
+        // Sincronizza con il server (no-op se task mai sync'd)
+        await TaskSyncQueue.shared.enqueueComplete(localId: uuid)
     }
     
     /// Crea un nuovo task (per adapter)
