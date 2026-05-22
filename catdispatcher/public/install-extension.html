@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Installa Estensione CAT Dispatcher</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+    
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+      overflow: hidden;
+    }
+    
+    .header {
+      background: linear-gradient(135deg, #3b82f6 0%, #14b8a6 100%);
+      color: white;
+      padding: 40px;
+      text-align: center;
+    }
+    
+    .header h1 {
+      font-size: 28px;
+      margin-bottom: 10px;
+    }
+    
+    .header p {
+      opacity: 0.9;
+      font-size: 16px;
+    }
+    
+    .content {
+      padding: 40px;
+    }
+    
+    .download-section {
+      background: #f0f9ff;
+      border: 2px solid #3b82f6;
+      border-radius: 12px;
+      padding: 30px;
+      text-align: center;
+      margin-bottom: 40px;
+    }
+    
+    .download-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: #3b82f6;
+      color: white;
+      padding: 16px 32px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-size: 18px;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    
+    .download-btn:hover {
+      background: #2563eb;
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(59, 130, 246, 0.3);
+    }
+    
+    .download-btn svg {
+      width: 24px;
+      height: 24px;
+    }
+    
+    .steps {
+      counter-reset: step;
+    }
+    
+    .step {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 30px;
+      padding-bottom: 30px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    
+    .step:last-child {
+      border-bottom: none;
+      margin-bottom: 0;
+      padding-bottom: 0;
+    }
+    
+    .step-number {
+      flex-shrink: 0;
+      width: 40px;
+      height: 40px;
+      background: #3b82f6;
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      font-size: 18px;
+    }
+    
+    .step-content h3 {
+      font-size: 18px;
+      color: #1f2937;
+      margin-bottom: 8px;
+    }
+    
+    .step-content p {
+      color: #6b7280;
+      line-height: 1.6;
+    }
+    
+    .step-content code {
+      background: #f3f4f6;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-family: monospace;
+      color: #ef4444;
+    }
+    
+    .step-content img {
+      max-width: 100%;
+      border-radius: 8px;
+      margin-top: 15px;
+      border: 1px solid #e5e7eb;
+    }
+    
+    .note {
+      background: #fef3c7;
+      border-left: 4px solid #f59e0b;
+      padding: 15px 20px;
+      margin-top: 30px;
+      border-radius: 0 8px 8px 0;
+    }
+    
+    .note strong {
+      color: #92400e;
+    }
+    
+    .note p {
+      color: #78350f;
+      margin-top: 5px;
+    }
+    
+    .back-link {
+      display: inline-block;
+      margin-top: 30px;
+      color: #3b82f6;
+      text-decoration: none;
+    }
+    
+    .back-link:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Estensione CAT Dispatcher</h1>
+      <p>Assegna i CAT direttamente dal gestionale ACT JellyFish</p>
+    </div>
+    
+    <div class="content">
+      <div class="download-section">
+        <a href="/chrome-extension.zip" download class="download-btn">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+          Scarica Estensione
+        </a>
+      </div>
+      
+      <h2 style="margin-bottom: 25px; color: #1f2937;">Come installare</h2>
+      
+      <div class="steps">
+        <div class="step">
+          <div class="step-number">1</div>
+          <div class="step-content">
+            <h3>Scarica il file ZIP</h3>
+            <p>Clicca sul pulsante "Scarica Estensione" qui sopra. Il file verrà salvato nella cartella Download del tuo computer.</p>
+          </div>
+        </div>
+        
+        <div class="step">
+          <div class="step-number">2</div>
+          <div class="step-content">
+            <h3>Estrai il contenuto</h3>
+            <p>Fai doppio clic sul file <code>chrome-extension.zip</code> per estrarlo. Verrà creata una cartella con i file dell'estensione.</p>
+          </div>
+        </div>
+        
+        <div class="step">
+          <div class="step-number">3</div>
+          <div class="step-content">
+            <h3>Apri le estensioni di Chrome</h3>
+            <p>Apri Chrome e vai all'indirizzo <code>chrome://extensions</code> oppure clicca sui tre puntini in alto a destra → Estensioni → Gestisci estensioni.</p>
+          </div>
+        </div>
+        
+        <div class="step">
+          <div class="step-number">4</div>
+          <div class="step-content">
+            <h3>Attiva la Modalità sviluppatore</h3>
+            <p>In alto a destra nella pagina delle estensioni, attiva l'interruttore "Modalità sviluppatore".</p>
+          </div>
+        </div>
+        
+        <div class="step">
+          <div class="step-number">5</div>
+          <div class="step-content">
+            <h3>Carica l'estensione</h3>
+            <p>Clicca su "Carica estensione non pacchettizzata" e seleziona la cartella che hai estratto al passo 2.</p>
+          </div>
+        </div>
+        
+        <div class="step">
+          <div class="step-number">6</div>
+          <div class="step-content">
+            <h3>Fissa l'icona nella barra (consigliato)</h3>
+            <p>Clicca sull'icona del puzzle delle estensioni nella barra di Chrome, individua CAT Dispatcher e clicca sul pin accanto al nome per tenerla sempre visibile e a portata di mano.</p>
+          </div>
+        </div>
+        
+        <div class="step">
+          <div class="step-number">7</div>
+          <div class="step-content">
+            <h3>Fatto!</h3>
+            <p>L'estensione è ora installata. Vedrai l'icona CAT Dispatcher nella barra degli strumenti di Chrome. Vai su ACT JellyFish per usarla!</p>
+          </div>
+        </div>
+      </div>
+      
+      <div class="note">
+        <strong>Importante – la cartella deve rimanere sul dispositivo</strong>
+        <p>Quando installi l'estensione in modalità sviluppatore, Chrome legge i file direttamente dalla cartella che hai selezionato. Non eliminarne il contenuto dopo l'installazione: se cancelli o sposti la cartella estratta dallo ZIP, l'estensione smetterà di funzionare.</p>
+      </div>
+      
+      <div class="note" style="margin-top: 15px; border-left-color: #3b82f6; background: #eff6ff;">
+        <strong>Nota:</strong>
+        <p>L'estensione funziona solo sul gestionale ACT JellyFish (act.jfish.it). Devi essere loggato con il tuo account per usarla.</p>
+      </div>
+      
+      <a href="/" class="back-link">← Torna alla mappa</a>
+    </div>
+  </div>
+</body>
+</html>

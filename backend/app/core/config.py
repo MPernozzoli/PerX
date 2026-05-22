@@ -23,9 +23,6 @@ class Settings(BaseSettings):
     SUPABASE_ANON_KEY: Optional[str] = None
     SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None
     APP_PUBLIC_URL: str = "https://app.perx.it"
-    CATDISPATCHER_BASE_URL: Optional[str] = None
-    CATDISPATCHER_API_KEY: Optional[str] = None
-    CATDISPATCHER_TIMEOUT_SECONDS: float = 20.0
     
     # Security
     SECRET_KEY: str = "change-me-in-production"
@@ -38,6 +35,7 @@ class Settings(BaseSettings):
     PORTAL_DEBUG_PREVIEW_LINKS: bool = True
     PORTAL_DEV_CLAIM_REFERENCE_ONLY_AUTH: bool = True
     PORTAL_SIGNATURE_WEBHOOK_SECRET: Optional[str] = None
+    ROUTING_RESOLVE_SECRET: Optional[str] = None
 
     # Platform admin / multi-tenant bootstrap
     APP_ADMIN_EMAIL: str = "info@pynkstudio.it"

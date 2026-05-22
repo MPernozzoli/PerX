@@ -10,16 +10,23 @@ export function PortalShell({
   centered?: boolean;
 }) {
   return (
-    <div className="portal-shell">
+    <div className="shell">
       <PortalNav />
-      <main className={`app-shell${centered ? " app-shell--centered" : ""}`}>{children}</main>
-      <footer className="portal-footer">
-        <div className="portal-footer__inner">
-          <p>
-            Hai bisogno di assistenza?{" "}
-            <a href="mailto:assistenza@perx.it">Contattaci</a>
-          </p>
-          <p>© {new Date().getFullYear()} PerX Assicurati</p>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+        <main className={centered ? "app-shell app-shell--centered" : "app-shell"}>
+          {children}
+        </main>
+      </div>
+      <footer className="footer">
+        <div>
+          © {new Date().getFullYear()} PerX · Portale assicurati.{" "}
+          Tutti i diritti riservati.
+        </div>
+        <div className="row" style={{ gap: 24 }}>
+          <a href="#">Privacy</a>
+          <a href="#">Termini di servizio</a>
+          <a href="#">Cookie</a>
+          <a href="mailto:assistenza@perx.it">Assistenza</a>
         </div>
       </footer>
     </div>

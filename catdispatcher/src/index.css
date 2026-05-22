@@ -1,0 +1,129 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    /* Nuova color palette CAT Dispatcher */
+    --background: 219 14% 95%;
+    --foreground: 204 48% 15%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 204 48% 15%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 204 48% 15%;
+
+    /* Blu scuro primary - #244D69 */
+    --primary: 204 48% 27%;
+    --primary-foreground: 0 0% 100%;
+    --primary-hover: 204 48% 22%;
+    
+    /* Blu medio accent - #4A87C8 */
+    --accent: 210 53% 53%;
+    --accent-foreground: 0 0% 100%;
+    --accent-hover: 210 53% 48%;
+
+    /* Azzurro chiaro per elementi secondari - #45CAE9 */
+    --secondary: 191 78% 59%;
+    --secondary-foreground: 204 48% 15%;
+
+    /* Muted per elementi disabilitati */
+    --muted: 219 14% 90%;
+    --muted-foreground: 204 30% 45%;
+
+    /* Destructive for warnings */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Borders and inputs */
+    --border: 219 14% 85%;
+    --input: 219 14% 85%;
+    --ring: 204 48% 27%;
+
+    --radius: 0.5rem;
+    
+    /* Map-specific tokens */
+    --map-unassigned: 219 14% 90%;
+    --map-highlight: 210 53% 53%;
+    
+    /* Shadows */
+    --shadow-sm: 0 1px 2px 0 hsl(204 48% 15% / 0.05);
+    --shadow-md: 0 4px 6px -1px hsl(204 48% 15% / 0.1);
+    --shadow-lg: 0 10px 15px -3px hsl(204 48% 15% / 0.1);
+    
+    /* Transitions */
+    --transition-base: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+    --sidebar-background: 219 14% 95%;
+
+    --sidebar-foreground: 204 48% 25%;
+
+    --sidebar-primary: 204 48% 27%;
+
+    --sidebar-primary-foreground: 0 0% 100%;
+
+    --sidebar-accent: 219 14% 90%;
+
+    --sidebar-accent-foreground: 204 48% 15%;
+
+    --sidebar-border: 219 14% 85%;
+
+    --sidebar-ring: 210 53% 53%;
+  }
+
+  .dark {
+    --background: 204 48% 11%;
+    --foreground: 219 14% 98%;
+
+    --card: 204 48% 15%;
+    --card-foreground: 219 14% 98%;
+
+    --popover: 204 48% 15%;
+    --popover-foreground: 219 14% 98%;
+
+    --primary: 210 53% 60%;
+    --primary-foreground: 0 0% 100%;
+    --primary-hover: 210 53% 55%;
+    
+    --accent: 191 78% 65%;
+    --accent-foreground: 0 0% 100%;
+    --accent-hover: 191 78% 60%;
+
+    --secondary: 204 48% 25%;
+    --secondary-foreground: 219 14% 98%;
+
+    --muted: 204 48% 20%;
+    --muted-foreground: 204 30% 65%;
+
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 219 14% 98%;
+
+    --border: 204 48% 20%;
+    --input: 204 48% 20%;
+    --ring: 210 53% 60%;
+    --sidebar-background: 204 48% 11%;
+    --sidebar-foreground: 219 14% 95%;
+    --sidebar-primary: 210 53% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 204 48% 18%;
+    --sidebar-accent-foreground: 219 14% 95%;
+    --sidebar-border: 204 48% 18%;
+    --sidebar-ring: 210 53% 60%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}

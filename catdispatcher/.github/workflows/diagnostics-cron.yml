@@ -1,0 +1,23 @@
+# Esegue la diagnostica server ogni 30 minuti.
+# Riduce i consumi: una sola esecuzione invece di N client.
+#
+# Setup: aggiungi i secrets nel repo (Settings → Secrets and variables → Actions):
+# - SUPABASE_DIAGNOSTICS_URL: https://<PROJECT_REF>.supabase.co/functions/v1/run-diagnostics
+# - DIAGNOSTICS_CRON_SECRET: la stringa che hai impostato in Supabase Edge Function Secrets
+
+name: Diagnostics Cron
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger run-diagnostics
+        run: |
+          curl -sf -X POST "${{ secrets.SUPABASE_DIAGNOSTICS_URL }}" \
+            -H "X-Cron-Secret: ${{ secrets.DIAGNOSTICS_CRON_SECRET }}" \
+            -H "Content-Type: application/json"

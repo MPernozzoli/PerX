@@ -1,0 +1,6 @@
+{
+  "version": "1.6.0",
+  "minVersion": "1.0.0",
+  "downloadUrl": "https://catdispatcher.it/install-extension.html",
+  "notes": "Ottimizzazione costi: RPC invece di Edge Function, cache 30gg, polling ogni 4h"
+}

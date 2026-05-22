@@ -80,6 +80,8 @@ uvicorn app.main:app --reload
 - `GET /api/v1/claims/{id}/events` - Get timeline
 - `POST /api/v1/cat-dispatcher/address-to-cat` - Lookup CAT da indirizzo o comune tramite servizio CatDispatcher
 - `POST /api/v1/cat-dispatcher/get-cat-by-commune` - Lookup CAT economico da comune/provincia tramite servizio CatDispatcher
+- `GET /api/v1/cat-dispatcher/dispatch/availability?cat_id=...` - Disponibilita operativa del CAT gestita da CatDispatcher
+- `POST /api/v1/cat-dispatcher/dispatch/{action}` - API del modulo dispatch indipendente di CatDispatcher
 - `POST /api/v1/portal/claims/{id}/access-links` - Genera link di accesso portale per un assicurato
 - `POST /api/v1/portal/auth/start` - Avvia challenge pubblico per accesso assicurato
 - `POST /api/v1/portal/auth/exchange` - Scambia magic link con sessione portale
@@ -111,12 +113,7 @@ Per il dettaglio funzionale e dei flussi, vedere anche `Documentation/insured-po
 
 ## CatDispatcher
 
-La gestione delle associazioni CAT-Comune vive nel servizio CatDispatcher. Il backend PerX espone un proxy autenticato sotto `/api/v1/cat-dispatcher`, così i client PerX continuano a usare il token PerX e non chiamano direttamente Supabase/Edge Functions del servizio esterno.
-
-Variabili richieste:
-
-- `CATDISPATCHER_BASE_URL`: URL del progetto Supabase CatDispatcher, oppure direttamente l'URL che termina con `/functions/v1`.
-- `CATDISPATCHER_API_KEY`: chiave server condivisa con le Edge Function CatDispatcher tramite secret `CATDISPATCHER_SERVER_API_KEY`.
+La gestione delle associazioni CAT-Comune e del dispatch vive come modulo applicativo separato, ma dentro lo stesso backend e lo stesso database Supabase di PerX. Il confine resta API-first sotto `/api/v1/cat-dispatcher`: CatDispatcher, portale assicurati e app PerX usano token PerX e non accedono direttamente alle tabelle operative.
 
 ## Process jobs e Mac mini
 

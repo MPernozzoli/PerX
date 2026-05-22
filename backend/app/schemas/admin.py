@@ -2,6 +2,7 @@
 Schemas for platform-admin APIs
 """
 from pydantic import BaseModel
+from typing import Any, Literal
 
 
 class TenantResponse(BaseModel):
@@ -25,3 +26,28 @@ class AdminUserResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+DomainRouteApp = Literal["catdispatcher", "perx_admin", "insured_portal"]
+
+
+class DomainRouteResponse(BaseModel):
+    id: str
+    hostname: str
+    app: DomainRouteApp
+    tenant_id: str | None = None
+    tenant_name: str | None = None
+    destination_url: str | None = None
+    is_active: bool
+    notes: str | None = None
+    metadata_json: dict[str, Any] | None = None
+
+
+class DomainRouteUpsert(BaseModel):
+    hostname: str
+    app: DomainRouteApp
+    tenant_id: str | None = None
+    destination_url: str | None = None
+    is_active: bool = True
+    notes: str | None = None
+    metadata_json: dict[str, Any] | None = None

@@ -67,6 +67,8 @@ eggs/
 .eggs/
 lib/
 lib64/
+!catdispatcher/src/lib/
+!catdispatcher/src/lib/**
 parts/
 sdist/
 var/

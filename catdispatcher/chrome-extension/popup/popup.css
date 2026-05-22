@@ -1,0 +1,617 @@
+/* ============================================================================
+   ACT CAT Dispatcher - Popup Styles
+   ============================================================================ */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, 
+               Ubuntu, Cantarell, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #333;
+  background: #F3F4F6;
+  min-width: 360px;
+  max-width: 400px;
+}
+
+.container {
+  padding: 16px;
+}
+
+/* Header */
+.header {
+  text-align: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.header-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+
+.logo-header-img {
+  height: 70px;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.logo-icon {
+  color: #244D69;
+}
+
+.header h1 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #2c3e50;
+  margin: 0;
+}
+
+.header .subtitle {
+  font-size: 12px;
+  color: #6c757d;
+}
+
+/* Riferimento Sinistro */
+.sinistro-ref {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #e8f4fd;
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin-bottom: 12px;
+  border: 1px solid #b3d9f7;
+}
+
+.sinistro-label {
+  font-size: 12px;
+  color: #5f6368;
+  font-weight: 500;
+}
+
+.sinistro-id {
+  font-size: 14px;
+  font-weight: 600;
+  color: #244D69;
+  flex: 1;
+}
+
+.btn-refresh-inline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  color: #5f6368;
+  transition: all 0.2s;
+}
+
+.btn-refresh-inline:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: #244D69;
+}
+
+/* Sezioni */
+.section {
+  background: white;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.section h2 {
+  font-size: 12px;
+  font-weight: 600;
+  color: #5f6368;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #e9ecef;
+}
+
+/* Tabella dati */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.data-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid #f1f3f4;
+}
+
+.data-table tr:last-child td {
+  border-bottom: none;
+}
+
+.data-table .label {
+  font-weight: 500;
+  color: #6c757d;
+  width: 90px;
+  font-size: 12px;
+}
+
+.data-table .value {
+  color: #212529;
+  font-weight: 500;
+}
+
+/* CAT Header con pill */
+.cat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.cat-header h2 {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+/* Status pill */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.status-pill.success {
+  background: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}
+
+.status-pill.error {
+  background: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+}
+
+/* CAT Corrente */
+.cat-current {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #e8f4fd;
+  border-radius: 6px;
+  border-left: 4px solid #4A87C8;
+}
+
+.cat-name {
+  font-weight: 600;
+  color: #244D69;
+  flex: 1;
+}
+
+/* Box fallback per copia manuale */
+.cat-fallback-box {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: #fff3e0;
+  border: 1px solid #ffcc80;
+  border-radius: 6px;
+}
+
+.fallback-label {
+  font-size: 11px;
+  color: #e65100;
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+.fallback-copy-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff8e1;
+  padding: 8px 10px;
+  border-radius: 4px;
+  border: 1px dashed #ffb74d;
+}
+
+.fallback-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: #e65100;
+  word-break: break-word;
+}
+
+.btn-copy {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ff9800;
+  border: none;
+  border-radius: 4px;
+  padding: 6px;
+  cursor: pointer;
+  color: white;
+  transition: background 0.2s;
+}
+
+.btn-copy:hover {
+  background: #f57c00;
+}
+
+.btn-copy.copied {
+  background: #4caf50;
+}
+
+/* Box sospensione CAT */
+.cat-suspended-box {
+  margin-top: 12px;
+  padding: 12px;
+  background: #fffbeb;
+  border: 1px solid #fbbf24;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.suspended-icon {
+  margin-bottom: 8px;
+}
+
+.suspended-message {
+  font-size: 13px;
+  color: #92400e;
+  margin-bottom: 12px;
+  line-height: 1.4;
+}
+
+.btn-warning {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: white;
+  width: 100%;
+}
+
+.btn-warning:hover {
+  background: linear-gradient(135deg, #d97706, #b45309);
+  transform: translateY(-1px);
+}
+
+.btn-warning:active {
+  transform: translateY(0);
+}
+
+/* Pulsanti */
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: #244D69;
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #1a3a4f;
+}
+
+.btn-secondary {
+  background: #5f6368;
+  color: white;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: #3c4043;
+}
+
+.btn-small {
+  padding: 6px 12px;
+  font-size: 12px;
+  background: #e9ecef;
+  color: #495057;
+}
+
+.btn-icon {
+  flex-shrink: 0;
+}
+
+/* Messaggi di stato */
+.error-box, .success-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.error-box {
+  background: #ffebee;
+  border: 1px solid #ffcdd2;
+  color: #c62828;
+}
+
+.success-box {
+  background: #e8f5e9;
+  border: 1px solid #c8e6c9;
+  color: #2e7d32;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* Loading */
+.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  gap: 12px;
+  color: #6c757d;
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #e9ecef;
+  border-top-color: #4A87C8;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Pagina non valida */
+.invalid-page {
+  text-align: center;
+  padding: 30px 20px;
+}
+
+.invalid-icon {
+  display: block;
+  margin: 0 auto 12px;
+}
+
+.invalid-page h2 {
+  font-size: 16px;
+  color: #e74c3c;
+  margin-bottom: 8px;
+}
+
+.invalid-page p {
+  font-size: 13px;
+  color: #6c757d;
+  margin-bottom: 8px;
+}
+
+.invalid-page .hint {
+  font-size: 12px;
+  color: #95a5a6;
+  font-style: italic;
+}
+
+
+/* Info utente loggato */
+.user-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #e8f5e9;
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin-bottom: 12px;
+  border: 1px solid #c8e6c9;
+}
+
+.user-email {
+  font-size: 12px;
+  color: #2e7d32;
+  font-weight: 500;
+}
+
+.btn-logout {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 4px;
+  transition: background 0.2s;
+  color: #6c757d;
+}
+
+.btn-logout:hover {
+  background: rgba(0, 0, 0, 0.1);
+  color: #c62828;
+}
+
+.status-icon {
+  flex-shrink: 0;
+}
+
+/* Form di Login */
+.login-form {
+  text-align: center;
+  padding: 20px 0;
+}
+
+.login-form .login-icon {
+  display: block;
+  margin: 0 auto 12px;
+}
+
+.login-form h2 {
+  font-size: 18px;
+  color: #2c3e50;
+  margin-bottom: 8px;
+}
+
+.login-form > p {
+  font-size: 13px;
+  color: #6c757d;
+  margin-bottom: 20px;
+}
+
+.form-group {
+  margin-bottom: 16px;
+  text-align: left;
+}
+
+.form-group label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #495057;
+  margin-bottom: 4px;
+}
+
+.form-group input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #ced4da;
+  border-radius: 6px;
+  font-size: 14px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: #4A87C8;
+  box-shadow: 0 0 0 3px rgba(74, 135, 200, 0.15);
+}
+
+.form-group input::placeholder {
+  color: #adb5bd;
+}
+
+.btn-full {
+  width: 100%;
+}
+
+/* Pulsante Google */
+.btn-google {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 14px 20px;
+  background: #ffffff;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  color: #3c4043;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+.btn-google:hover {
+  background: #f8f9fa;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+}
+
+.btn-google:active {
+  background: #f1f3f4;
+}
+
+.btn-google .google-icon {
+  flex-shrink: 0;
+}
+
+.login-hint {
+  font-size: 12px;
+  color: #6c757d;
+  margin-top: 16px;
+  text-align: center;
+}
+
+.login-hint a {
+  color: #4A87C8;
+  text-decoration: none;
+}
+
+.login-hint a:hover {
+  text-decoration: underline;
+}
+
+/* Sito non supportato */
+.wrong-site {
+  text-align: center;
+  padding: 30px 20px;
+}
+
+.wrong-site-icon {
+  display: block;
+  margin: 0 auto 12px;
+}
+
+.wrong-site h2 {
+  font-size: 16px;
+  color: #6c757d;
+  margin-bottom: 8px;
+}
+
+.wrong-site p {
+  font-size: 13px;
+  color: #6c757d;
+  margin-bottom: 16px;
+}
+

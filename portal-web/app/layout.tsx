@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, Plus_Jakarta_Sans } from "next/font/google";
+import { Geist, Geist_Mono, Newsreader } from "next/font/google";
 import { headers } from "next/headers";
 import type { ReactNode } from "react";
 
@@ -7,14 +7,21 @@ import { getPortalTenantContext } from "@/lib/tenant";
 
 import "./globals.css";
 
-const displayFont = Plus_Jakarta_Sans({
+const displayFont = Newsreader({
   subsets: ["latin"],
+  weight: ["300", "400", "500"],
+  style: ["normal", "italic"],
   variable: "--font-display"
 });
 
-const bodyFont = Inter({
+const bodyFont = Geist({
   subsets: ["latin"],
   variable: "--font-body"
+});
+
+const monoFont = Geist_Mono({
+  subsets: ["latin"],
+  variable: "--font-mono"
 });
 
 export const metadata: Metadata = {
@@ -39,7 +46,7 @@ export default async function RootLayout({
           <link rel="stylesheet" href={`/tenant-themes/${tenant.themeId}.css`} />
         ) : null}
       </head>
-      <body className={`${displayFont.variable} ${bodyFont.variable}`}>{children}</body>
+      <body className={`${displayFont.variable} ${bodyFont.variable} ${monoFont.variable}`}>{children}</body>
     </html>
   );
 }

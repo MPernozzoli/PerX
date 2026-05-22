@@ -27,6 +27,7 @@ from app.api.v1 import (
     routes_process_jobs,
     routes_profiles,
     routes_reporting,
+    routes_routing,
     routes_tasks,
     routes_tenants,
     routes_whatsapp,
@@ -88,6 +89,7 @@ app.include_router(routes_planning.router, prefix="/api/v1", tags=["planning"])
 app.include_router(routes_portal.router, prefix="/api/v1/portal", tags=["portal"])
 app.include_router(routes_admin.router, prefix="/api/v1/admin", tags=["admin"])
 app.include_router(routes_tenants.router, prefix="/api/v1/tenants", tags=["tenants"])
+app.include_router(routes_routing.router, prefix="/api/v1/routing", tags=["routing"])
 
 
 @app.get("/")
