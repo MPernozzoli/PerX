@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: perx-wa-bridge
+    runtime: docker
+    rootDir: perx_wa_bridge
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    healthCheckPath: /health
+    disk:
+      name: perx-wa-bridge-sessions
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SESSION_PATH
+        value: /var/data/openwa-sessions
+      - key: CHROME_EXECUTABLE_PATH
+        value: /usr/bin/chromium
+      - key: HUB_URL
+        sync: false

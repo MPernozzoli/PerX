@@ -1,20 +1,18 @@
 {
   "name": "perx-wa-bridge",
   "version": "1.0.0",
-  "description": "PerX WhatsApp Bridge using whatsapp-web.js",
+  "description": "PerX WhatsApp Bridge using OpenWA",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js"
   },
   "dependencies": {
-    "whatsapp-web.js": "^1.23.0",
+    "@open-wa/wa-automate": "^4.76.0",
     "qrcode-terminal": "^0.12.0",
     "express": "^4.18.2",
     "axios": "^1.6.0",
-    "dotenv": "^16.3.1",
-    "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2"
+    "dotenv": "^16.3.1"
   },
   "devDependencies": {
     "nodemon": "^3.0.0"

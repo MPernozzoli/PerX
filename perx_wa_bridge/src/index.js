@@ -1,374 +1,390 @@
 /**
  * PerX WhatsApp Bridge
- * Bridge WhatsApp usando whatsapp-web.js
- * Comunica con PerX Hub via HTTP API
+ * Bridge WhatsApp basato su OpenWA, compatibile con Render.
  */
 
 require('dotenv').config();
-const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
-const qrcode = require('qrcode-terminal');
+
+const fs = require('fs');
+const path = require('path');
 const express = require('express');
 const axios = require('axios');
+const qrcode = require('qrcode-terminal');
+const { create, ev, STATE } = require('@open-wa/wa-automate');
 
-// Puppeteer con plugin stealth per evitare rilevamento automazione
-const puppeteer = require('puppeteer-extra');
-const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-puppeteer.use(StealthPlugin());
-
-// Configuration
 const HUB_URL = process.env.HUB_URL || 'http://localhost:8080';
-const PORT = process.env.PORT || 5002;  // Porta standard per WA Bridge
-const SESSION_PATH = process.env.SESSION_PATH || './sessions';
+const PORT = Number(process.env.PORT || 5002);
+const SESSION_PATH = process.env.SESSION_PATH || path.join(process.cwd(), 'sessions');
+const CHROME_EXECUTABLE_PATH = process.env.CHROME_EXECUTABLE_PATH || process.env.PUPPETEER_EXECUTABLE_PATH || null;
+const SCHEDULED_CHECK_INTERVAL = Number(process.env.SCHEDULED_CHECK_INTERVAL_MS || 30 * 1000);
 
-// Express app per API
+fs.mkdirSync(SESSION_PATH, { recursive: true });
+
 const app = express();
 app.use(express.json({ limit: '50mb' }));
 
-// WhatsApp clients (uno per account)
 const clients = new Map();
-
-// Retry state per riconnessione
+const qrListeners = new Map();
 const retryState = new Map();
-const MAX_RETRIES = 5;
-const BASE_RETRY_DELAY = 5000;
+const MAX_RETRIES = Number(process.env.WA_MAX_RETRIES || 5);
+const BASE_RETRY_DELAY = Number(process.env.WA_BASE_RETRY_DELAY_MS || 5000);
 
-// Sanitizza accountId per LocalAuth (solo alphanumeric, underscore, hyphen)
 function sanitizeClientId(accountId) {
-    // Sostituisce punti e altri caratteri non validi con underscore
     return accountId.replace(/[^a-zA-Z0-9_-]/g, '_');
 }
 
-// Normalizza numero telefono
 function normalizePhoneNumber(number) {
     if (!number) return number;
-    // Rimuovi @c.us se presente
-    let cleaned = number.replace('@c.us', '').replace('@g.us', '');
-    // Rimuovi caratteri non numerici eccetto il +
+
+    if (number.includes('@g.us')) return number;
+
+    let cleaned = number.replace('@c.us', '');
     cleaned = cleaned.replace(/[^\d+]/g, '');
-    // Rimuovi + iniziale
     cleaned = cleaned.replace(/^\+/, '');
+
     return `${cleaned}@c.us`;
 }
 
-// Initialize client for an account
-function initClient(accountId, phoneNumber) {
-    console.log(`[WA Bridge] Initializing client for ${accountId}`);
-    
-    // Sanitizza clientId per LocalAuth (che non accetta punti)
-    const safeClientId = sanitizeClientId(accountId);
-    console.log(`[WA Bridge] Using clientId: ${safeClientId}`);
-    
-    // Reset retry state
-    retryState.set(accountId, { count: 0, lastAttempt: null });
-    
-    // Cerca Chrome installato
-    const chromePaths = [
-        '/Users/mpernozzoli/.cache/puppeteer/chrome/mac_arm-144.0.7559.96/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing',
-        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-        '/opt/homebrew/bin/chromium'
-    ];
-    
-    const fs = require('fs');
-    let executablePath = null;
-    for (const p of chromePaths) {
-        if (fs.existsSync(p)) {
-            executablePath = p;
-            break;
-        }
+function setClientStatus(accountId, status, patch = {}) {
+    const clientInfo = clients.get(accountId);
+    if (clientInfo) {
+        Object.assign(clientInfo, { status }, patch);
     }
-    
-    console.log(`[WA Bridge] Using Chrome at: ${executablePath || 'default'}`);
-    
-    const puppeteerOptions = {
-        headless: 'new',  // Nuova modalità headless (meno rilevabile)
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-gpu',
-            '--disable-blink-features=AutomationControlled',  // Anti-detection
-            '--disable-infobars',
-            '--window-size=1920,1080'
-        ]
-    };
-    
-    if (executablePath) {
-        puppeteerOptions.executablePath = executablePath;
+}
+
+async function notifyHub(pathname, payload) {
+    try {
+        await axios.post(`${HUB_URL}${pathname}`, payload, { timeout: 15000 });
+    } catch (err) {
+        console.error(`[WA Bridge] Failed to notify Hub ${pathname}:`, err.message);
     }
-    
-    const client = new Client({
-        authStrategy: new LocalAuth({
-            clientId: safeClientId,
-            dataPath: SESSION_PATH
-        }),
-        puppeteer: puppeteerOptions,
-        webVersionCache: {
-            type: 'remote',
-            remotePath: 'https://raw.githubusercontent.com/nicebots-xyz/nicebots/main/nicebots/'
-        }
-    });
-    
-    // QR Code
-    client.on('qr', (qr) => {
+}
+
+function registerQrListener(accountId, safeClientId) {
+    if (qrListeners.has(accountId)) return;
+
+    const eventName = `qr.${safeClientId}`;
+    const listener = (qr) => {
         console.log(`[WA Bridge] QR Code for ${accountId}:`);
         qrcode.generate(qr, { small: true });
-        
-        // Aggiorna stato client
-        const clientInfo = clients.get(accountId);
-        if (clientInfo) clientInfo.status = 'waitingQR';
-        
-        // Invia QR all'Hub per UI
-        axios.post(`${HUB_URL}/internal/whatsapp/${accountId}/qr`, { qr })
-            .catch(err => console.error('Failed to send QR to Hub:', err.message));
+        setClientStatus(accountId, 'waitingQR');
+        notifyHub(`/internal/whatsapp/${accountId}/qr`, { qr });
+    };
+
+    ev.on(eventName, listener);
+    qrListeners.set(accountId, { eventName, listener });
+}
+
+function unregisterQrListener(accountId) {
+    const listenerInfo = qrListeners.get(accountId);
+    if (!listenerInfo) return;
+
+    ev.off(listenerInfo.eventName, listenerInfo.listener);
+    qrListeners.delete(accountId);
+}
+
+function buildOpenWaConfig(accountId, safeClientId) {
+    const chromiumArgs = [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--disable-extensions',
+        '--disable-background-networking',
+        '--disable-sync',
+        '--disable-default-apps',
+        '--disable-blink-features=AutomationControlled',
+        '--window-size=1920,1080'
+    ];
+
+    const config = {
+        sessionId: safeClientId,
+        sessionDataPath: SESSION_PATH,
+        multiDevice: true,
+        headless: true,
+        qrTimeout: 0,
+        authTimeout: 0,
+        cacheEnabled: false,
+        blockCrashLogs: true,
+        disableSpins: true,
+        logConsole: false,
+        popup: false,
+        qrLogSkip: true,
+        useStealth: true,
+        inDocker: process.env.RENDER === 'true' || process.env.NODE_ENV === 'production',
+        chromiumArgs,
+        restartOnCrash: () => {
+            console.error(`[WA Bridge] OpenWA page crashed for ${accountId}; restarting client`);
+            restartClient(accountId).catch((err) => {
+                console.error(`[WA Bridge] Restart after crash failed for ${accountId}:`, err.message);
+            });
+        }
+    };
+
+    if (CHROME_EXECUTABLE_PATH) {
+        config.executablePath = CHROME_EXECUTABLE_PATH;
+    } else {
+        config.useChrome = true;
+    }
+
+    return config;
+}
+
+async function initClient(accountId, phoneNumber) {
+    console.log(`[WA Bridge] Initializing OpenWA client for ${accountId}`);
+
+    const safeClientId = sanitizeClientId(accountId);
+    retryState.set(accountId, { count: 0, lastAttempt: null });
+    clients.set(accountId, {
+        client: null,
+        phoneNumber,
+        safeClientId,
+        status: 'initializing',
+        error: null
     });
-    
-    // Authenticated (QR scansionato con successo)
-    client.on('authenticated', () => {
-        console.log(`[WA Bridge] Client ${accountId} authenticated!`);
-        const clientInfo = clients.get(accountId);
-        if (clientInfo) clientInfo.status = 'authenticated';
-        
-        // Reset retry count on successful auth
+
+    registerQrListener(accountId, safeClientId);
+
+    try {
+        const client = await create(buildOpenWaConfig(accountId, safeClientId));
+        clients.set(accountId, {
+            client,
+            phoneNumber,
+            safeClientId,
+            status: 'ready',
+            error: null
+        });
+
+        unregisterQrListener(accountId);
         retryState.set(accountId, { count: 0, lastAttempt: null });
-    });
-    
-    // Auth failure
-    client.on('auth_failure', (msg) => {
-        console.error(`[WA Bridge] Auth failed for ${accountId}:`, msg);
-        const clientInfo = clients.get(accountId);
-        if (clientInfo) clientInfo.status = 'auth_failed';
-        
-        axios.post(`${HUB_URL}/internal/whatsapp/${accountId}/status`, { 
-            status: 'auth_failed',
-            reason: String(msg)
-        }).catch(err => console.error('Failed to notify Hub:', err.message));
-    });
-    
-    // Ready
-    client.on('ready', () => {
-        console.log(`[WA Bridge] Client ${accountId} ready!`);
-        
-        // Aggiorna stato client
-        const clientInfo = clients.get(accountId);
-        if (clientInfo) clientInfo.status = 'ready';
-        
-        // Reset retry count
-        retryState.set(accountId, { count: 0, lastAttempt: null });
-        
-        axios.post(`${HUB_URL}/internal/whatsapp/${accountId}/status`, { status: 'ready' })
-            .catch(err => console.error('Failed to notify Hub:', err.message));
-    });
-    
-    // Message received (incoming)
-    client.on('message', async (msg) => {
+        await attachClientHandlers(accountId, client);
+        await notifyHub(`/internal/whatsapp/${accountId}/status`, { status: 'ready' });
+        console.log(`[WA Bridge] Client ${accountId} ready`);
+        return client;
+    } catch (err) {
+        console.error(`[WA Bridge] Failed to initialize client ${accountId}:`, err);
+        setClientStatus(accountId, 'error', { error: err.message });
+        await notifyHub(`/internal/whatsapp/${accountId}/status`, {
+            status: 'error',
+            reason: err.message
+        });
+        throw err;
+    }
+}
+
+async function attachClientHandlers(accountId, client) {
+    await client.onAnyMessage(async (msg) => {
         try {
-            console.log(`[WA Bridge] 📨 Incoming message from ${msg.from}`);
-            await handleIncomingMessage(accountId, msg, false);
+            const isOutgoing = msg.fromMe || msg.self === 'out';
+            await handleMessage(accountId, client, msg, isOutgoing);
         } catch (err) {
-            console.error(`[WA Bridge] Error handling incoming message:`, err);
+            console.error(`[WA Bridge] Error handling message for ${accountId}:`, err);
         }
     });
-    
-    // Message created (outgoing - sent by us)
-    client.on('message_create', async (msg) => {
-        // Solo messaggi inviati da noi
-        if (msg.fromMe) {
-            try {
-                console.log(`[WA Bridge] 📤 Outgoing message to ${msg.to}`);
-                await handleIncomingMessage(accountId, msg, true);
-            } catch (err) {
-                console.error(`[WA Bridge] Error handling outgoing message:`, err);
-            }
-        }
-    });
-    
-    // Disconnected con riconnessione automatica
-    client.on('disconnected', (reason) => {
-        console.log(`[WA Bridge] Client ${accountId} disconnected:`, reason);
-        
-        // Aggiorna stato
-        const clientInfo = clients.get(accountId);
-        if (clientInfo) clientInfo.status = 'disconnected';
-        
-        axios.post(`${HUB_URL}/internal/whatsapp/${accountId}/status`, { 
-            status: 'disconnected',
-            reason 
-        }).catch(err => console.error('Failed to notify Hub:', err.message));
-        
-        // Riconnessione automatica con backoff esponenziale
-        const state = retryState.get(accountId) || { count: 0, lastAttempt: null };
-        
-        if (state.count < MAX_RETRIES) {
-            const delay = BASE_RETRY_DELAY * Math.pow(2, state.count);
-            console.log(`[WA Bridge] Tentativo riconnessione ${accountId} in ${delay/1000}s (attempt ${state.count + 1}/${MAX_RETRIES})`);
-            
-            retryState.set(accountId, { count: state.count + 1, lastAttempt: Date.now() });
-            
-            setTimeout(async () => {
-                try {
-                    console.log(`[WA Bridge] Riconnessione ${accountId}...`);
-                    if (clientInfo) clientInfo.status = 'reconnecting';
-                    await client.initialize();
-                } catch (err) {
-                    console.error(`[WA Bridge] Riconnessione fallita per ${accountId}:`, err.message);
-                }
-            }, delay);
-        } else {
-            console.error(`[WA Bridge] Max retries raggiunto per ${accountId}, richiesta riconnessione manuale`);
-            axios.post(`${HUB_URL}/internal/whatsapp/${accountId}/status`, { 
-                status: 'max_retries',
-                reason: 'Maximum reconnection attempts reached'
-            }).catch(err => console.error('Failed to notify Hub:', err.message));
-        }
-    });
-    
-    // Loading screen (durante l'avvio)
-    client.on('loading_screen', (percent, message) => {
-        console.log(`[WA Bridge] Loading ${accountId}: ${percent}% - ${message}`);
-        const clientInfo = clients.get(accountId);
-        if (clientInfo) clientInfo.status = 'loading';
-    });
-    
-    // Gestione errori generici
-    client.on('error', (error) => {
-        console.error(`[WA Bridge] Client error for ${accountId}:`, error);
-    });
-    
-    // Read receipts (spunte blu)
-    // ack: -1 = ERROR, 0 = PENDING, 1 = SERVER, 2 = DEVICE, 3 = READ, 4 = PLAYED
-    client.on('message_ack', async (msg, ack) => {
-        const ackNames = { '-1': 'error', '0': 'pending', '1': 'sent', '2': 'delivered', '3': 'read', '4': 'played' };
-        const ackName = ackNames[ack.toString()] || `unknown(${ack})`;
-        console.log(`[WA Bridge] 📬 ACK ${ackName} for message ${msg.id.id}`);
-        
+
+    await client.onAck(async (msg) => {
+        const ack = typeof msg.ack === 'number' ? msg.ack : 0;
+        const ackNames = { '-1': 'error', 0: 'pending', 1: 'sent', 2: 'delivered', 3: 'read', 4: 'played' };
+        const ackName = ackNames[ack] || `unknown(${ack})`;
+
         try {
             await axios.post(`${HUB_URL}/internal/whatsapp/message-ack`, {
                 accountId,
-                messageId: msg.id.id,
-                ack: ack,
-                ackName: ackName,
+                messageId: getMessageId(msg),
+                ack,
+                ackName,
                 timestamp: Date.now() / 1000
-            });
-        } catch (err) {
-            // Non loggare errori per ogni ACK, troppo verbose
+            }, { timeout: 10000 });
+        } catch (_) {
+            // Gli ACK sono frequenti; non rendiamo rumorosi i log se l'Hub non risponde.
         }
     });
-    
-    // Salva il client PRIMA di initialize
-    clients.set(accountId, { client, phoneNumber, status: 'initializing' });
-    
-    // Inizializza con gestione errori
-    client.initialize().catch(err => {
-        console.error(`[WA Bridge] Failed to initialize client ${accountId}:`, err);
-        const clientInfo = clients.get(accountId);
-        if (clientInfo) {
-            clientInfo.status = 'error';
-            clientInfo.error = err.message;
+
+    await client.onStateChanged(async (state) => {
+        console.log(`[WA Bridge] State ${accountId}: ${state}`);
+
+        if (state === STATE.CONNECTED) {
+            setClientStatus(accountId, 'ready', { error: null });
+            retryState.set(accountId, { count: 0, lastAttempt: null });
+            await notifyHub(`/internal/whatsapp/${accountId}/status`, { status: 'ready' });
+            return;
+        }
+
+        if ([STATE.UNPAIRED, STATE.UNPAIRED_IDLE].includes(state)) {
+            setClientStatus(accountId, 'waitingQR');
+            await notifyHub(`/internal/whatsapp/${accountId}/status`, { status: 'waitingQR', reason: state });
+            return;
+        }
+
+        if ([STATE.DISCONNECTED, STATE.CONFLICT, STATE.UNLAUNCHED, STATE.TIMEOUT].includes(state)) {
+            setClientStatus(accountId, 'disconnected');
+            await notifyHub(`/internal/whatsapp/${accountId}/status`, { status: 'disconnected', reason: state });
+            scheduleReconnect(accountId, state);
         }
     });
-    
-    return client;
 }
 
-// Handle message (incoming or outgoing)
-async function handleIncomingMessage(accountId, msg, isOutgoing = false) {
-    const bodyPreview = msg.body ? msg.body.substring(0, 50) : '[media/no text]';
-    const direction = isOutgoing ? '📤 OUT' : '📨 IN';
-    console.log(`[WA Bridge] ${direction} | ${msg.from} → ${msg.to}: ${bodyPreview}...`);
-    
+function getMessageId(msg) {
+    if (!msg) return null;
+    if (typeof msg.id === 'string') return msg.id;
+    if (msg.id?._serialized) return msg.id._serialized;
+    if (msg.id?.id) return msg.id.id;
+    if (msg.mId) return msg.mId;
+    return String(msg.id || '');
+}
+
+function getMessageBody(msg) {
+    return msg.body || msg.caption || msg.text || msg.content || '';
+}
+
+async function handleMessage(accountId, client, msg, isOutgoing = false) {
+    const body = getMessageBody(msg);
+    const bodyPreview = body ? body.substring(0, 50) : '[media/no text]';
+    const direction = isOutgoing ? 'OUT' : 'IN';
+    console.log(`[WA Bridge] ${direction} | ${msg.from} -> ${msg.to}: ${bodyPreview}...`);
+
     const messageData = {
         accountId,
-        messageId: msg.id.id,
+        messageId: getMessageId(msg),
         from: msg.from,
         to: msg.to,
-        body: msg.body,
-        timestamp: msg.timestamp,
+        body,
+        timestamp: msg.timestamp || msg.t,
         type: msg.type,
-        hasMedia: msg.hasMedia,
-        isGroup: msg.isGroup,
+        hasMedia: Boolean(msg.isMedia || msg.isMMS || msg.mimetype),
+        isGroup: Boolean(msg.isGroupMsg || String(msg.from || '').endsWith('@g.us')),
         author: msg.author || null,
-        isOutgoing: isOutgoing
+        isOutgoing
     };
-    
-    // Download media if present
-    if (msg.hasMedia) {
-        console.log(`[WA Bridge] 📎 Downloading media (type: ${msg.type})...`);
+
+    if (messageData.hasMedia) {
         try {
-            const media = await msg.downloadMedia();
+            const dataUrl = await client.decryptMedia(msg);
+            const media = parseDataUrl(dataUrl, msg);
             if (media) {
-                const sizeKB = Math.round((media.data?.length || 0) * 0.75 / 1024);
-                console.log(`[WA Bridge] 📎 Media downloaded: ${media.mimetype}, ${sizeKB}KB`);
-                messageData.media = {
-                    mimetype: media.mimetype,
-                    data: media.data,
-                    filename: media.filename || `attachment.${media.mimetype.split('/')[1] || 'bin'}`
-                };
-            } else {
-                console.log(`[WA Bridge] ⚠️ Media download returned null`);
+                messageData.media = media;
+                console.log(`[WA Bridge] Media downloaded: ${media.mimetype}, ${Math.round(media.data.length * 0.75 / 1024)}KB`);
             }
         } catch (err) {
-            console.error('[WA Bridge] ❌ Failed to download media:', err.message);
+            console.error('[WA Bridge] Failed to download media:', err.message);
         }
     }
-    
-    // Send to Hub
+
     try {
-        await axios.post(`${HUB_URL}/internal/whatsapp/message`, messageData);
-        console.log(`[WA Bridge] ✅ Message sent to Hub`);
+        await axios.post(`${HUB_URL}/internal/whatsapp/message`, messageData, { timeout: 30000 });
+        console.log('[WA Bridge] Message sent to Hub');
     } catch (err) {
-        console.error('[WA Bridge] ❌ Failed to send message to Hub:', err.message);
+        console.error('[WA Bridge] Failed to send message to Hub:', err.message);
         if (err.response) {
             console.error('[WA Bridge] Hub response:', err.response.status, err.response.data);
         }
     }
 }
 
-// API Endpoints
+function parseDataUrl(dataUrl, msg) {
+    if (!dataUrl || typeof dataUrl !== 'string') return null;
 
-// Health check
+    const match = dataUrl.match(/^data:([^;]+);base64,(.*)$/);
+    if (!match) {
+        return {
+            mimetype: msg.mimetype || 'application/octet-stream',
+            data: dataUrl,
+            filename: msg.filename || defaultFilename(msg.mimetype)
+        };
+    }
+
+    return {
+        mimetype: match[1],
+        data: match[2],
+        filename: msg.filename || defaultFilename(match[1])
+    };
+}
+
+function defaultFilename(mimetype = 'application/octet-stream') {
+    const extension = mimetype.split('/')[1] || 'bin';
+    return `attachment.${extension.split(';')[0]}`;
+}
+
+async function restartClient(accountId) {
+    const clientInfo = clients.get(accountId);
+    if (!clientInfo) return;
+
+    try {
+        if (clientInfo.client) {
+            await clientInfo.client.kill('restart');
+        }
+    } catch (err) {
+        console.error(`[WA Bridge] Kill before restart failed for ${accountId}:`, err.message);
+    }
+
+    await initClient(accountId, clientInfo.phoneNumber);
+}
+
+function scheduleReconnect(accountId, reason) {
+    const state = retryState.get(accountId) || { count: 0, lastAttempt: null };
+
+    if (state.count >= MAX_RETRIES) {
+        console.error(`[WA Bridge] Max retries reached for ${accountId}`);
+        notifyHub(`/internal/whatsapp/${accountId}/status`, {
+            status: 'max_retries',
+            reason: `Maximum reconnection attempts reached after ${reason}`
+        });
+        return;
+    }
+
+    const delay = BASE_RETRY_DELAY * Math.pow(2, state.count);
+    retryState.set(accountId, { count: state.count + 1, lastAttempt: Date.now() });
+    console.log(`[WA Bridge] Reconnecting ${accountId} in ${delay / 1000}s (${state.count + 1}/${MAX_RETRIES})`);
+
+    setTimeout(() => {
+        restartClient(accountId).catch((err) => {
+            console.error(`[WA Bridge] Reconnect failed for ${accountId}:`, err.message);
+        });
+    }, delay);
+}
+
 app.get('/health', (req, res) => {
     res.json({
         status: 'ok',
+        engine: 'openwa',
+        hubUrl: HUB_URL,
+        sessionPath: SESSION_PATH,
         clients: Array.from(clients.entries()).map(([id, c]) => ({
             accountId: id,
-            status: c.status
+            status: c.status,
+            error: c.error || null
         }))
     });
 });
 
-// Initialize client
 app.post('/clients/:accountId/init', (req, res) => {
     const { accountId } = req.params;
-    const { phoneNumber } = req.body;
-    
-    // Se il client esiste già, restituisce lo status attuale
+    const { phoneNumber } = req.body || {};
+
     if (clients.has(accountId)) {
         const clientInfo = clients.get(accountId);
-        return res.json({ 
+        return res.json({
             status: clientInfo.status,
             phoneNumber: clientInfo.phoneNumber,
             message: 'Client already initialized'
         });
     }
-    
-    try {
-        initClient(accountId, phoneNumber);
-        res.json({ status: 'initializing' });
-    } catch (error) {
-        console.error(`[WA Bridge] Error initializing client ${accountId}:`, error);
-        res.status(500).json({ error: error.message || 'Failed to initialize client' });
-    }
+
+    initClient(accountId, phoneNumber).catch(() => {
+        // Lo stato di errore viene esposto da /status e notificato all'Hub.
+    });
+
+    res.json({ status: 'initializing' });
 });
 
-// Get client status
 app.get('/clients/:accountId/status', (req, res) => {
     const { accountId } = req.params;
     const clientInfo = clients.get(accountId);
-    
+
     if (!clientInfo) {
         return res.status(404).json({ error: 'Client not found' });
     }
-    
+
     res.json({
         accountId,
         status: clientInfo.status,
@@ -377,163 +393,119 @@ app.get('/clients/:accountId/status', (req, res) => {
     });
 });
 
-// Check if number is registered on WhatsApp
 app.post('/clients/:accountId/check-number', async (req, res) => {
     const { accountId } = req.params;
-    const { phoneNumber } = req.body;
-    
+    const { phoneNumber } = req.body || {};
     const clientInfo = clients.get(accountId);
-    if (!clientInfo) {
-        return res.status(404).json({ error: 'Client not found' });
-    }
-    
-    if (clientInfo.status !== 'ready') {
-        return res.status(400).json({ error: 'Client not ready' });
-    }
-    
-    if (!phoneNumber) {
-        return res.status(400).json({ error: 'Phone number is required' });
-    }
-    
+
+    if (!clientInfo) return res.status(404).json({ error: 'Client not found' });
+    if (clientInfo.status !== 'ready' || !clientInfo.client) return res.status(400).json({ error: 'Client not ready' });
+    if (!phoneNumber) return res.status(400).json({ error: 'Phone number is required' });
+
     try {
-        // Normalizza il numero
         const normalized = normalizePhoneNumber(phoneNumber);
-        
-        // getNumberId ritorna null se il numero non è su WhatsApp
-        const numberId = await clientInfo.client.getNumberId(normalized);
-        
-        if (numberId) {
-            // Prova a ottenere anche la foto profilo
-            let profilePicUrl = null;
+        const numberStatus = await clientInfo.client.checkNumberStatus(normalized);
+        let profilePicUrl = null;
+
+        if (numberStatus?.numberExists || numberStatus?.canReceiveMessage) {
             try {
-                profilePicUrl = await clientInfo.client.getProfilePicUrl(numberId._serialized);
-            } catch (picErr) {
-                // Foto profilo non disponibile (privacy)
+                profilePicUrl = await clientInfo.client.getProfilePicFromServer(normalized);
+            } catch (_) {
+                profilePicUrl = null;
             }
-            
-            res.json({
-                isRegistered: true,
-                numberId: numberId._serialized,
-                profilePicUrl: profilePicUrl
-            });
-        } else {
-            res.json({
-                isRegistered: false,
-                numberId: null
-            });
         }
+
+        res.json({
+            isRegistered: Boolean(numberStatus?.numberExists || numberStatus?.canReceiveMessage),
+            numberId: numberStatus?.id?._serialized || numberStatus?.id?.user || normalized,
+            profilePicUrl
+        });
     } catch (err) {
         console.error('[WA Bridge] Check number failed:', err);
         res.status(500).json({ error: err.message });
     }
 });
 
-// Get profile picture URL
 app.get('/clients/:accountId/profile-pic/:contactId', async (req, res) => {
     const { accountId, contactId } = req.params;
-    
     const clientInfo = clients.get(accountId);
-    if (!clientInfo) {
-        return res.status(404).json({ error: 'Client not found' });
-    }
-    
-    if (clientInfo.status !== 'ready') {
-        return res.status(400).json({ error: 'Client not ready' });
-    }
-    
+
+    if (!clientInfo) return res.status(404).json({ error: 'Client not found' });
+    if (clientInfo.status !== 'ready' || !clientInfo.client) return res.status(400).json({ error: 'Client not ready' });
+
     try {
-        // contactId può essere numero o chatId (es. 393401234567@c.us)
-        let chatId = contactId;
-        if (!contactId.includes('@')) {
-            chatId = normalizePhoneNumber(contactId);
-        }
-        
-        const profilePicUrl = await clientInfo.client.getProfilePicUrl(chatId);
-        
-        res.json({
-            contactId: chatId,
-            profilePicUrl: profilePicUrl || null
-        });
-    } catch (err) {
-        // Privacy settings may prevent getting profile pic
-        res.json({
-            contactId: contactId,
-            profilePicUrl: null,
-            error: 'Profile picture not available'
-        });
+        const chatId = contactId.includes('@') ? contactId : normalizePhoneNumber(contactId);
+        const profilePicUrl = await clientInfo.client.getProfilePicFromServer(chatId);
+        res.json({ contactId: chatId, profilePicUrl: profilePicUrl || null });
+    } catch (_) {
+        res.json({ contactId, profilePicUrl: null, error: 'Profile picture not available' });
     }
 });
 
-// Send message
 app.post('/clients/:accountId/send', async (req, res) => {
     const { accountId } = req.params;
-    const { to, body, media } = req.body;
-    
+    const { to, body, media } = req.body || {};
     const clientInfo = clients.get(accountId);
-    if (!clientInfo) {
-        return res.status(404).json({ error: 'Client not found' });
-    }
-    
+
+    if (!clientInfo) return res.status(404).json({ error: 'Client not found' });
+    if (clientInfo.status !== 'ready' || !clientInfo.client) return res.status(400).json({ error: 'Client not ready' });
+
     try {
-        let message;
-        
+        const chatId = normalizePhoneNumber(to);
+        let messageId;
+
         if (media) {
-            // Send with media
-            const mediaObj = new MessageMedia(media.mimetype, media.data, media.filename);
-            message = await clientInfo.client.sendMessage(to, mediaObj, { caption: body });
+            const file = media.data?.startsWith('data:')
+                ? media.data
+                : `data:${media.mimetype || 'application/octet-stream'};base64,${media.data}`;
+            messageId = await clientInfo.client.sendFile(
+                chatId,
+                file,
+                media.filename || defaultFilename(media.mimetype),
+                body || '',
+                undefined,
+                true
+            );
         } else {
-            // Send text only
-            message = await clientInfo.client.sendMessage(to, body);
+            messageId = await clientInfo.client.sendText(chatId, body || '');
         }
-        
-        res.json({
-            success: true,
-            messageId: message.id.id
-        });
-        
+
+        res.json({ success: true, messageId: String(messageId) });
     } catch (err) {
         console.error('[WA Bridge] Send failed:', err);
         res.status(500).json({ error: err.message });
     }
 });
 
-// Disconnect client
 app.post('/clients/:accountId/disconnect', async (req, res) => {
     const { accountId } = req.params;
     const clientInfo = clients.get(accountId);
-    
-    if (!clientInfo) {
-        return res.status(404).json({ error: 'Client not found' });
-    }
-    
+
+    if (!clientInfo) return res.status(404).json({ error: 'Client not found' });
+
     try {
-        await clientInfo.client.destroy();
+        unregisterQrListener(accountId);
+        if (clientInfo.client) await clientInfo.client.kill('manual disconnect');
         clients.delete(accountId);
+        retryState.delete(accountId);
         res.json({ status: 'disconnected' });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-// ========== Scheduled Messages ==========
-
-// Intervallo di check per messaggi programmati (30 secondi)
-const SCHEDULED_CHECK_INTERVAL = 30 * 1000;
-
 async function checkScheduledMessages() {
     try {
-        const response = await axios.get(`${HUB_URL}/internal/whatsapp/scheduled/pending`);
+        const response = await axios.get(`${HUB_URL}/internal/whatsapp/scheduled/pending`, { timeout: 15000 });
         const scheduled = response.data;
-        
+
         if (scheduled && scheduled.length > 0) {
             console.log(`[WA Bridge] Found ${scheduled.length} scheduled messages to send`);
-            
             for (const msg of scheduled) {
                 await sendScheduledMessage(msg);
             }
         }
     } catch (err) {
-        // Non loggare errore se è solo 404 (endpoint non ancora attivo)
         if (err.response?.status !== 404) {
             console.error('[WA Bridge] Error checking scheduled messages:', err.message);
         }
@@ -542,75 +514,79 @@ async function checkScheduledMessages() {
 
 async function sendScheduledMessage(scheduled) {
     const { id, accountId, phoneNumber, body, mediaData, mediaType, mediaFilename } = scheduled;
-    
-    // Normalizza numero telefono
     const normalizedNumber = normalizePhoneNumber(phoneNumber);
-    console.log(`[WA Bridge] Sending scheduled message ${id} to ${normalizedNumber}`);
-    
     const clientInfo = clients.get(accountId);
+
     if (!clientInfo) {
-        console.error(`[WA Bridge] Client not found for scheduled message: ${accountId}`);
         await markScheduledFailed(id, `Client not found: ${accountId}`);
         return;
     }
-    
-    // Verifica che il client sia ready
-    if (clientInfo.status !== 'ready') {
-        console.error(`[WA Bridge] Client ${accountId} not ready (status: ${clientInfo.status})`);
+
+    if (clientInfo.status !== 'ready' || !clientInfo.client) {
         await markScheduledFailed(id, `Client not ready: ${clientInfo.status}`);
         return;
     }
-    
+
     try {
-        let message;
-        
+        let messageId;
+
         if (mediaData && mediaType) {
-            // Invia con media
-            const media = new MessageMedia(mediaType, mediaData, mediaFilename || 'file');
-            message = await clientInfo.client.sendMessage(normalizedNumber, media, { caption: body });
+            messageId = await clientInfo.client.sendFile(
+                normalizedNumber,
+                `data:${mediaType};base64,${mediaData}`,
+                mediaFilename || defaultFilename(mediaType),
+                body || '',
+                undefined,
+                true
+            );
         } else {
-            // Invia solo testo
-            message = await clientInfo.client.sendMessage(normalizedNumber, body);
+            messageId = await clientInfo.client.sendText(normalizedNumber, body || '');
         }
-        
-        console.log(`[WA Bridge] ✅ Scheduled message ${id} sent: ${message.id.id}`);
-        await markScheduledSent(id, message.id.id);
-        
+
+        console.log(`[WA Bridge] Scheduled message ${id} sent: ${messageId}`);
+        await markScheduledSent(id, String(messageId));
     } catch (err) {
-        console.error(`[WA Bridge] ❌ Scheduled message ${id} failed:`, err.message);
+        console.error(`[WA Bridge] Scheduled message ${id} failed:`, err.message);
         await markScheduledFailed(id, err.message);
     }
 }
 
 async function markScheduledSent(scheduledId, messageId) {
-    try {
-        await axios.post(`${HUB_URL}/internal/whatsapp/scheduled/${scheduledId}/sent`, {
-            messageId: messageId
-        });
-    } catch (err) {
-        console.error('[WA Bridge] Failed to mark scheduled as sent:', err.message);
-    }
+    await notifyHub(`/internal/whatsapp/scheduled/${scheduledId}/sent`, { messageId });
 }
 
 async function markScheduledFailed(scheduledId, error) {
-    try {
-        await axios.post(`${HUB_URL}/internal/whatsapp/scheduled/${scheduledId}/failed`, {
-            error: error
-        });
-    } catch (err) {
-        console.error('[WA Bridge] Failed to mark scheduled as failed:', err.message);
-    }
+    await notifyHub(`/internal/whatsapp/scheduled/${scheduledId}/failed`, { error });
 }
 
-// Avvia polling per messaggi programmati
 setInterval(checkScheduledMessages, SCHEDULED_CHECK_INTERVAL);
-
-// Check iniziale dopo 5 secondi
 setTimeout(checkScheduledMessages, 5000);
 
-// Start server
-app.listen(PORT, () => {
+async function shutdown(signal) {
+    console.log(`[WA Bridge] ${signal} received, shutting down`);
+
+    for (const [accountId, clientInfo] of clients.entries()) {
+        unregisterQrListener(accountId);
+        if (clientInfo.client) {
+            try {
+                await clientInfo.client.kill(signal);
+            } catch (err) {
+                console.error(`[WA Bridge] Failed to stop ${accountId}:`, err.message);
+            }
+        }
+    }
+
+    process.exit(0);
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`[WA Bridge] Server running on port ${PORT}`);
+    console.log(`[WA Bridge] Engine: OpenWA`);
     console.log(`[WA Bridge] Hub URL: ${HUB_URL}`);
-    console.log(`[WA Bridge] Scheduled message check interval: ${SCHEDULED_CHECK_INTERVAL/1000}s`);
+    console.log(`[WA Bridge] Session path: ${SESSION_PATH}`);
+    console.log(`[WA Bridge] Chrome executable: ${CHROME_EXECUTABLE_PATH || 'auto'}`);
+    console.log(`[WA Bridge] Scheduled message check interval: ${SCHEDULED_CHECK_INTERVAL / 1000}s`);
 });

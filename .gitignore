@@ -152,3 +152,9 @@ claim-connect-main/
 whatsapp-bridge-win/
 .claude/worktrees/crazy-pike-887058/
 .claude/worktrees/agent-acdf3bb97ccd74251/
+
+# managed by open-wa
+**.data.json
+**.node-persist**
+**_IGNORE_**
+# end managed by open-wa
