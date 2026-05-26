@@ -12,7 +12,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+import httpx
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,6 +31,47 @@ from app.models.whatsapp import WhatsAppAccount, WhatsAppMessage, WhatsAppThread
 from app.services.vault_storage_service import VaultStorageService
 
 router = APIRouter()
+
+
+def _wa_bridge_headers() -> dict[str, str]:
+    if settings.WA_BRIDGE_INTERNAL_TOKEN:
+        return {"X-PerX-WA-Bridge-Token": settings.WA_BRIDGE_INTERNAL_TOKEN}
+    return {}
+
+
+async def _wa_bridge_request(method: str, path: str, json_body: dict | None = None) -> dict:
+    url = f"{settings.PERX_WA_BRIDGE_URL.rstrip('/')}{path}"
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=5.0)) as client:
+            response = await client.request(
+                method,
+                url,
+                json=json_body,
+                headers=_wa_bridge_headers(),
+            )
+        response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        detail = exc.response.text
+        try:
+            detail = exc.response.json()
+        except ValueError:
+            pass
+        raise HTTPException(status_code=exc.response.status_code, detail=detail)
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=503, detail=f"WhatsApp bridge unavailable: {exc}")
+
+    if not response.content:
+        return {}
+    try:
+        return response.json()
+    except ValueError:
+        return {"raw": response.text}
+
+
+def _verify_wa_bridge_token(x_perx_wa_bridge_token: str | None) -> None:
+    expected = settings.WA_BRIDGE_INTERNAL_TOKEN
+    if expected and x_perx_wa_bridge_token != expected:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid WA bridge token")
 
 
 class HeartbeatRequest(BaseModel):
@@ -1114,9 +1156,14 @@ async def compat_whatsapp_init(
 ):
     account = await _ensure_whatsapp_account(db, current_user, account_id)
     account.phone_number = payload.phoneNumber or account.phone_number
-    account.status = "ready"
+    bridge_response = await _wa_bridge_request(
+        "POST",
+        f"/clients/{account_id}/init",
+        {"phoneNumber": account.phone_number},
+    )
+    account.status = bridge_response.get("status", "initializing")
     await db.commit()
-    return {"status": "ready"}
+    return bridge_response
 
 
 @router.post("/whatsapp/clients/{account_id}/disconnect")
@@ -1126,9 +1173,10 @@ async def compat_whatsapp_disconnect(
     current_user: User = Depends(get_current_active_user),
 ):
     account = await _ensure_whatsapp_account(db, current_user, account_id)
+    bridge_response = await _wa_bridge_request("POST", f"/clients/{account_id}/disconnect")
     account.status = "disconnected"
     await db.commit()
-    return {"status": "disconnected"}
+    return bridge_response or {"status": "disconnected"}
 
 
 @router.get("/whatsapp/clients/{account_id}/qr")
@@ -1138,8 +1186,18 @@ async def compat_whatsapp_qr(
     current_user: User = Depends(get_current_active_user),
 ):
     account = await _ensure_whatsapp_account(db, current_user, account_id)
-    status_value = "ready" if account.status != "disconnected" else "disconnected"
-    return {"qr": None, "status": status_value}
+    metadata = account.metadata_json or {}
+    try:
+        bridge_status = await _wa_bridge_request("GET", f"/clients/{account_id}/status")
+    except HTTPException as exc:
+        if exc.status_code != 404:
+            raise
+        bridge_status = {"status": account.status}
+    return {
+        "qr": metadata.get("qr"),
+        "status": bridge_status.get("status", account.status),
+        "error": bridge_status.get("error"),
+    }
 
 
 @router.post("/whatsapp/clients/{account_id}/check-number")
@@ -1150,8 +1208,11 @@ async def compat_whatsapp_check_number(
     current_user: User = Depends(get_current_active_user),
 ):
     await _ensure_whatsapp_account(db, current_user, account_id)
-    normalized = payload.phoneNumber.replace("@c.us", "")
-    return {"isRegistered": True, "numberId": normalized}
+    return await _wa_bridge_request(
+        "POST",
+        f"/clients/{account_id}/check-number",
+        {"phoneNumber": payload.phoneNumber},
+    )
 
 
 @router.get("/whatsapp/clients/{account_id}/profile-pic/{contact_id}")
@@ -1162,7 +1223,7 @@ async def compat_whatsapp_profile_pic(
     current_user: User = Depends(get_current_active_user),
 ):
     await _ensure_whatsapp_account(db, current_user, account_id)
-    return {"contactId": contact_id, "profilePicUrl": None, "error": None}
+    return await _wa_bridge_request("GET", f"/clients/{account_id}/profile-pic/{contact_id}")
 
 
 @router.get("/whatsapp/chats")
@@ -1251,31 +1312,11 @@ async def compat_whatsapp_send(
     current_user: User = Depends(get_current_active_user),
 ):
     await _ensure_whatsapp_account(db, current_user, account_id)
-    thread = await _find_or_create_thread(db, current_user, account_id, payload.to)
-    message_id = str(uuid.uuid4())
-    message = WhatsAppMessage(
-        id=message_id,
-        tenant_id=current_user.tenant_id,
-        thread_id=thread.id,
-        claim_id=thread.claim_id,
-        direction="outbound",
-        message_type="media" if payload.media else "text",
-        provider_message_id=message_id,
-        sender_user_id=current_user.id,
-        sender_label=current_user.full_name,
-        body_text=payload.body,
-        media_document_id=None,
-        sent_at=datetime.now(timezone.utc),
-        status="sent",
-        metadata_json={
-            "media_type": payload.media.get("mimetype") if payload.media else None,
-            "media_filename": payload.media.get("filename") if payload.media else None,
-        },
+    return await _wa_bridge_request(
+        "POST",
+        f"/clients/{account_id}/send",
+        {"to": payload.to, "body": payload.body, "media": payload.media},
     )
-    db.add(message)
-    thread.last_message_at = message.sent_at
-    await db.commit()
-    return {"messageId": message_id}
 
 
 @router.post("/whatsapp/schedule")
@@ -1375,6 +1416,254 @@ async def compat_whatsapp_cancel_scheduled(
         raise HTTPException(status_code=404, detail="Scheduled message not found")
     await db.delete(message)
     await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+async def _account_for_bridge_callback(db: AsyncSession, account_id: str) -> WhatsAppAccount:
+    result = await db.execute(select(WhatsAppAccount).where(WhatsAppAccount.id == account_id).limit(1))
+    account = result.scalar_one_or_none()
+    if not account:
+        raise HTTPException(status_code=404, detail="WhatsApp account not found")
+    return account
+
+
+async def _bridge_thread_for_message(
+    db: AsyncSession,
+    account: WhatsAppAccount,
+    chat_id: str,
+) -> WhatsAppThread:
+    result = await db.execute(
+        select(WhatsAppThread).where(
+            WhatsAppThread.tenant_id == account.tenant_id,
+            WhatsAppThread.account_id == account.id,
+            WhatsAppThread.external_thread_ref == chat_id,
+        )
+    )
+    thread = result.scalar_one_or_none()
+    if thread:
+        return thread
+
+    phone = chat_id.replace("@c.us", "") if chat_id else None
+    thread = WhatsAppThread(
+        id=str(uuid.uuid4()),
+        tenant_id=account.tenant_id,
+        claim_id=None,
+        account_id=account.id,
+        external_thread_ref=chat_id,
+        contact_name=phone,
+        contact_phone=phone,
+        status="open",
+        metadata_json={},
+    )
+    db.add(thread)
+    await db.flush()
+    return thread
+
+
+@router.post("/internal/whatsapp/{account_id}/qr", status_code=status.HTTP_204_NO_CONTENT)
+async def internal_whatsapp_qr(
+    account_id: str,
+    payload: dict,
+    x_perx_wa_bridge_token: str | None = Header(None),
+    db: AsyncSession = Depends(get_db),
+):
+    _verify_wa_bridge_token(x_perx_wa_bridge_token)
+    account = await _account_for_bridge_callback(db, account_id)
+    metadata = account.metadata_json or {}
+    metadata["qr"] = payload.get("qr")
+    account.metadata_json = metadata
+    account.status = "waitingQR"
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/internal/whatsapp/{account_id}/status", status_code=status.HTTP_204_NO_CONTENT)
+async def internal_whatsapp_status(
+    account_id: str,
+    payload: dict,
+    x_perx_wa_bridge_token: str | None = Header(None),
+    db: AsyncSession = Depends(get_db),
+):
+    _verify_wa_bridge_token(x_perx_wa_bridge_token)
+    account = await _account_for_bridge_callback(db, account_id)
+    account.status = payload.get("status") or account.status
+    metadata = account.metadata_json or {}
+    if payload.get("reason"):
+        metadata["last_status_reason"] = payload.get("reason")
+    if account.status == "ready":
+        metadata.pop("qr", None)
+    account.metadata_json = metadata
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/internal/whatsapp/message", status_code=status.HTTP_204_NO_CONTENT)
+async def internal_whatsapp_message(
+    payload: dict,
+    x_perx_wa_bridge_token: str | None = Header(None),
+    db: AsyncSession = Depends(get_db),
+):
+    _verify_wa_bridge_token(x_perx_wa_bridge_token)
+    account = await _account_for_bridge_callback(db, payload.get("accountId", ""))
+    is_outgoing = bool(payload.get("isOutgoing"))
+    chat_id = payload.get("to") if is_outgoing else payload.get("from")
+    thread = await _bridge_thread_for_message(db, account, chat_id)
+    provider_message_id = payload.get("messageId") or str(uuid.uuid4())
+
+    existing_result = await db.execute(
+        select(WhatsAppMessage).where(
+            WhatsAppMessage.tenant_id == account.tenant_id,
+            WhatsAppMessage.provider_message_id == provider_message_id,
+        )
+    )
+    existing = existing_result.scalar_one_or_none()
+    if existing:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    timestamp = payload.get("timestamp")
+    sent_at = datetime.now(timezone.utc)
+    if timestamp:
+        try:
+            sent_at = datetime.fromtimestamp(float(timestamp), tz=timezone.utc)
+        except (TypeError, ValueError, OSError):
+            sent_at = datetime.now(timezone.utc)
+
+    media = payload.get("media") or {}
+    message = WhatsAppMessage(
+        id=str(uuid.uuid4()),
+        tenant_id=account.tenant_id,
+        thread_id=thread.id,
+        claim_id=thread.claim_id,
+        direction="outbound" if is_outgoing else "inbound",
+        message_type=payload.get("type") or ("media" if payload.get("hasMedia") else "text"),
+        provider_message_id=provider_message_id,
+        sender_user_id=None,
+        sender_label=None,
+        body_text=payload.get("body"),
+        media_document_id=None,
+        sent_at=sent_at,
+        status="sent",
+        metadata_json={
+            "from": payload.get("from"),
+            "to": payload.get("to"),
+            "author": payload.get("author"),
+            "is_group": payload.get("isGroup"),
+            "media_mimetype": media.get("mimetype"),
+            "media_filename": media.get("filename"),
+            "media_data": media.get("data"),
+        },
+    )
+    db.add(message)
+    thread.last_message_at = sent_at
+    await db.commit()
+    try:
+        from app.api.v1.routes_realtime import sse_manager
+        await sse_manager.broadcast(
+            account.tenant_id,
+            "wa_message",
+            {
+                "thread_id": thread.id,
+                "message_id": message.id,
+                "direction": message.direction,
+                "claim_id": thread.claim_id,
+            },
+        )
+    except Exception:
+        pass
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/internal/whatsapp/message-ack", status_code=status.HTTP_204_NO_CONTENT)
+async def internal_whatsapp_message_ack(
+    payload: dict,
+    x_perx_wa_bridge_token: str | None = Header(None),
+    db: AsyncSession = Depends(get_db),
+):
+    _verify_wa_bridge_token(x_perx_wa_bridge_token)
+    account = await _account_for_bridge_callback(db, payload.get("accountId", ""))
+    result = await db.execute(
+        select(WhatsAppMessage).where(
+            WhatsAppMessage.tenant_id == account.tenant_id,
+            WhatsAppMessage.provider_message_id == payload.get("messageId"),
+        )
+    )
+    message = result.scalar_one_or_none()
+    if message:
+        ack = payload.get("ack")
+        if ack == 2:
+            message.delivered_at = datetime.now(timezone.utc)
+        elif ack in (3, 4):
+            message.read_at = datetime.now(timezone.utc)
+        metadata = message.metadata_json or {}
+        metadata["ack"] = ack
+        metadata["ack_name"] = payload.get("ackName")
+        message.metadata_json = metadata
+        await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/internal/whatsapp/scheduled/pending")
+async def internal_whatsapp_scheduled_pending(
+    x_perx_wa_bridge_token: str | None = Header(None),
+    db: AsyncSession = Depends(get_db),
+):
+    _verify_wa_bridge_token(x_perx_wa_bridge_token)
+    result = await db.execute(
+        select(WhatsAppMessage, WhatsAppThread).join(
+            WhatsAppThread, WhatsAppThread.id == WhatsAppMessage.thread_id
+        ).where(
+            WhatsAppMessage.status == "scheduled",
+            WhatsAppMessage.sent_at <= datetime.now(timezone.utc),
+        ).order_by(WhatsAppMessage.sent_at.asc()).limit(50)
+    )
+    items = []
+    for message, thread in result.all():
+        metadata = message.metadata_json or {}
+        items.append({
+            "id": message.id,
+            "accountId": thread.account_id,
+            "phoneNumber": metadata.get("phone_number") or thread.contact_phone or thread.external_thread_ref,
+            "body": message.body_text or "",
+            "mediaData": metadata.get("media_data"),
+            "mediaType": metadata.get("media_type"),
+            "mediaFilename": metadata.get("media_filename"),
+        })
+    return items
+
+
+@router.post("/internal/whatsapp/scheduled/{message_id}/sent", status_code=status.HTTP_204_NO_CONTENT)
+async def internal_whatsapp_scheduled_sent(
+    message_id: str,
+    payload: dict,
+    x_perx_wa_bridge_token: str | None = Header(None),
+    db: AsyncSession = Depends(get_db),
+):
+    _verify_wa_bridge_token(x_perx_wa_bridge_token)
+    result = await db.execute(select(WhatsAppMessage).where(WhatsAppMessage.id == message_id))
+    message = result.scalar_one_or_none()
+    if message:
+        message.status = "sent"
+        message.provider_message_id = payload.get("messageId") or message.provider_message_id
+        await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/internal/whatsapp/scheduled/{message_id}/failed", status_code=status.HTTP_204_NO_CONTENT)
+async def internal_whatsapp_scheduled_failed(
+    message_id: str,
+    payload: dict,
+    x_perx_wa_bridge_token: str | None = Header(None),
+    db: AsyncSession = Depends(get_db),
+):
+    _verify_wa_bridge_token(x_perx_wa_bridge_token)
+    result = await db.execute(select(WhatsAppMessage).where(WhatsAppMessage.id == message_id))
+    message = result.scalar_one_or_none()
+    if message:
+        message.status = "failed"
+        metadata = message.metadata_json or {}
+        metadata["error"] = payload.get("error")
+        message.metadata_json = metadata
+        await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

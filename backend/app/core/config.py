@@ -68,6 +68,8 @@ class Settings(BaseSettings):
     MAIL_INGESTION_ENABLED: bool = True
     MAIL_POLL_INTERVAL_SECONDS: int = 300  # 5 minutes
     LOCAL_AI_WORKER_SHARED_SECRET: Optional[str] = None
+    PERX_WA_BRIDGE_URL: str = "http://127.0.0.1:5002"
+    WA_BRIDGE_INTERNAL_TOKEN: Optional[str] = None
     
     # Feature Flags
     FF_CLOUD_AUTH_ENABLED: bool = False

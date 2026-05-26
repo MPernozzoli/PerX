@@ -17,6 +17,7 @@ const PORT = Number(process.env.PORT || 5002);
 const SESSION_PATH = process.env.SESSION_PATH || path.join(process.cwd(), 'sessions');
 const CHROME_EXECUTABLE_PATH = process.env.CHROME_EXECUTABLE_PATH || process.env.PUPPETEER_EXECUTABLE_PATH || null;
 const SCHEDULED_CHECK_INTERVAL = Number(process.env.SCHEDULED_CHECK_INTERVAL_MS || 30 * 1000);
+const INTERNAL_TOKEN = process.env.WA_BRIDGE_INTERNAL_TOKEN || null;
 
 fs.mkdirSync(SESSION_PATH, { recursive: true });
 
@@ -54,10 +55,17 @@ function setClientStatus(accountId, status, patch = {}) {
 
 async function notifyHub(pathname, payload) {
     try {
-        await axios.post(`${HUB_URL}${pathname}`, payload, { timeout: 15000 });
+        await axios.post(`${HUB_URL}${pathname}`, payload, {
+            timeout: 15000,
+            headers: internalHeaders()
+        });
     } catch (err) {
         console.error(`[WA Bridge] Failed to notify Hub ${pathname}:`, err.message);
     }
+}
+
+function internalHeaders() {
+    return INTERNAL_TOKEN ? { 'X-PerX-WA-Bridge-Token': INTERNAL_TOKEN } : {};
 }
 
 function registerQrListener(accountId, safeClientId) {
@@ -194,7 +202,7 @@ async function attachClientHandlers(accountId, client) {
                 ack,
                 ackName,
                 timestamp: Date.now() / 1000
-            }, { timeout: 10000 });
+            }, { timeout: 10000, headers: internalHeaders() });
         } catch (_) {
             // Gli ACK sono frequenti; non rendiamo rumorosi i log se l'Hub non risponde.
         }
@@ -271,7 +279,10 @@ async function handleMessage(accountId, client, msg, isOutgoing = false) {
     }
 
     try {
-        await axios.post(`${HUB_URL}/internal/whatsapp/message`, messageData, { timeout: 30000 });
+        await axios.post(`${HUB_URL}/internal/whatsapp/message`, messageData, {
+            timeout: 30000,
+            headers: internalHeaders()
+        });
         console.log('[WA Bridge] Message sent to Hub');
     } catch (err) {
         console.error('[WA Bridge] Failed to send message to Hub:', err.message);
@@ -496,7 +507,10 @@ app.post('/clients/:accountId/disconnect', async (req, res) => {
 
 async function checkScheduledMessages() {
     try {
-        const response = await axios.get(`${HUB_URL}/internal/whatsapp/scheduled/pending`, { timeout: 15000 });
+        const response = await axios.get(`${HUB_URL}/internal/whatsapp/scheduled/pending`, {
+            timeout: 15000,
+            headers: internalHeaders()
+        });
         const scheduled = response.data;
 
         if (scheduled && scheduled.length > 0) {
