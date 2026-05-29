@@ -10,7 +10,7 @@ class CloudAIService {
 
     private var apiKey: String {
         // Preferisce la chiave dal backend (Supabase), poi fallback a UserDefaults per retrocompatibilità
-        let tenantKey = TenantAIKeysService.shared.openAIKey
+        let tenantKey = TenantAIKeysCache.snapshot().openAIKey
         if !tenantKey.isEmpty { return tenantKey }
         return UserDefaults.standard.string(forKey: "ai_openai_api_key") ?? ""
     }
@@ -20,7 +20,7 @@ class CloudAIService {
     }
 
     private var model: String {
-        let tenantModel = TenantAIKeysService.shared.openAIModel
+        let tenantModel = TenantAIKeysCache.snapshot().openAIModel
         if !tenantModel.isEmpty { return tenantModel }
         return UserDefaults.standard.string(forKey: "ai_openai_model") ?? "gpt-4o"
     }
@@ -585,4 +585,3 @@ class CloudAIService {
         }
     }
 }
-

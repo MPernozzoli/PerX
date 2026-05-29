@@ -575,10 +575,10 @@ struct SinistriView: View {
         let riferimento = sinistro.riferimento ?? "N/A"
         print("[SinistriView] 🗑️ Eliminazione sinistro \(riferimento)")
         
-        // Salva il riferimento per eliminazione da CloudKit
+        // Salva il riferimento per tracking locale.
         let rifToDelete = sinistro.riferimento
         
-        // Traccia localmente (fallback se CloudKit fallisce)
+        // Traccia localmente per evitare rientri da sync.
         if let rif = rifToDelete, !rif.isEmpty {
             DeletedSinistriTracker.shared.markAsDeleted(riferimento: rif)
         }
@@ -589,13 +589,6 @@ struct SinistriView: View {
         do {
             try viewContext.save()
             print("[SinistriView] ✅ Sinistro \(riferimento) eliminato localmente")
-            
-            // Elimina anche da CloudKit (async, best-effort)
-            if let rif = rifToDelete, !rif.isEmpty {
-                Task {
-                    await CloudKitSinistroSyncService.shared.deleteSinistro(riferimento: rif)
-                }
-            }
         } catch {
             print("[SinistriView] ❌ Errore durante l'eliminazione: \(error)")
         }
@@ -700,13 +693,6 @@ struct SinistriView: View {
         do {
             try viewContext.save()
             print("[SinistriView] ✅ \(sinistriToDelete.count) sinistri eliminati localmente: \(deletedRiferimenti.joined(separator: ", "))")
-            
-            // Elimina anche da CloudKit (async, best-effort)
-            if !deletedRiferimenti.isEmpty {
-                Task {
-                    await CloudKitSinistroSyncService.shared.deleteSinistri(riferimenti: deletedRiferimenti)
-                }
-            }
         } catch {
             print("[SinistriView] ❌ Errore durante l'eliminazione: \(error)")
         }

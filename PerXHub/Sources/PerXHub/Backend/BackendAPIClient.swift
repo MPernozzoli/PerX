@@ -4,8 +4,7 @@ import PerXCore
 // ============================================================================
 // MARK: - BackendAPIClient
 //
-// Drop-in replacement di CloudKitWebService per l'Hub.
-// Stessa interfaccia pubblica, chiama il backend FastAPI invece di CloudKit.
+// Client backend FastAPI/Supabase per l'Hub.
 //
 // ENV VARS richieste al runtime:
 //   PERX_API_URL          URL base del backend  (default: https://api.perx.it)
@@ -300,14 +299,14 @@ public actor BackendAPIClient {
         }
     }
 
-    // MARK: - Public Interface (drop-in per CloudKitWebService)
+    // MARK: - Public Interface
 
     // -------------------------------------------------------------------------
     // SINISTRI
     // -------------------------------------------------------------------------
 
     /// Recupera sinistri per un utente.
-    /// Corrisponde a CloudKitWebService.fetchSinistri(forUser:fallbackEmail:)
+    /// Recupera sinistri dal backend Supabase.
     public func fetchSinistri(forUser user: String, fallbackEmail: String? = nil) async throws -> [SinistroDTO] {
         var qi: [URLQueryItem] = [
             URLQueryItem(name: "page", value: "1"),
@@ -324,7 +323,7 @@ public actor BackendAPIClient {
     }
 
     /// Recupera un sinistro per riferimento.
-    /// Corrisponde a CloudKitWebService.fetchSinistro(riferimento:)
+    /// Recupera un sinistro dal backend Supabase.
     public func fetchSinistro(riferimento: String) async throws -> SinistroDTO? {
         let claims = try await fetchClaimsRaw(
             queryItems: [URLQueryItem(name: "search", value: riferimento)]
@@ -336,7 +335,7 @@ public actor BackendAPIClient {
     }
 
     /// Salva / crea un sinistro (idempotente via external_ref).
-    /// Corrisponde a CloudKitWebService.saveSinistro(_:modifiedBy:)
+    /// Salva un sinistro sul backend Supabase.
     public func saveSinistro(_ dto: SinistroDTO, modifiedBy userEmail: String) async throws {
         let body = dto.toBackendCreateBody(modifiedBy: userEmail)
         let _: BackendCreatedResponse = try await request(
@@ -349,7 +348,7 @@ public actor BackendAPIClient {
     }
 
     /// Aggiorna un sinistro esistente.
-    /// Corrisponde a CloudKitWebService.updateSinistro(riferimento:data:)
+    /// Aggiorna un sinistro sul backend Supabase.
     public func updateSinistro(riferimento: String, data: SinistroUpdateRequest) async throws {
         guard let claimId = try await claimIDForRiferimento(riferimento) else {
             print("[BackendAPIClient] ⚠️ updateSinistro: claim non trovato per \(riferimento), skip")
@@ -365,7 +364,7 @@ public actor BackendAPIClient {
     // -------------------------------------------------------------------------
 
     /// Recupera task per un utente.
-    /// Corrisponde a CloudKitWebService.fetchTasks(forUser:fallbackEmail:)
+    /// Recupera task dal backend Supabase.
     public func fetchTasks(forUser user: String, fallbackEmail: String? = nil) async throws -> [HubTask] {
         var qi: [URLQueryItem] = []
         let filterEmail = user.isEmpty ? fallbackEmail : user
@@ -418,7 +417,7 @@ public actor BackendAPIClient {
     }
 
     /// Salva un task.
-    /// Corrisponde a CloudKitWebService.saveTask(_:)
+    /// Salva task sul backend Supabase.
     public func saveTask(_ task: HubTask) async throws {
         let iso2 = ISO8601DateFormatter()
         iso2.formatOptions = [.withInternetDateTime]
@@ -447,7 +446,7 @@ public actor BackendAPIClient {
     // -------------------------------------------------------------------------
 
     /// Recupera le entry del diario per un sinistro.
-    /// Corrisponde a CloudKitWebService.fetchDiario(sinistroRef:)
+    /// Recupera il diario dal backend Supabase.
     public func fetchDiario(sinistroRef: String) async throws -> [DiarioEntryDTO] {
         guard let claimId = try await claimIDForRiferimento(sinistroRef) else {
             print("[BackendAPIClient] fetchDiario: claim non trovato per \(sinistroRef)")
@@ -497,14 +496,14 @@ public actor BackendAPIClient {
     }
 
     /// Aggiunge una entry al diario.
-    /// Corrisponde a CloudKitWebService.addDiarioEntry(sinistroRef:entry:)
+    /// Aggiunge una voce diario sul backend Supabase.
     public func addDiarioEntry(sinistroRef: String, entry: DiarioEntryDTO) async throws {
         try await saveDiaryEntryOnBackend(sinistroRef: sinistroRef, entry: entry)
         print("[BackendAPIClient] ✅ addDiarioEntry: \(entry.id) per \(sinistroRef)")
     }
 
     /// Salva entry diario con campi espliciti.
-    /// Corrisponde a CloudKitWebService.saveDiarioEntry(entryId:sinistroRef:timestamp:tipo:titolo:riassunto:contenutoCompleto:createdBy:)
+    /// Salva una voce diario sul backend Supabase.
     public func saveDiarioEntry(
         entryId: UUID,
         sinistroRef: String,
@@ -534,7 +533,7 @@ public actor BackendAPIClient {
     // -------------------------------------------------------------------------
 
     /// Salva un evento email.
-    /// Corrisponde a CloudKitWebService.saveEmailEvent(_:)
+    /// Salva un evento email sul backend Supabase.
     public func saveEmailEvent(_ event: HubEmailEvent) async throws {
         let body = BackendEmailEventBody(
             event_id: event.eventId.uuidString,
@@ -549,7 +548,7 @@ public actor BackendAPIClient {
     }
 
     /// Salva un'email processata.
-    /// Corrisponde a CloudKitWebService.saveProcessedEmail(messageId:userEmail:sinistroRef:category:)
+    /// Salva un marker di email processata sul backend Supabase.
     public func saveProcessedEmail(
         messageId: String,
         userEmail: String,
@@ -568,7 +567,7 @@ public actor BackendAPIClient {
     }
 
     // -------------------------------------------------------------------------
-    // SYNC PLACEHOLDER (compatibilità con CloudKitSyncManager.syncSinistro)
+    // SYNC PLACEHOLDER
     // -------------------------------------------------------------------------
 
     /// Placeholder per compatibilità. Il backend gestisce la sincronizzazione

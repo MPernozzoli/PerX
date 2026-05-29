@@ -629,37 +629,8 @@ class MailManager: ObservableObject {
     
     /// Sincronizza tutte le caselle con throttling per evitare rate limiting (sequenziale per rispettare rate limit)
     func syncAllMailboxes(context: NSManagedObjectContext) async {
-        // Ottieni tutte le caselle dal repository
-        let stats = repository.getStats()
-        var mailboxesToSync = Array(stats.emailsPerMailbox.keys)
-        
-        // Assicurati che la mailbox SENT venga sempre sincronizzata
-        // (anche se non ci sono ancora email in cache)
-        if !mailboxesToSync.contains("SENT") {
-            mailboxesToSync.append("SENT")
-        }
-        
-        // Sincronizza sequenzialmente con throttling tra caselle per rispettare rate limit Gmail
-        // (non in parallelo per evitare troppe richieste simultanee)
-        for (index, mailboxId) in mailboxesToSync.enumerated() {
-            // Throttling tra caselle (almeno 2 secondi per rispettare rate limit Gmail)
-            if index > 0 {
-                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2s tra caselle
-            }
-            
-            await syncMailbox(mailboxId, context: context)
-            
-            // Se abbiamo errori 401, ferma il sync per evitare loop
-            let errorMsg = await MainActor.run {
-                self.errorMessage
-            }
-            if let errorMsg = errorMsg,
-               errorMsg.contains("Token di autenticazione scaduto") {
-                print("[MailManager] ⏹️ Sync interrotto: token scaduto")
-                break
-            }
-        }
-        
+        _ = context
+        print("[MailManager] Sync locale Gmail disabilitato: email gestite dal backend Resend")
     }
 
     /// Sincronizza tutte le email di assegnazione NON LETTE ("Assegnazione perito") presenti nell'account.
@@ -841,60 +812,11 @@ class MailManager: ObservableObject {
     
     /// Lista messageIds con paginazione (labelId opzionale, query opzionale).
     private func fetchMessageIds(labelId: String? = nil, accessToken: String, query: String? = nil) async throws -> [String] {
-        var allIds: [String] = []
-        var nextPageToken: String?
-        
-        var urlComponents = URLComponents(string: "https://www.googleapis.com/gmail/v1/users/me/messages")!
-        
-        repeat {
-            urlComponents.queryItems = []
-            
-            if let labelId {
-                urlComponents.queryItems?.append(URLQueryItem(name: "labelIds", value: labelId))
-            }
-            if let query {
-                urlComponents.queryItems?.append(URLQueryItem(name: "q", value: query))
-            }
-            if let token = nextPageToken {
-                urlComponents.queryItems?.append(URLQueryItem(name: "pageToken", value: token))
-            }
-            
-            guard let url = urlComponents.url else { throw URLError(.badURL) }
-            var request = URLRequest(url: url)
-            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-            
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-                let body = String(data: data, encoding: .utf8)
-                throw GmailAPIError.badServerResponse(
-                    statusCode: (response as? HTTPURLResponse)?.statusCode ?? -1,
-                    responseBody: body
-                )
-            }
-            
-            let result = try JSONDecoder().decode(GmailMessageList.self, from: data)
-            if let messages = result.messages {
-                allIds.append(contentsOf: messages.map(\.id))
-            }
-            nextPageToken = result.nextPageToken
-        } while nextPageToken != nil
-        
-        return allIds
+        throw GmailAPIError.tokenError("MailManager Gmail disabilitato: usare backend/Resend.")
     }
     
     private func fetchGmailMessageDetail(messageId: String, accessToken: String, format: String) async throws -> GmailMessageDetail {
-        let url = URL(string: "https://www.googleapis.com/gmail/v1/users/me/messages/\(messageId)?format=\(format)")!
-        var request = URLRequest(url: url)
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            let body = String(data: data, encoding: .utf8)
-            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
-            throw GmailAPIError.badServerResponse(statusCode: statusCode, responseBody: body)
-        }
-        
-        return try JSONDecoder().decode(GmailMessageDetail.self, from: data)
+        throw GmailAPIError.tokenError("MailManager Gmail disabilitato: usare backend/Resend.")
     }
     
     // MARK: - Monitoring
@@ -905,25 +827,7 @@ class MailManager: ObservableObject {
             print("[MailManager] ⚠️ Monitoring già attivo")
             return
         }
-        
-        isMonitoringActive = true
-        print("[MailManager] 🔄 Avvio monitoring (ogni \(Int(interval))s) in background")
-        
-        // Esegui monitoring in background con priorità bassa
-        Task.detached(priority: .utility) { [weak self] in
-            guard let self = self else { return }
-            
-            var shouldContinue = await MainActor.run { self.isMonitoringActive }
-            while shouldContinue {
-                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
-                
-                shouldContinue = await MainActor.run { self.isMonitoringActive }
-                guard shouldContinue else { break }
-                await CPUThrottler.shared.throttleIfNeeded()
-                let context = PersistenceController.shared.container.viewContext
-                await self.syncAllMailboxes(context: context)
-            }
-        }
+        print("[MailManager] Monitoring locale Gmail disabilitato: email gestite dal backend Resend")
     }
     
     /// Ferma il monitoring
@@ -1148,26 +1052,7 @@ class MailManager: ObservableObject {
     }
     
     private func fetchEmailList(mailboxId: String, accessToken: String, maxResults: Int = 100) async throws -> [String] {
-        var urlComponents = URLComponents(string: "https://www.googleapis.com/gmail/v1/users/me/messages")!
-        urlComponents.queryItems = [
-            URLQueryItem(name: "labelIds", value: mailboxId),
-            URLQueryItem(name: "maxResults", value: String(maxResults))
-        ]
-        
-        var request = URLRequest(url: urlComponents.url!)
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw GmailAPIError.badServerResponse(
-                statusCode: (response as? HTTPURLResponse)?.statusCode ?? -1,
-                responseBody: String(data: data, encoding: .utf8)
-            )
-        }
-        
-        let messageList = try JSONDecoder().decode(GmailMessageList.self, from: data)
-        return messageList.messages?.map { $0.id } ?? []
+        throw GmailAPIError.tokenError("MailManager Gmail disabilitato: usare backend/Resend.")
     }
     
     nonisolated private func convertToEmail(_ detail: GmailMessageDetail, mailboxId: String) -> Email {

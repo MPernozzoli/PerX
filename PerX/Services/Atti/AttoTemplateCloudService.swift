@@ -1,7 +1,7 @@
 import Foundation
 import AppKit
 
-/// Servizio per gestire i PDF dei template atti con sincronizzazione iCloud Drive
+/// Servizio per gestire i PDF dei template atti su storage locale.
 @MainActor
 class AttoTemplateCloudService: ObservableObject {
     static let shared = AttoTemplateCloudService()
@@ -48,27 +48,10 @@ class AttoTemplateCloudService: ObservableObject {
         return appSupport.appendingPathComponent("PerX/Atti/PDFs", isDirectory: true)
     }
     
-    /// Directory iCloud per i PDF condivisi
-    private var iCloudPDFDirectory: URL? {
-        guard let iCloudURL = fileManager.url(forUbiquityContainerIdentifier: "iCloud.it.pernozzoli.PerX") else {
-            print("[AttoTemplateCloudService] iCloud container non disponibile")
-            return nil
-        }
-        return iCloudURL.appendingPathComponent("Documents/Atti", isDirectory: true)
-    }
-    
     private func createDirectoriesIfNeeded() {
-        // Directory locale
         if let localDir = localPDFDirectory {
             if !fileManager.fileExists(atPath: localDir.path) {
                 try? fileManager.createDirectory(at: localDir, withIntermediateDirectories: true)
-            }
-        }
-        
-        // Directory iCloud
-        if let iCloudDir = iCloudPDFDirectory {
-            if !fileManager.fileExists(atPath: iCloudDir.path) {
-                try? fileManager.createDirectory(at: iCloudDir, withIntermediateDirectories: true)
             }
         }
     }
@@ -173,81 +156,12 @@ class AttoTemplateCloudService: ObservableObject {
         return bundlePDFs
     }
     
-    // MARK: - iCloud Sync
+    // MARK: - Sync
     
-    /// Sincronizzazione veloce con iCloud - non bloccante
+    /// Compatibilita' con la vecchia API: ricarica lo storage locale.
     func syncWithiCloud() async {
-        // Non bloccare la UI durante la sync
         errorMessage = nil
-        
-        guard let iCloudDir = iCloudPDFDirectory,
-              let localDir = localPDFDirectory else {
-            print("[AttoTemplateCloudService] iCloud non disponibile")
-            return
-        }
-        
-        do {
-            // Assicura che la directory iCloud esista
-            if !fileManager.fileExists(atPath: iCloudDir.path) {
-                try fileManager.createDirectory(at: iCloudDir, withIntermediateDirectories: true)
-            }
-            
-            // Scansiona i file iCloud (veloce, non aspetta download)
-            let iCloudFiles = try fileManager.contentsOfDirectory(atPath: iCloudDir.path)
-            
-            for file in iCloudFiles where file.hasSuffix(".pdf") {
-                let iCloudFilePath = iCloudDir.appendingPathComponent(file)
-                let localFilePath = localDir.appendingPathComponent(file)
-                
-                // Trigger download in background (non aspetta)
-                try? fileManager.startDownloadingUbiquitousItem(at: iCloudFilePath)
-                
-                // Se il file locale non esiste ma quello iCloud sì (e non è placeholder)
-                if !fileManager.fileExists(atPath: localFilePath.path) {
-                    let resourceValues = try? iCloudFilePath.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
-                    if let status = resourceValues?.ubiquitousItemDownloadingStatus,
-                       status == .current {
-                        try? fileManager.copyItem(at: iCloudFilePath, to: localFilePath)
-                    }
-                }
-                
-                // Aggiungi alla lista se non presente
-                if !availablePDFs.contains(where: { $0.fileName == file }) {
-                    let attrs = try? fileManager.attributesOfItem(atPath: iCloudFilePath.path)
-                    let size = attrs?[.size] as? Int64 ?? 0
-                    
-                    availablePDFs.append(AttoPDFInfo(
-                        id: UUID().uuidString,
-                        fileName: file,
-                        displayName: file.replacingOccurrences(of: ".pdf", with: ""),
-                        uploadedBy: "iCloud",
-                        uploadedAt: (attrs?[.modificationDate] as? Date) ?? Date(),
-                        fileSize: size,
-                        isFromCloud: true
-                    ))
-                }
-            }
-            
-            // Carica metadata da iCloud (veloce)
-            let metadataPath = iCloudDir.appendingPathComponent(metadataFileName)
-            try? fileManager.startDownloadingUbiquitousItem(at: metadataPath)
-            if let data = try? Data(contentsOf: metadataPath),
-               let cloudMetadata = try? JSONDecoder().decode([AttoPDFInfo].self, from: data) {
-                for info in cloudMetadata {
-                    if let index = availablePDFs.firstIndex(where: { $0.fileName == info.fileName }) {
-                        availablePDFs[index] = info
-                    } else if !availablePDFs.contains(where: { $0.fileName == info.fileName }) {
-                        availablePDFs.append(info)
-                    }
-                }
-            }
-            
-            availablePDFs.sort { $0.uploadedAt > $1.uploadedAt }
-            saveCachedMetadata()
-            
-        } catch {
-            print("[AttoTemplateCloudService] Errore sync iCloud: \(error)")
-        }
+        loadAllPDFs()
     }
     
     // MARK: - Upload
@@ -278,21 +192,8 @@ class AttoTemplateCloudService: ObservableObject {
             
             uploadProgress = 0.5
             
-            // 2. Copia in iCloud se disponibile
-            if let iCloudDir = iCloudPDFDirectory {
-                let iCloudPath = iCloudDir.appendingPathComponent(fileName)
-                
-                // Rimuovi file esistente se presente
-                if fileManager.fileExists(atPath: iCloudPath.path) {
-                    try? fileManager.removeItem(at: iCloudPath)
-                }
-                
-                try fileManager.copyItem(at: localPath, to: iCloudPath)
-                
-                uploadProgress = 0.8
-            }
-            
-            // 3. Aggiorna metadata
+            uploadProgress = 0.8
+
             let newInfo = AttoPDFInfo(
                 id: UUID().uuidString,
                 fileName: fileName,
@@ -300,7 +201,7 @@ class AttoTemplateCloudService: ObservableObject {
                 uploadedBy: userEmail,
                 uploadedAt: Date(),
                 fileSize: fileSize,
-                isFromCloud: iCloudPDFDirectory != nil
+                isFromCloud: false
             )
             
             // Rimuovi versione precedente se esiste
@@ -308,7 +209,6 @@ class AttoTemplateCloudService: ObservableObject {
             availablePDFs.insert(newInfo, at: 0)
             
             saveCachedMetadata()
-            saveMetadataToiCloud()
             
             uploadProgress = 1.0
             isLoading = false
@@ -343,19 +243,10 @@ class AttoTemplateCloudService: ObservableObject {
                 }
             }
             
-            // Elimina da iCloud
-            if let iCloudDir = iCloudPDFDirectory {
-                let iCloudPath = iCloudDir.appendingPathComponent(info.fileName)
-                if fileManager.fileExists(atPath: iCloudPath.path) {
-                    try fileManager.removeItem(at: iCloudPath)
-                }
-            }
-            
             // Rimuovi da lista
             availablePDFs.removeAll { $0.id == info.id }
             
             saveCachedMetadata()
-            saveMetadataToiCloud()
             
             isLoading = false
             return true
@@ -383,24 +274,14 @@ class AttoTemplateCloudService: ObservableObject {
             }
         }
         
-        // 2. Cerca in iCloud
-        if let iCloudDir = iCloudPDFDirectory {
-            let iCloudPath = iCloudDir.appendingPathComponent(fileName)
-            if fileManager.fileExists(atPath: iCloudPath.path) {
-                // Trigger download se necessario
-                try? fileManager.startDownloadingUbiquitousItem(at: iCloudPath)
-                return iCloudPath
-            }
-        }
-        
-        // 3. Cerca nel bundle
+        // 2. Cerca nel bundle
         if let bundleURL = Bundle.main.url(forResource: fileName.replacingOccurrences(of: ".pdf", with: ""),
                                             withExtension: "pdf",
                                             subdirectory: "Atti") {
             return bundleURL
         }
         
-        // 4. Cerca in Resources/Atti del progetto
+        // 3. Cerca in Resources/Atti del progetto
         let projectPath = "/Users/mpernozzoli/Documents/Attività Peritali/App/PerX BKP16 - fulminazioni Recupero/PerX/Resources/Atti"
         let pdfPath = (projectPath as NSString).appendingPathComponent(fileName)
         if fileManager.fileExists(atPath: pdfPath) {
@@ -436,21 +317,6 @@ class AttoTemplateCloudService: ObservableObject {
             try data.write(to: metadataURL, options: .atomic)
         } catch {
             print("[AttoTemplateCloudService] Errore salvataggio cache metadata: \(error)")
-        }
-    }
-    
-    private func saveMetadataToiCloud() {
-        guard let iCloudDir = iCloudPDFDirectory else { return }
-        
-        let metadataPath = iCloudDir.appendingPathComponent(metadataFileName)
-        
-        do {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = .prettyPrinted
-            let data = try encoder.encode(availablePDFs)
-            try data.write(to: metadataPath, options: .atomic)
-        } catch {
-            print("[AttoTemplateCloudService] Errore salvataggio metadata iCloud: \(error)")
         }
     }
 }

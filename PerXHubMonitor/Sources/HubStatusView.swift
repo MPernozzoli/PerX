@@ -591,7 +591,6 @@ struct SettingsView: View {
     @Environment(\.dismiss) var dismiss
     
     @State private var hubURL: String = ""
-    @State private var mailWorkerURL: String = ""
     @State private var waBridgeURL: String = ""
     @State private var autoUpdaterURL: String = ""
     @State private var vaultPath: String = ""
@@ -610,13 +609,12 @@ struct SettingsView: View {
             
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Gli URL worker sotto vengono scritti anche in /Library/LaunchDaemons/com.perx.hub.plist (password admin) così il daemon Hub li usa davvero.")
+                    Text("Gli URL dei servizi vengono scritti anche in /Library/LaunchDaemons/com.perx.hub.plist (password admin) così il daemon Hub li usa davvero.")
                         .font(.caption2)
                         .foregroundColor(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     
                     URLField(label: "PerX Hub", placeholder: "http://localhost:8080", text: $hubURL)
-                    URLField(label: "Mail Worker", placeholder: "http://localhost:5001", text: $mailWorkerURL)
                     URLField(label: "WA Bridge", placeholder: "http://localhost:5002", text: $waBridgeURL)
                     URLField(label: "AutoUpdater", placeholder: "http://localhost:8084", text: $autoUpdaterURL)
                     
@@ -657,13 +655,11 @@ struct SettingsView: View {
                             isSavingSecrets = true
                             monitor.hubInstallBasePath = hubInstallBasePath
                             monitor.hubURL = hubURL
-                            monitor.mailWorkerURL = mailWorkerURL
                             monitor.waBridgeURL = waBridgeURL
                             monitor.autoUpdaterURL = autoUpdaterURL
                             monitor.vaultPath = vaultPath
                             Task {
-                                if let pe = await monitor.syncHubLaunchDaemonPlistEnvironment(
-                                    mailWorkerURL: mailWorkerURL,
+	                                if let pe = await monitor.syncHubLaunchDaemonPlistEnvironment(
                                     waBridgeURL: waBridgeURL,
                                     autoUpdaterURL: autoUpdaterURL,
                                     hubInstallBasePath: hubInstallBasePath
@@ -699,7 +695,6 @@ struct SettingsView: View {
                             Task {
                                 monitor.hubInstallBasePath = hubInstallBasePath
                                 monitor.hubURL = hubURL
-                                monitor.mailWorkerURL = mailWorkerURL
                                 monitor.waBridgeURL = waBridgeURL
                                 monitor.autoUpdaterURL = autoUpdaterURL
                                 monitor.vaultPath = vaultPath
@@ -710,7 +705,6 @@ struct SettingsView: View {
                                         storageToken: storageSharedSecret
                                     )
                                     if let pe = await monitor.syncHubLaunchDaemonPlistEnvironment(
-                                        mailWorkerURL: mailWorkerURL,
                                         waBridgeURL: waBridgeURL,
                                         autoUpdaterURL: autoUpdaterURL,
                                         hubInstallBasePath: hubInstallBasePath
@@ -745,18 +739,16 @@ struct SettingsView: View {
                 
                 Button("Salva") {
                     plistSyncError = nil
-                    monitor.hubURL = hubURL
-                    monitor.mailWorkerURL = mailWorkerURL
-                    monitor.waBridgeURL = waBridgeURL
+	                    monitor.hubURL = hubURL
+	                    monitor.waBridgeURL = waBridgeURL
                     monitor.autoUpdaterURL = autoUpdaterURL
                     monitor.vaultPath = vaultPath
                     monitor.hubInstallBasePath = hubInstallBasePath
                     Task {
-                        if let pe = await monitor.syncHubLaunchDaemonPlistEnvironment(
-                            mailWorkerURL: mailWorkerURL,
-                            waBridgeURL: waBridgeURL,
-                            autoUpdaterURL: autoUpdaterURL,
-                            hubInstallBasePath: hubInstallBasePath
+	                        if let pe = await monitor.syncHubLaunchDaemonPlistEnvironment(
+	                            waBridgeURL: waBridgeURL,
+	                            autoUpdaterURL: autoUpdaterURL,
+	                            hubInstallBasePath: hubInstallBasePath
                         ) {
                             plistSyncError = pe
                             return
@@ -772,7 +764,6 @@ struct SettingsView: View {
         .frame(width: 400, height: 560)
         .onAppear {
             hubURL = monitor.hubURL
-            mailWorkerURL = monitor.mailWorkerURL
             waBridgeURL = monitor.waBridgeURL
             autoUpdaterURL = monitor.autoUpdaterURL
             vaultPath = monitor.vaultPath

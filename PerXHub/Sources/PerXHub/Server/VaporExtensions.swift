@@ -23,7 +23,6 @@ extension HubStatsResponse.EmailStats: @retroactive Content {}
 extension HubStatsResponse.AttachmentStats: @retroactive Content {}
 extension HubStatsResponse.WhatsAppStats: @retroactive Content {}
 extension HubStatsResponse.SyncStats: @retroactive Content {}
-extension HubStatsResponse.ChromeExtStats: @retroactive Content {}
 extension TaskDTO: @retroactive Content {}
 extension EmailDTO: @retroactive Content {}
 extension PerXCore.EmailDetailDTO: @retroactive Content {}

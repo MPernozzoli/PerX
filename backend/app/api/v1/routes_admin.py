@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import get_current_platform_admin
 from app.models.tenant import Tenant, TenantPortalDomain
@@ -24,7 +25,13 @@ async def list_tenants(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_platform_admin)
 ):
-    result = await db.execute(select(Tenant).order_by(Tenant.name.asc()))
+    query = select(Tenant).order_by(Tenant.name.asc())
+    if settings.SINGLE_TENANT_MODE:
+        query = query.where(
+            (Tenant.id == settings.SINGLE_TENANT_ID) |
+            (Tenant.slug == settings.SINGLE_TENANT_SLUG)
+        )
+    result = await db.execute(query)
     return [TenantResponse.model_validate(item) for item in result.scalars().all()]
 
 
@@ -47,6 +54,9 @@ async def create_tenant(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_platform_admin),
 ):
+    if settings.SINGLE_TENANT_MODE:
+        raise HTTPException(status_code=403, detail="Single-tenant mode is enabled")
+
     slug = _normalize_slug(payload.slug)
     if not slug:
         raise HTTPException(status_code=400, detail="Tenant slug non valido")
@@ -75,6 +85,8 @@ async def update_tenant(
     tenant = result.scalar_one_or_none()
     if tenant is None:
         raise HTTPException(status_code=404, detail="Tenant not found")
+    if settings.SINGLE_TENANT_MODE and tenant.slug != settings.SINGLE_TENANT_SLUG:
+        raise HTTPException(status_code=403, detail="Single-tenant mode is enabled")
 
     slug = _normalize_slug(payload.slug)
     if not slug:

@@ -3,12 +3,14 @@ Claim service - business logic for claims
 """
 from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import delete, select, func, update
 from datetime import datetime
 
 from app.models.claim import Claim
 from app.models.claim_assignment import ClaimAssignment
 from app.models.claim_event import ClaimEvent
+from app.core.database import Base
+import app.models  # noqa: F401 - ensure all model tables are registered in Base.metadata
 from app.schemas.claim import ClaimCreate, ClaimUpdate
 
 
@@ -165,6 +167,38 @@ class ClaimService:
         )
         
         return claim
+
+    @staticmethod
+    async def delete_claim(
+        db: AsyncSession,
+        tenant_id: str,
+        claim_id: str,
+        user_id: str
+    ) -> bool:
+        """Delete a claim and tenant-scoped claim-owned rows."""
+        claim = await ClaimService.get_claim(db, tenant_id, claim_id)
+        if not claim:
+            return False
+
+        resolved_claim_id = claim.id
+        for table in reversed(Base.metadata.sorted_tables):
+            if table.name == Claim.__tablename__ or "claim_id" not in table.c:
+                continue
+
+            claim_col = table.c.claim_id
+            tenant_col = table.c.get("tenant_id")
+            condition = claim_col == resolved_claim_id
+            if tenant_col is not None:
+                condition = condition & (tenant_col == tenant_id)
+
+            if claim_col.nullable:
+                await db.execute(update(table).where(condition).values(claim_id=None))
+            else:
+                await db.execute(delete(table).where(condition))
+
+        await db.delete(claim)
+        await db.commit()
+        return True
     
     @staticmethod
     async def _create_event(

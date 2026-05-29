@@ -5,7 +5,6 @@ import MapLegend from '@/components/MapLegend';
 import CommunePopup from '@/components/CommunePopup';
 import { Button } from '@/components/ui/button';
 import { Settings, LogOut } from 'lucide-react';
-import { ChromeExtensionButton, ChromeExtensionBanner } from '@/components/ChromeExtensionBanner';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAnonymousAuth } from '@/hooks/useAnonymousAuth';
 import { toast } from 'sonner';
@@ -208,9 +207,6 @@ const Index = () => {
             <SearchBar onSelect={handleSearch} mapBounds={mapBounds} initialValue={initialSearch} />
           </div>
           <div className="flex items-center gap-2">
-            {/* Pulsante estensione Chrome */}
-            <ChromeExtensionButton />
-            
             {isAdmin && (
               <Button
                 variant="outline"
@@ -234,11 +230,6 @@ const Index = () => {
           </div>
         </div>
       </header>
-
-      {/* Banner estensione Chrome */}
-      <div className="absolute bottom-4 right-4 z-10 max-w-sm">
-        <ChromeExtensionBanner />
-      </div>
 
       {/* Legend */}
       <div className="absolute bottom-4 left-4 z-10">

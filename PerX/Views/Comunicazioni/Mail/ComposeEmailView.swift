@@ -43,7 +43,6 @@ struct ComposeEmailView: View {
     @State private var smartScheduleSuggestedDate = Date()
     @StateObject private var smartScheduleService = SmartScheduleService.shared
     
-    private let gmailService = GmailService.shared
     private let signatureService = EmailSignatureService.shared
     private let aiService = AppleIntelligenceService.shared
     private let authService = GoogleAuthService.shared
@@ -659,27 +658,11 @@ struct ComposeEmailView: View {
                 // Cattura il mode per evitare problemi di accesso
                 let currentMode = mode
                 
-                // Ottieni riferimenti thread per risposte (usa ancora GmailService per lettura)
+                // Le risposte passano dal backend Resend; niente letture dirette Gmail.
                 if case .reply(let email) = currentMode {
-                    if let threadId = try? await gmailService.getThreadId(for: email.id) {
-                        replyToThreadId = threadId
-                    }
-                    if let originalDetail = try? await gmailService.fetchEmailDetails(messageId: email.id) {
-                        if let messageIdHeader = originalDetail.payload.headers.first(where: { $0.name.lowercased() == "message-id" }) {
-                            inReplyTo = messageIdHeader.value
-                            references = messageIdHeader.value
-                        }
-                    }
+                    replyToThreadId = email.id
                 } else if case .replyAll(let email) = currentMode {
-                    if let threadId = try? await gmailService.getThreadId(for: email.id) {
-                        replyToThreadId = threadId
-                    }
-                    if let originalDetail = try? await gmailService.fetchEmailDetails(messageId: email.id) {
-                        if let messageIdHeader = originalDetail.payload.headers.first(where: { $0.name.lowercased() == "message-id" }) {
-                            inReplyTo = messageIdHeader.value
-                            references = messageIdHeader.value
-                        }
-                    }
+                    replyToThreadId = email.id
                 }
                 
                 // Aggiungi la firma se non è già presente
@@ -741,7 +724,7 @@ struct ComposeEmailView: View {
                 // Ottieni accountId (email utente)
                 let accountId = authService.userEmail ?? ""
                 
-                // Invia via HUB -> Mail Worker
+                // Invia tramite il flusso backend/Resend.
                 let response = try await ScheduledEmailService.shared.sendEmail(
                     accountId: accountId,
                     to: recipients.map { $0.email },

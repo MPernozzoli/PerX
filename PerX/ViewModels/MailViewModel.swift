@@ -50,8 +50,6 @@ class MailViewModel: ObservableObject {
     
     private let authService = GoogleAuthService.shared
     private let customizationService = MailboxCustomizationService.shared
-    private let mailManager = MailManager.shared
-    private let gmailService = GmailService.shared
     private let aiService = AppleIntelligenceService.shared
     
     // Hub integration
@@ -130,49 +128,8 @@ class MailViewModel: ObservableObject {
     }
 
     func fetchLabels() async {
-        guard let accessToken = try? await authService.getAccessToken() else {
-            errorMessage = "Token di accesso non valido."
-            return
-        }
-        
-        let url = URL(string: "https://www.googleapis.com/gmail/v1/users/me/labels")!
-        var request = URLRequest(url: url)
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-
-        let maxRetries = 5
-        var currentRetry = 0
-        var delay: TimeInterval = 1.0
-
-        while currentRetry < maxRetries {
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-                    let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
-                    if statusCode >= 500 && currentRetry < maxRetries - 1 {
-                        print("Errore server (\(statusCode)), ritento tra \(delay) secondi...")
-                        try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-                        delay *= 2 // Raddoppia il ritardo per il prossimo tentativo
-                        currentRetry += 1
-                        continue // Salta al prossimo tentativo
-                    }
-                 let body = String(data: data, encoding: .utf8)
-                throw GmailAPIError.badServerResponse(statusCode: statusCode, responseBody: body)
-            }
-                
-            let labelResponse = try JSONDecoder().decode(GmailLabelList.self, from: data)
-            self.labels = labelResponse.labels
-            
-            // Successo! Esci dal ciclo.
-            ensureCustomizationsExist()
-            return // Esci dalla funzione
-            
-        } catch {
-                if currentRetry >= maxRetries - 1 {
-            errorMessage = "Errore durante il recupero delle etichette: \(error.localizedDescription)"
-                    return
-                }
-            }
-        }
+        labels = []
+        ensureCustomizationsExist()
     }
 
     /// Avvia il monitoring persistente delle email
@@ -876,18 +833,9 @@ class MailViewModel: ObservableObject {
             }
         }
         
-        // Avvia il processo di automazione se è abilitato
+        // Le automazioni email locali sono disabilitate: il backend processa gli eventi Resend.
         if AutomationSettingsService.shared.isAutomationEnabled {
-            let allEmails = emailRepository.getAllEmails()
-            let context = PersistenceController.shared.container.viewContext
-            let defaultStatus = AutomationSettingsService.shared.defaultStatus
-            
-            print("[ViewModel] Avvio automazione per \(allEmails.count) email totali")
-            
-            Task {
-                // Usa il nuovo MailManager centralizzato
-                await mailManager.processEmails(allEmails, context: context)
-            }
+            print("[ViewModel] Automazioni email locali disabilitate: backend Resend attivo")
         }
     }
 
@@ -1146,114 +1094,11 @@ class MailViewModel: ObservableObject {
     }
 
     private func fetchEmailList(for labelId: String? = nil, accessToken: String, query: String? = nil) async throws -> [GmailMessageInfo] {
-        var allMessages: [GmailMessageInfo] = []
-        var nextPageToken: String?
-
-        var urlComponents = URLComponents(string: "https://www.googleapis.com/gmail/v1/users/me/messages")!
-        
-        repeat {
-            urlComponents.queryItems = []
-            
-            // Aggiungi labelId solo se specificato
-            if let labelId = labelId {
-                urlComponents.queryItems?.append(URLQueryItem(name: "labelIds", value: labelId))
-            }
-            
-            if let q = query {
-                urlComponents.queryItems?.append(URLQueryItem(name: "q", value: q))
-            }
-            if let token = nextPageToken {
-                urlComponents.queryItems?.append(URLQueryItem(name: "pageToken", value: token))
-            }
-
-            guard let url = urlComponents.url else { throw URLError(.badURL) }
-            var request = URLRequest(url: url)
-            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-                let body = String(data: data, encoding: .utf8)
-                throw GmailAPIError.badServerResponse(statusCode: (response as? HTTPURLResponse)?.statusCode ?? -1, responseBody: body)
-            }
-
-            let result = try JSONDecoder().decode(GmailMessageList.self, from: data)
-            if let messages = result.messages {
-                // Convert GmailMessage to GmailMessageInfo
-                let messageInfos = messages.compactMap { GmailMessageInfo(id: $0.id, threadId: "") }
-                allMessages.append(contentsOf: messageInfos)
-            }
-            nextPageToken = result.nextPageToken
-
-        } while nextPageToken != nil
-
-        return allMessages
+        throw URLError(.unsupportedURL)
     }
 
     private func fetchEmailDetails(messageId: String, accessToken: String, metadataOnly: Bool = false) async throws -> Email {
-        let format = metadataOnly ? "metadata" : "full"
-        let url = URL(string: "https://www.googleapis.com/gmail/v1/users/me/messages/\(messageId)?format=\(format)")!
-        var request = URLRequest(url: url)
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            let body = String(data: data, encoding: .utf8)
-            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
-            throw GmailAPIError.badServerResponse(statusCode: statusCode, responseBody: body)
-        }
-
-        let detail = try JSONDecoder().decode(GmailMessageDetail.self, from: data)
-        
-        let headers = detail.payload.headers
-        
-        let senderString = headers.first { $0.name == "From" }?.value ?? "Sconosciuto"
-        let sender = EmailAddressParser.parse(addressString: senderString)
-        
-        let recipientString = headers.first { $0.name == "To" }?.value ?? ""
-        let recipients = EmailAddressParser.parse(addressesString: recipientString)
-        
-        let ccString = headers.first { $0.name == "Cc" }?.value ?? ""
-        let cc = ccString.isEmpty ? nil : EmailAddressParser.parse(addressesString: ccString)
-        
-        let subject = headers.first { $0.name == "Subject" }?.value ?? "Nessun Oggetto"
-        
-        let date: Date
-        if let dateString = headers.first(where: { $0.name == "Date" })?.value,
-           let parsedDate = EmailDateParser.date(from: dateString) {
-            date = parsedDate
-        } else if let internalDate = EmailDateParser.date(fromInternalDate: detail.internalDate) {
-            date = internalDate
-        } else {
-            date = Date()
-        }
-        
-        var body: String? = nil
-        var attachments: [EmailAttachment] = []
-
-        if !metadataOnly {
-            let parsedResult = parse(payload: detail.payload)
-            body = parsedResult.body
-            attachments = parsedResult.attachments
-        }
-
-        let isRead = !detail.labelIds.contains("UNREAD")
-        let isDownloaded = !metadataOnly && body != nil
-        
-        let email = Email(
-            id: detail.id, 
-            isRead: isRead, 
-            isDownloaded: isDownloaded, 
-            sender: sender, 
-            recipients: recipients,
-            cc: cc,
-            subject: subject, 
-            date: date, 
-            body: body, 
-            attachments: attachments,
-            claimNumber: extractRiferimentoSinistro(from: subject, body: body) ?? "",
-            insuredName: extractNomeAssicurato(from: subject)
-        )
-        return email
+        throw URLError(.unsupportedURL)
     }
     
     // MARK: - Nuova gestione download
@@ -1358,30 +1203,15 @@ class MailViewModel: ObservableObject {
     
     // MARK: - Funzioni di Fetch (da aggiornare)
     
-    // fetchLabels, fetchAllEmails etc. andrebbero modificate per usare il GmailService
-    // Per ora ci concentriamo sulla logica di download
+    // I percorsi Gmail legacy restano non usati nella V1 Resend-only.
 
     // --- Funzione per caricare il corpo di una specifica email ---
     func fetchFullEmail(for emailId: String) async {
-        // 1. Controlla se è già scaricata
         if isEmailDownloaded(emailId) { 
             print("[ViewModel] Email \(emailId) già scaricata")
             return 
         }
-        
-        // 2. Usa MailManager per scaricare e processare l'email
-        // forceDownload=true perché l'utente vuole visualizzare l'email
-        let context = PersistenceController.shared.container.viewContext
-        do {
-            if let email = try await mailManager.fetchFullEmail(emailId: emailId, context: context, forceDownload: true) {
-                // 3. Aggiorna le caselle visualizzabili
-                await MainActor.run {
-                    updateDisplayableMailboxes()
-                }
-            }
-        } catch {
-            print("[MailViewModel] ⚠️ Errore download email \(emailId): \(error)")
-        }
+        print("[MailViewModel] Download Gmail diretto disabilitato per email \(emailId); usare sync Hub/Resend")
     }
     
     private func updateEmailInLists(with email: Email) {
@@ -1450,32 +1280,7 @@ class MailViewModel: ObservableObject {
     // MARK: - Attachment Handling
     
     func downloadAndOpen(attachment: EmailAttachment, messageId: String) async throws {
-        guard let accessToken = try? await authService.getAccessToken() else {
-            throw URLError(.userAuthenticationRequired)
-        }
-
-        let url = URL(string: "https://www.googleapis.com/gmail/v1/users/me/messages/\(messageId)/attachments/\(attachment.attachmentId)")!
-        var request = URLRequest(url: url)
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard (response as? HTTPURLResponse)?.statusCode == 200 else {
-            throw URLError(.badServerResponse)
-        }
-        
-        let attachmentData = try JSONDecoder().decode(MessageAttachmentData.self, from: data)
-        let fileData = Data(base64Encoded: attachmentData.data.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/"))
-        
-        guard let fileData = fileData else {
-            throw URLError(.cannotDecodeContentData)
-        }
-        
-        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(attachment.filename)
-        try fileData.write(to: tempURL)
-        
-        DispatchQueue.main.async {
-            NSWorkspace.shared.open(tempURL)
-        }
+        throw URLError(.unsupportedURL)
     }
     
     // MARK: - Email Actions
@@ -1540,36 +1345,7 @@ class MailViewModel: ObservableObject {
     }
 
     private func modifyEmailLabels(messageId: String, labelsToAdd: [String] = [], labelsToRemove: [String] = []) async {
-        guard let accessToken = try? await authService.getAccessToken() else { return }
-
-        let url = URL(string: "https://www.googleapis.com/gmail/v1/users/me/messages/\(messageId)/modify")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let body: [String: Any] = [
-            "addLabelIds": labelsToAdd,
-            "removeLabelIds": labelsToRemove
-        ]
-
-        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
-
-        do {
-            let (_, response) = try await URLSession.shared.data(for: request)
-            guard (response as? HTTPURLResponse)?.statusCode == 200 else {
-                print("Errore nella modifica delle etichette per il messaggio \(messageId)")
-                return
-            }
-            
-            // Aggiorna la UI
-            await MainActor.run {
-                self.updateDisplayableMailboxes()
-            }
-            
-        } catch {
-            print("Errore nella modifica delle etichette: \(error.localizedDescription)")
-        }
+        print("[MailViewModel] Modifica etichette Gmail disabilitata per \(messageId): backend Resend-only")
     }
 
     /// Si assicura che esista una personalizzazione per ogni etichetta scaricata.
@@ -1973,21 +1749,16 @@ class MailViewModel: ObservableObject {
     
     /// Avvia il sistema di download automatico
     func startAutomaticDownload() {
-        Task {
-            await mailManager.startMonitoring()
-        }
+        print("[ViewModel] Download automatico locale disabilitato: email gestite dal backend Resend")
     }
     
     /// Ottieni statistiche del mail manager
     func getDownloadStats() async -> (requested: Int, completed: Int, failed: Int, rate: Double) {
-        let stats = await MainActor.run {
-            mailManager.classificationStats
-        }
         return (
-            requested: stats.totalProcessed,
-            completed: stats.totalProcessed,
+            requested: 0,
+            completed: 0,
             failed: 0,
-            rate: 1.0
+            rate: 0
         )
     }
     
@@ -2422,4 +2193,3 @@ class MailViewModel: ObservableObject {
     
     // MARK: - Metodi esistenti ottimizzati
 }
-

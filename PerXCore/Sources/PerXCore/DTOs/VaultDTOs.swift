@@ -364,7 +364,6 @@ public struct HubStatsResponse: Codable, Sendable {
     public let attachments: AttachmentStats
     public let whatsapp: WhatsAppStats?
     public let sync: SyncStats?
-    public let chromeExt: ChromeExtStats?
     public let sinistri: Int
     public let uptime: TimeInterval
     public let connectedUsers: Int
@@ -375,7 +374,6 @@ public struct HubStatsResponse: Codable, Sendable {
         attachments: AttachmentStats,
         whatsapp: WhatsAppStats? = nil,
         sync: SyncStats? = nil,
-        chromeExt: ChromeExtStats? = nil,
         sinistri: Int,
         uptime: TimeInterval,
         connectedUsers: Int = 0
@@ -385,7 +383,6 @@ public struct HubStatsResponse: Codable, Sendable {
         self.attachments = attachments
         self.whatsapp = whatsapp
         self.sync = sync
-        self.chromeExt = chromeExt
         self.sinistri = sinistri
         self.uptime = uptime
         self.connectedUsers = connectedUsers
@@ -447,13 +444,4 @@ public struct HubStatsResponse: Codable, Sendable {
         }
     }
     
-    public struct ChromeExtStats: Codable, Sendable {
-        public let todayDiarioEntries: Int
-        public let todayJFishSyncs: Int
-        
-        public init(todayDiarioEntries: Int, todayJFishSyncs: Int) {
-            self.todayDiarioEntries = todayDiarioEntries
-            self.todayJFishSyncs = todayJFishSyncs
-        }
-    }
 }

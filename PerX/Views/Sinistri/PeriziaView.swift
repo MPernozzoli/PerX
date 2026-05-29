@@ -200,6 +200,10 @@ struct QuadroContrattualeView: View {
     @StateObject private var mediaViewerManager = MediaViewerWindowManager.shared
     
     private let fileService = FileService.shared
+    @State private var showingBignamiPopover = false
+    @State private var bignamiSummary: BignamiSummary?
+    @State private var isLoadingBignami = false
+    @State private var bignamiError: String?
     
     var body: some View {
         ScrollView {
@@ -266,6 +270,16 @@ struct QuadroContrattualeView: View {
                         Label("Apri Bignami", systemImage: "globe")
                     }
                     .buttonStyle(.bordered)
+                    .popover(isPresented: $showingBignamiPopover, arrowEdge: .bottom) {
+                        BignamiSummaryPopover(
+                            summary: bignamiSummary,
+                            isLoading: isLoadingBignami,
+                            errorMessage: bignamiError,
+                            onReload: {
+                                Task { await loadBignamiSummary(force: true) }
+                            }
+                        )
+                    }
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, (sinistro.tipoPolizza?.isEmpty == false || sinistro.numeroPolizza?.isEmpty == false) ? 0 : 10)
@@ -341,9 +355,170 @@ struct QuadroContrattualeView: View {
     }
     
     private func apriBignami() {
-        // Implementazione futura: aprire portale Bignami online
-        print("Apri Bignami - implementazione futura")
+        showingBignamiPopover = true
+        Task { await loadBignamiSummary(force: false) }
+    }
+
+    private func loadBignamiSummary(force: Bool) async {
+        if isLoadingBignami { return }
+        if bignamiSummary != nil, !force { return }
+
+        isLoadingBignami = true
+        bignamiError = nil
+
+        do {
+            bignamiSummary = try await BignamiService.shared.fetchSummary(for: sinistro)
+        } catch {
+            bignamiSummary = nil
+            bignamiError = error.localizedDescription
+        }
+
+        isLoadingBignami = false
     }
 }
 
+private struct BignamiSummaryPopover: View {
+    let summary: BignamiSummary?
+    let isLoading: Bool
+    let errorMessage: String?
+    let onReload: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "book.pages.fill")
+                    .foregroundColor(.blue)
+                Text("Bignami polizza")
+                    .font(.headline)
+                Spacer()
+                Button(action: onReload) {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.borderless)
+                .help("Aggiorna")
+            }
+
+            Divider()
+
+            if isLoading {
+                HStack(spacing: 10) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Caricamento riepilogo...")
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 16)
+            } else if let errorMessage {
+                Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundColor(.orange)
+                    .font(.callout)
+            } else if let summary, summary.matched {
+                summaryContent(summary)
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Nessun bignami trovato")
+                        .font(.subheadline.weight(.semibold))
+                    Text("Controlla compagnia, tipo polizza e garanzia del sinistro.")
+                        .font(.callout)
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .padding(14)
+        .frame(width: 460)
+    }
+
+    private func summaryContent(_ summary: BignamiSummary) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(summary.policyName ?? "Polizza")
+                        .font(.subheadline.weight(.semibold))
+                    Text(headerDetail(for: summary))
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                if let overview = summary.overviewText, !overview.isEmpty {
+                    Text(overview)
+                        .font(.callout)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if !summary.coverageItems.isEmpty {
+                    sectionTitle("Garanzie")
+                    ForEach(Array(summary.coverageItems.prefix(4).enumerated()), id: \.offset) { _, item in
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(item.guaranteeName)
+                                .font(.caption.weight(.semibold))
+                            if let maximum = item.maximumValue, !maximum.isEmpty {
+                                Text("Massimale: \(maximum)")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            if let deductible = item.deductibleValue, !deductible.isEmpty {
+                                Text("Franchigia/scoperto: \(deductible)")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                }
+
+                if !summary.commonExclusions.isEmpty {
+                    sectionTitle("Esclusioni comuni")
+                    bulletList(summary.commonExclusions.prefix(4).map { $0 })
+                }
+
+                if !summary.sections.isEmpty {
+                    sectionTitle("Partite")
+                    ForEach(Array(summary.sections.prefix(4).enumerated()), id: \.offset) { _, section in
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(section.title ?? section.party ?? "Partita")
+                                .font(.caption.weight(.semibold))
+                            if let definition = section.definition, !definition.isEmpty {
+                                Text(definition)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(3)
+                            }
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxHeight: 420)
+    }
+
+    private func sectionTitle(_ title: String) -> some View {
+        Text(title)
+            .font(.caption.weight(.semibold))
+            .foregroundColor(.secondary)
+            .textCase(.uppercase)
+    }
+
+    private func bulletList(_ values: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(Array(values.enumerated()), id: \.offset) { _, value in
+                HStack(alignment: .top, spacing: 6) {
+                    Text("-")
+                    Text(value)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .font(.caption)
+                .foregroundColor(.secondary)
+            }
+        }
+    }
+
+    private func headerDetail(for summary: BignamiSummary) -> String {
+        var parts: [String] = []
+        if let company = summary.companyName { parts.append(company) }
+        if let year = summary.year { parts.append(String(year)) }
+        if let guarantee = summary.guarantee { parts.append(guarantee) }
+        return parts.joined(separator: " · ")
+    }
+}
 

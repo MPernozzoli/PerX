@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # PerX Hub - Mac Mini Server Setup
-# Configura il Mac Mini come server h24 per PerX Hub e tutti i worker
+# Configura il Mac Mini come server h24 per PerX Hub e servizi locali
 #
 # REQUISITI:
 # - macOS 12+ (Monterey o successivo)
@@ -38,7 +38,7 @@ HUB_BASE="/opt/perx-hub"
 REPO_BASE="$(cd "$(dirname "$0")/.." && pwd)"
 
 echo -e "${YELLOW}[1/8] Creazione directory...${NC}"
-mkdir -p "$HUB_BASE"/{bin,logs,data,vault,workers/{email,wa-bridge,autoupdater},repo}
+mkdir -p "$HUB_BASE"/{bin,logs,data,vault,workers/{wa-bridge,autoupdater},repo}
 chmod -R 755 "$HUB_BASE"
 
 echo -e "${YELLOW}[2/8] Configurazione Power Management (anti-sleep)...${NC}"
@@ -72,20 +72,7 @@ else
     echo "  ⚠️  Build PerXHub non trovata. Esegui: cd PerXHub && swift build -c release"
 fi
 
-echo -e "${YELLOW}[5/8] Installazione Email Worker...${NC}"
-if [ -d "$REPO_BASE/perx_email_worker" ]; then
-    cp -r "$REPO_BASE/perx_email_worker/"* "$HUB_BASE/workers/email/"
-    
-    # Crea virtual environment
-    cd "$HUB_BASE/workers/email"
-    python3 -m venv venv
-    ./venv/bin/pip install --upgrade pip
-    ./venv/bin/pip install -r requirements.txt
-    
-    echo "  ✓ Email Worker installato"
-fi
-
-echo -e "${YELLOW}[6/8] Installazione WA Bridge...${NC}"
+echo -e "${YELLOW}[5/7] Installazione WA Bridge...${NC}"
 if [ -d "$REPO_BASE/perx_wa_bridge" ]; then
     cp -r "$REPO_BASE/perx_wa_bridge/"* "$HUB_BASE/workers/wa-bridge/"
     
@@ -96,7 +83,7 @@ if [ -d "$REPO_BASE/perx_wa_bridge" ]; then
     echo "  ✓ WA Bridge installato"
 fi
 
-echo -e "${YELLOW}[7/8] Installazione AutoUpdater...${NC}"
+echo -e "${YELLOW}[6/7] Installazione AutoUpdater...${NC}"
 if [ -d "$REPO_BASE/perx_autoupdater" ]; then
     cp -r "$REPO_BASE/perx_autoupdater/"* "$HUB_BASE/workers/autoupdater/"
     
@@ -109,7 +96,7 @@ if [ -d "$REPO_BASE/perx_autoupdater" ]; then
     echo "  ✓ AutoUpdater installato"
 fi
 
-echo -e "${YELLOW}[8/8] Installazione Launch Daemons...${NC}"
+echo -e "${YELLOW}[7/7] Installazione Launch Daemons...${NC}"
 
 # Copia plist come LaunchDaemons (non LaunchAgents!)
 # LaunchDaemons girano come root al boot, senza bisogno di login utente
@@ -120,11 +107,6 @@ DAEMONS_DIR="/Library/LaunchDaemons"
 cp "$REPO_BASE/PerXHub/Resources/com.perx.hub.plist" "$DAEMONS_DIR/"
 chown root:wheel "$DAEMONS_DIR/com.perx.hub.plist"
 chmod 644 "$DAEMONS_DIR/com.perx.hub.plist"
-
-# Email Worker
-cp "$REPO_BASE/perx_email_worker/com.perx.email-worker.plist" "$DAEMONS_DIR/"
-chown root:wheel "$DAEMONS_DIR/com.perx.email-worker.plist"
-chmod 644 "$DAEMONS_DIR/com.perx.email-worker.plist"
 
 # WA Bridge
 cp "$REPO_BASE/perx_wa_bridge/com.perx.wa-bridge.plist" "$DAEMONS_DIR/"
@@ -142,7 +124,7 @@ echo "  ✓ Launch Daemons installati in $DAEMONS_DIR"
 echo ""
 echo -e "${YELLOW}Caricamento servizi...${NC}"
 
-for plist in com.perx.hub com.perx.email-worker com.perx.wa-bridge com.perx.autoupdater; do
+for plist in com.perx.hub com.perx.wa-bridge com.perx.autoupdater; do
     # Scarica se già caricato
     launchctl bootout system/$plist 2>/dev/null || true
     
@@ -164,7 +146,6 @@ echo -e "${GREEN}╚════════════════════
 echo ""
 echo "Servizi installati:"
 echo "  • PerX Hub        → http://localhost:8080"
-echo "  • Email Worker    → http://localhost:5001"
 echo "  • WA Bridge       → http://localhost:5002"
 echo "  • AutoUpdater     → http://localhost:8084"
 echo ""
@@ -177,7 +158,6 @@ echo ""
 echo "Comandi utili:"
 echo "  • Stato servizi:    sudo launchctl list | grep perx"
 echo "  • Log Hub:          tail -f $HUB_BASE/logs/hub.log"
-echo "  • Log Email Worker: tail -f $HUB_BASE/logs/email-worker.log"
 echo "  • Riavvia Hub:      sudo launchctl kickstart -k system/com.perx.hub"
 echo ""
 echo -e "${YELLOW}IMPORTANTE:${NC}"

@@ -360,6 +360,29 @@ async def _resolve_target_tenant(
     return tenant
 
 
+async def _resolve_readable_tenant(
+    db: AsyncSession,
+    current_user: User,
+    tenant_id: str | None,
+) -> Tenant:
+    target_tenant_id = current_user.tenant_id
+
+    if tenant_id:
+        if current_user.is_platform_admin:
+            target_tenant_id = tenant_id
+        elif tenant_id != current_user.tenant_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Tenant access denied"
+            )
+
+    result = await db.execute(select(Tenant).where(Tenant.id == target_tenant_id))
+    tenant = result.scalar_one_or_none()
+    if tenant is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+    return tenant
+
+
 @router.get("/me/settings", response_model=TenantSettingsResponse)
 async def get_my_tenant_settings(
     tenant_id: str | None = Query(None),
@@ -378,7 +401,7 @@ async def get_my_tenant_ai_keys(
     current_user: User = Depends(get_current_active_user)
 ):
     """Returns AI API keys for the authenticated user's tenant. All tenant members can read."""
-    tenant = await _resolve_target_tenant(db, current_user, tenant_id)
+    tenant = await _resolve_readable_tenant(db, current_user, tenant_id)
     settings = tenant.settings_json or {}
     ai = settings.get("ai_settings", _default_ai_settings())
     if not isinstance(ai, dict):

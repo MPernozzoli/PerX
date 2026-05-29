@@ -20,7 +20,6 @@ class HubMonitor: ObservableObject {
     @Published var jobStats: JobStats?
     @Published var whatsappStats: WhatsAppStats?
     @Published var syncStats: SyncStats?
-    @Published var chromeExtStats: ChromeExtStats?
     @Published var sinistriCount: Int = 0
     
     // Multi-service monitoring
@@ -35,11 +34,6 @@ class HubMonitor: ObservableObject {
     var hubURL: String {
         get { UserDefaults.standard.string(forKey: "hubURL") ?? "http://localhost:8080" }
         set { UserDefaults.standard.set(newValue, forKey: "hubURL") }
-    }
-    
-    var mailWorkerURL: String {
-        get { UserDefaults.standard.string(forKey: "mailWorkerURL") ?? "http://localhost:5001" }
-        set { UserDefaults.standard.set(newValue, forKey: "mailWorkerURL") }
     }
     
     var waBridgeURL: String {
@@ -210,14 +204,6 @@ class HubMonitor: ObservableObject {
                         )
                     }
                     
-                    // Chrome Extension stats
-                    if let chrome = stats.chromeExt {
-                        chromeExtStats = ChromeExtStats(
-                            todayDiarioEntries: chrome.todayDiarioEntries,
-                            todayJFishSyncs: chrome.todayJFishSyncs
-                        )
-                    }
-                    
                     // Sinistri count
                     sinistriCount = stats.sinistri
                 }
@@ -243,17 +229,6 @@ class HubMonitor: ObservableObject {
             restartMethod: .launchctl("com.perx.hub")
         )
         newServices.append(hubStatus)
-        
-        // Mail Worker
-        if !mailWorkerURL.isEmpty {
-            let mailStatus = await checkServiceHealth(
-                id: "mail",
-                name: "Mail Worker",
-                url: mailWorkerURL,
-                restartMethod: .launchctl("com.perx.email-worker")
-            )
-            newServices.append(mailStatus)
-        }
         
         // WA Bridge
         if !waBridgeURL.isEmpty {
@@ -328,7 +303,6 @@ class HubMonitor: ObservableObject {
     func hasUpdate(for serviceId: String) -> Bool {
         let componentMap = [
             "hub": "perx_hub",
-            "mail": "perx_email_worker",
             "wa": "perx_wa_bridge",
             "updater": "perx_autoupdater"
         ]
@@ -341,7 +315,6 @@ class HubMonitor: ObservableObject {
     func componentName(for serviceId: String) -> String? {
         let componentMap = [
             "hub": "perx_hub",
-            "mail": "perx_email_worker",
             "wa": "perx_wa_bridge",
             "updater": "perx_autoupdater"
         ]
@@ -406,13 +379,11 @@ class HubMonitor: ObservableObject {
     /// (altrimenti l’Hub continua a leggere il plist vecchio). Rimuove chiavi obsolete tipo `PERX_SYNC_AGENT_URL`.
     @MainActor
     func syncHubLaunchDaemonPlistEnvironment(
-        mailWorkerURL: String,
         waBridgeURL: String,
         autoUpdaterURL: String,
         hubInstallBasePath: String
     ) async -> String? {
         let scriptBody = Self.bashScriptHubPlistSync(
-            mailWorkerURL: mailWorkerURL,
             waBridgeURL: waBridgeURL,
             autoUpdaterURL: autoUpdaterURL,
             hubInstallBasePath: hubInstallBasePath
@@ -450,12 +421,10 @@ class HubMonitor: ObservableObject {
     }
    
     private static func bashScriptHubPlistSync(
-        mailWorkerURL: String,
         waBridgeURL: String,
         autoUpdaterURL: String,
         hubInstallBasePath: String
     ) -> String {
-        let m = bashSingleQuoted(mailWorkerURL.trimmingCharacters(in: .whitespacesAndNewlines))
         let w = bashSingleQuoted(waBridgeURL.trimmingCharacters(in: .whitespacesAndNewlines))
         let a = bashSingleQuoted(autoUpdaterURL.trimmingCharacters(in: .whitespacesAndNewlines))
         let h = bashSingleQuoted(hubInstallBasePath.trimmingCharacters(in: .whitespacesAndNewlines))
@@ -473,10 +442,10 @@ class HubMonitor: ObservableObject {
           local k="$1"
           /usr/libexec/PlistBuddy -c "Delete :EnvironmentVariables:$k" "$PLIST" 2>/dev/null || true
         }
-        pb_set PERX_EMAIL_WORKER_URL \#(m)
         pb_set PERX_WA_BRIDGE_URL \#(w)
         pb_set PERX_AUTO_UPDATER_URL \#(a)
         pb_set PERX_HUB_PATH \#(h)
+        pb_del PERX_EMAIL_WORKER_URL
         pb_del PERX_SYNC_AGENT_URL
         exit 0
         """#
@@ -621,11 +590,6 @@ struct SyncStats: Codable {
     let lastSyncAt: Date?
 }
 
-struct ChromeExtStats: Codable {
-    let todayDiarioEntries: Int
-    let todayJFishSyncs: Int
-}
-
 enum MonitorError: Error {
     case invalidResponse
     case notReachable
@@ -638,7 +602,6 @@ struct HubStats: Codable {
     let attachments: AttachmentStatsResponse
     let whatsapp: WhatsAppStatsResponse?
     let sync: SyncStatsResponse?
-    let chromeExt: ChromeExtStatsResponse?
     let sinistri: Int
     let uptime: TimeInterval
     let connectedUsers: Int?
@@ -671,10 +634,6 @@ struct HubStats: Codable {
         let lastSyncAt: Date?
     }
     
-    struct ChromeExtStatsResponse: Codable {
-        let todayDiarioEntries: Int
-        let todayJFishSyncs: Int
-    }
 }
 
 // MARK: - Multi-Service Models

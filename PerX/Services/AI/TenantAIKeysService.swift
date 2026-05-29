@@ -9,6 +9,79 @@ private struct TenantAIKeysDTO: Decodable {
     let anthropic_model: String
 }
 
+struct TenantAIKeysSnapshot {
+    let openAIKey: String
+    let openAIModel: String
+    let anthropicKey: String
+    let anthropicModel: String
+
+    var hasOpenAIKey: Bool { !openAIKey.isEmpty }
+    var hasAnthropicKey: Bool { !anthropicKey.isEmpty }
+}
+
+enum TenantAIKeysCache {
+    private static let keychainService = "com.perx.ai.keys"
+    private static let openAIKeyAccount = "openai_api_key"
+    private static let anthropicKeyAccount = "anthropic_api_key"
+    private static let openAIModelDefaultsKey = "tenant_ai_openai_model"
+    private static let anthropicModelDefaultsKey = "tenant_ai_anthropic_model"
+
+    static func snapshot() -> TenantAIKeysSnapshot {
+        TenantAIKeysSnapshot(
+            openAIKey: load(account: openAIKeyAccount) ?? "",
+            openAIModel: model(forKey: openAIModelDefaultsKey, fallback: "gpt-4o"),
+            anthropicKey: load(account: anthropicKeyAccount) ?? "",
+            anthropicModel: model(forKey: anthropicModelDefaultsKey, fallback: "claude-opus-4-7")
+        )
+    }
+
+    static func save(snapshot: TenantAIKeysSnapshot) {
+        save(key: snapshot.openAIKey, account: openAIKeyAccount)
+        save(key: snapshot.anthropicKey, account: anthropicKeyAccount)
+        UserDefaults.standard.set(snapshot.openAIModel, forKey: openAIModelDefaultsKey)
+        UserDefaults.standard.set(snapshot.anthropicModel, forKey: anthropicModelDefaultsKey)
+    }
+
+    private static func model(forKey key: String, fallback: String) -> String {
+        let model = UserDefaults.standard.string(forKey: key)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return model.isEmpty ? fallback : model
+    }
+
+    private static func save(key: String, account: String) {
+        let data = key.data(using: .utf8) ?? Data()
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: account,
+        ]
+        let attributes: [String: Any] = [kSecValueData as String: data]
+        let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        if status == errSecItemNotFound {
+            var addQuery = query
+            addQuery[kSecValueData as String] = data
+            SecItemAdd(addQuery as CFDictionary, nil)
+        }
+    }
+
+    private static func load(account: String) -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        guard status == errSecSuccess,
+              let data = result as? Data,
+              let string = String(data: data, encoding: .utf8),
+              !string.isEmpty else { return nil }
+        return string
+    }
+}
+
 /// Chiavi AI per il tenant corrente, caricate dal backend e cachate nel Keychain
 @MainActor
 final class TenantAIKeysService {
@@ -18,10 +91,6 @@ final class TenantAIKeysService {
     private(set) var openAIModel: String = "gpt-4o"
     private(set) var anthropicKey: String = ""
     private(set) var anthropicModel: String = "claude-opus-4-7"
-
-    private let keychainService = "com.perx.ai.keys"
-    private let openAIKeyAccount = "openai_api_key"
-    private let anthropicKeyAccount = "anthropic_api_key"
 
     private var fetchTask: Task<Void, Never>?
     private var lastFetchTime: Date?
@@ -64,7 +133,7 @@ final class TenantAIKeysService {
             openAIModel = dto.openai_model.isEmpty ? "gpt-4o" : dto.openai_model
             anthropicKey = dto.anthropic_api_key
             anthropicModel = dto.anthropic_model.isEmpty ? "claude-opus-4-7" : dto.anthropic_model
-            saveToKeychain()
+            saveToCache()
             lastFetchTime = Date()
             print("[TenantAIKeysService] ✅ Chiavi AI caricate: openai=\(!openAIKey.isEmpty), anthropic=\(!anthropicKey.isEmpty)")
         } catch {
@@ -74,46 +143,20 @@ final class TenantAIKeysService {
 
     // MARK: - Keychain
 
-    private func saveToKeychain() {
-        save(key: openAIKey, account: openAIKeyAccount)
-        save(key: anthropicKey, account: anthropicKeyAccount)
+    private func saveToCache() {
+        TenantAIKeysCache.save(snapshot: TenantAIKeysSnapshot(
+            openAIKey: openAIKey,
+            openAIModel: openAIModel,
+            anthropicKey: anthropicKey,
+            anthropicModel: anthropicModel
+        ))
     }
 
     private func loadFromKeychain() {
-        openAIKey = load(account: openAIKeyAccount) ?? ""
-        anthropicKey = load(account: anthropicKeyAccount) ?? ""
-    }
-
-    private func save(key: String, account: String) {
-        let data = key.data(using: .utf8) ?? Data()
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: account,
-        ]
-        let attributes: [String: Any] = [kSecValueData as String: data]
-        let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
-        if status == errSecItemNotFound {
-            var addQuery = query
-            addQuery[kSecValueData as String] = data
-            SecItemAdd(addQuery as CFDictionary, nil)
-        }
-    }
-
-    private func load(account: String) -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        guard status == errSecSuccess,
-              let data = result as? Data,
-              let string = String(data: data, encoding: .utf8),
-              !string.isEmpty else { return nil }
-        return string
+        let snapshot = TenantAIKeysCache.snapshot()
+        openAIKey = snapshot.openAIKey
+        openAIModel = snapshot.openAIModel
+        anthropicKey = snapshot.anthropicKey
+        anthropicModel = snapshot.anthropicModel
     }
 }

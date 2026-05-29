@@ -394,8 +394,7 @@ public actor ClaimEngine {
             priority: 10
         )
         
-        // Sincronizza con CloudKit
-        try await syncSinistroToCK(riferimento: riferimento)
+        try await syncSinistroToBackend(riferimento: riferimento)
         
         print("[ClaimEngine] ✨ Creato sinistro: \(riferimento)")
     }
@@ -428,8 +427,7 @@ public actor ClaimEngine {
             )
         }
         
-        // Sincronizza con CloudKit
-        try await syncSinistroToCK(riferimento: sinistroRef)
+        try await syncSinistroToBackend(riferimento: sinistroRef)
         
         print("[ClaimEngine] 🔄 Stato cambiato: \(sinistroRef) → \(newState.descrizione)")
     }
@@ -440,8 +438,8 @@ public actor ClaimEngine {
         return "\(basePath)\\\(riferimento)"
     }
     
-    private func syncSinistroToCK(riferimento: String) async throws {
-        // Marca come sincronizzato dopo push a CK
+    private func syncSinistroToBackend(riferimento: String) async throws {
+        // Marca come sincronizzato dopo push al backend Supabase.
         do {
             try await BackendAPIClient.shared.syncSinistro(riferimento: riferimento)
 
@@ -480,7 +478,7 @@ public actor ClaimEngine {
                 )
         )
         
-        try await syncSinistroToCK(riferimento: riferimento)
+        try await syncSinistroToBackend(riferimento: riferimento)
     }
     
     private func createTask(

@@ -446,10 +446,9 @@ class FileService {
     func openFile(_ url: URL) {
         print("[FileService] Tentativo apertura file: \(url.lastPathComponent)")
         
-        // Verifica e scarica file iCloud se necessario
         ensureFileDownloaded(url: url) { success in
             guard success else {
-                print("[FileService] ❌ Errore download file iCloud: \(url.path)")
+                print("[FileService] ❌ File non accessibile: \(url.path)")
                 return
             }
             
@@ -482,266 +481,46 @@ class FileService {
         }
     }
     
-    /// Verifica se un file è su iCloud e se necessario lo scarica
+    /// Verifica se un file locale e' accessibile.
     /// - Parameter url: URL del file da verificare
     /// - Parameter completion: Callback chiamato quando il file è disponibile (true) o in caso di errore (false)
     func ensureFileDownloaded(url: URL, completion: @escaping (Bool) -> Void) {
-        // Ottieni security-scoped access per la directory padre
         let parentPath = url.deletingLastPathComponent().path
         guard let (bookmarkURL, _) = getBookmarkForPath(parentPath) else {
-            // Nessun bookmark, prova comunque (potrebbe funzionare per file locali)
-            ensureFileDownloadedInternal(url: url, bookmarkURL: nil, completion: completion)
+            completion(true)
             return
         }
-        
+
         guard bookmarkURL.startAccessingSecurityScopedResource() else {
-            // Non possiamo accedere, prova comunque
-            ensureFileDownloadedInternal(url: url, bookmarkURL: nil, completion: completion)
+            completion(true)
             return
         }
-        
-        // Esegui con accesso attivo
-        ensureFileDownloadedInternal(url: url, bookmarkURL: bookmarkURL, completion: completion)
+
+        bookmarkURL.stopAccessingSecurityScopedResource()
+        completion(true)
     }
     
     private func ensureFileDownloadedInternal(url: URL, bookmarkURL: URL?, completion: @escaping (Bool) -> Void) {
-        // Verifica se è un file iCloud
-        guard let resourceValues = try? url.resourceValues(forKeys: [.isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey]),
-              resourceValues.isUbiquitousItem == true else {
-            // Non è un file iCloud, disponibile immediatamente
-            bookmarkURL?.stopAccessingSecurityScopedResource()
-            completion(true)
-            return
-        }
-        
-        let downloadingStatus = resourceValues.ubiquitousItemDownloadingStatus
-        
-        switch downloadingStatus {
-        case .current:
-            // File già scaricato
-            bookmarkURL?.stopAccessingSecurityScopedResource()
-            completion(true)
-            
-        case .notDownloaded:
-            // File non scaricato, avvia download
-            print("DEBUG: File iCloud non scaricato, avvio download:", url.path)
-            do {
-                try FileManager.default.startDownloadingUbiquitousItem(at: url)
-                // Polling per verificare quando è scaricato - rilascia accesso dopo il download
-                waitForDownload(url: url, bookmarkURL: bookmarkURL, completion: completion)
-            } catch {
-                print("DEBUG: Errore avvio download iCloud:", error)
-                bookmarkURL?.stopAccessingSecurityScopedResource()
-                completion(false)
-            }
-            
-        case .downloaded:
-            // File scaricato ma potrebbe non essere aggiornato
-            bookmarkURL?.stopAccessingSecurityScopedResource()
-            completion(true)
-            
-        @unknown default:
-            bookmarkURL?.stopAccessingSecurityScopedResource()
-            completion(true)
-        }
+        bookmarkURL?.stopAccessingSecurityScopedResource()
+        completion(true)
     }
     
-    /// Attende il completamento del download di un file iCloud
+    /// Compatibilita' con la vecchia API: non effettua download da provider cloud.
     private func waitForDownload(url: URL, bookmarkURL: URL? = nil, completion: @escaping (Bool) -> Void) {
-        let queue = DispatchQueue(label: "iCloudDownloadCheck", qos: .utility)
-        var attempts = 0
-        let maxAttempts = 60 // 30 secondi (0.5s * 60)
-        
-        func checkDownloadStatus() {
-            attempts += 1
-            
-            guard let resourceValues = try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey]),
-                  let status = resourceValues.ubiquitousItemDownloadingStatus else {
-                if attempts >= maxAttempts {
-                    bookmarkURL?.stopAccessingSecurityScopedResource()
-                    DispatchQueue.main.async {
-                        completion(false)
-                    }
-                    return
-                }
-                queue.asyncAfter(deadline: .now() + 0.5) {
-                    checkDownloadStatus()
-                }
-                return
-            }
-            
-            switch status {
-            case .current:
-                bookmarkURL?.stopAccessingSecurityScopedResource()
-                DispatchQueue.main.async {
-                    completion(true)
-                }
-            case .downloaded:
-                bookmarkURL?.stopAccessingSecurityScopedResource()
-                DispatchQueue.main.async {
-                    completion(true)
-                }
-            case .notDownloaded:
-                if attempts >= maxAttempts {
-                    bookmarkURL?.stopAccessingSecurityScopedResource()
-                    DispatchQueue.main.async {
-                        completion(false)
-                    }
-                    return
-                }
-                queue.asyncAfter(deadline: .now() + 0.5) {
-                    checkDownloadStatus()
-                }
-            default:
-                // Gestisce eventuali nuovi casi futuri
-                bookmarkURL?.stopAccessingSecurityScopedResource()
-                DispatchQueue.main.async {
-                    completion(true)
-                }
-            }
-        }
-        
-        queue.asyncAfter(deadline: .now() + 0.5) {
-            checkDownloadStatus()
-        }
+        bookmarkURL?.stopAccessingSecurityScopedResource()
+        completion(true)
     }
     
-    /// Scarica ricorsivamente tutti i file iCloud non scaricati in una directory
+    /// Compatibilita' con la vecchia API: non scarica file da iCloud.
     /// - Parameter directoryPath: Path della directory da scandire
     /// - Parameter completion: Callback chiamato quando il processo è completato (con numero di file trovati)
     func downloadAlliCloudFiles(inDirectory directoryPath: String, completion: ((Int) -> Void)? = nil) {
-        let queue = DispatchQueue(label: "iCloudDirectoryDownload", qos: .utility)
-        
-        // Per path interni (Application Support), esegui direttamente senza security-scoped access
-        if isInternalPath(directoryPath) {
-            queue.async {
-            
-            // Lista ricorsiva di tutti i file (già dentro security-scoped context)
-            let directoryURL = URL(fileURLWithPath: directoryPath)
-            var allFiles: [URL] = []
-            
-            let fm = FileManager.default
-            if let enumerator = fm.enumerator(
-                at: directoryURL,
-                includingPropertiesForKeys: [
-                    .isRegularFileKey,
-                    .isDirectoryKey,
-                    .isUbiquitousItemKey,
-                    .ubiquitousItemDownloadingStatusKey
-                ],
-                options: [.skipsHiddenFiles]
-            ) {
-                for case let url as URL in enumerator {
-                    if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true,
-                       Self.reservedFolderNamesLowercased.contains(url.lastPathComponent.lowercased()) {
-                        enumerator.skipDescendants()
-                        continue
-                    }
-                    if (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true {
-                        allFiles.append(url)
-                    }
-                }
-            }
-            
-            var downloadedCount = 0
-            
-            // Per ogni file, verifica se è iCloud e scarica se necessario
-            for fileURL in allFiles {
-                guard let resourceValues = try? fileURL.resourceValues(forKeys: [.isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey]),
-                      resourceValues.isUbiquitousItem == true else {
-                    continue // Non è un file iCloud, skip
-                }
-                
-                let status = resourceValues.ubiquitousItemDownloadingStatus
-                if status == .notDownloaded {
-                    // Avvia download senza attendere
-                    do {
-                        try FileManager.default.startDownloadingUbiquitousItem(at: fileURL)
-                        downloadedCount += 1
-                        print("DEBUG: Avviato download iCloud per: \(fileURL.lastPathComponent)")
-                    } catch {
-                        print("DEBUG: Errore avvio download iCloud per \(fileURL.lastPathComponent): \(error)")
-                    }
-                }
-            }
-            
-            DispatchQueue.main.async {
-                completion?(downloadedCount)
-            }
-            }
-        } else {
-            // Per path esterni (legacy), usa security-scoped access
-            guard let (bookmarkURL, _) = getBookmarkForPath(directoryPath) else {
-                // Nessun bookmark per path esterno - non è un errore se è legacy
-                DispatchQueue.main.async {
-                    completion?(0)
-                }
-                return
-            }
-            
-            guard bookmarkURL.startAccessingSecurityScopedResource() else {
-                DispatchQueue.main.async {
-                    completion?(0)
-                }
-                return
-            }
-            
-            queue.async {
-                defer { bookmarkURL.stopAccessingSecurityScopedResource() }
-                
-                // Lista ricorsiva di tutti i file (già dentro security-scoped context)
-                let directoryURL = URL(fileURLWithPath: directoryPath)
-                var allFiles: [URL] = []
-                
-                let fm = FileManager.default
-                if let enumerator = fm.enumerator(
-                    at: directoryURL,
-                    includingPropertiesForKeys: [
-                        .isRegularFileKey,
-                        .isDirectoryKey,
-                        .isUbiquitousItemKey,
-                        .ubiquitousItemDownloadingStatusKey
-                    ],
-                    options: [.skipsHiddenFiles]
-                ) {
-                    for case let url as URL in enumerator {
-                        if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true,
-                           Self.reservedFolderNamesLowercased.contains(url.lastPathComponent.lowercased()) {
-                            enumerator.skipDescendants()
-                            continue
-                        }
-                        if (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true {
-                            allFiles.append(url)
-                        }
-                    }
-                }
-                
-                var downloadedCount = 0
-                
-                // Per ogni file, verifica se è iCloud e scarica se necessario
-                for fileURL in allFiles {
-                    guard let resourceValues = try? fileURL.resourceValues(forKeys: [.isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey]),
-                          resourceValues.isUbiquitousItem == true else {
-                        continue // Non è un file iCloud, skip
-                    }
-                    
-                    let status = resourceValues.ubiquitousItemDownloadingStatus
-                    if status == .notDownloaded {
-                        // Avvia download senza attendere
-                        do {
-                            try FileManager.default.startDownloadingUbiquitousItem(at: fileURL)
-                            downloadedCount += 1
-                            print("DEBUG: Avviato download iCloud per: \(fileURL.lastPathComponent)")
-                        } catch {
-                            print("DEBUG: Errore avvio download iCloud per \(fileURL.lastPathComponent): \(error)")
-                        }
-                    }
-                }
-                
-                DispatchQueue.main.async {
-                    completion?(downloadedCount)
-                }
-            }
+        if !isInternalPath(directoryPath), let (bookmarkURL, _) = getBookmarkForPath(directoryPath),
+           bookmarkURL.startAccessingSecurityScopedResource() {
+            bookmarkURL.stopAccessingSecurityScopedResource()
+        }
+        DispatchQueue.main.async {
+            completion?(0)
         }
     }
     
@@ -1102,4 +881,4 @@ class FileService {
             print("[FileService] 🧹 Pulizia Claims root completata: \(movedCount) elementi spostati")
         }
     }
-} 
+}

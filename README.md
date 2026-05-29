@@ -2,7 +2,7 @@
 
 **PerX** è una piattaforma operativa per studi peritali e strutture tecniche che gestiscono sinistri property, con forte focus su gestione documentale, flussi operativi e supporto AI al lavoro del perito.
 
-Questa repo è strutturata come **monorepo** e contiene sia l’applicazione desktop/iPad (Swift), sia componenti di integrazione (hub, agent, estensioni) sia un backend cloud FastAPI.
+Questa repo è strutturata come **monorepo** e contiene sia l’applicazione desktop/iPad (Swift), sia componenti di integrazione (hub, bridge, automazioni) sia un backend cloud FastAPI.
 
 ---
 
@@ -13,8 +13,6 @@ Questa repo è strutturata come **monorepo** e contiene sia l’applicazione des
 - **`PerXCore/`**: moduli core riutilizzabili (modelli, logica condivisa).
 - **`PerXHub/`**: servizi di integrazione/sync verso fonti esterne (es. e‑mail, cloud).
 - **`PerXHubMonitor/`**: tool di monitoraggio e diagnostica per l’hub.
-- **`perx_sync_agent/`**: storico agent Windows (non più usato nell’installazione Hub; cartella mantenuta solo per riferimento).
-- **`perx_chrome_extension/`**: estensione browser per integrazioni lato web.
 - **`backend/`**: backend FastAPI per servizi cloud (API sinistri, autenticazione, portale assicurati, ecc.).
 - **`portal-web/`**: nuova applicazione web dedicata agli assicurati per monitorare e gestire il proprio sinistro.
 - **Altri moduli/tools**: cartelle ausiliarie per test, varianti “lite” (iPhone), script e materiali di supporto.
@@ -37,17 +35,10 @@ La configurazione dettagliata di schemi, bundle id, profili di provisioning e am
 ## Altri componenti
 
 - **`PerXHub/`**  
-  Componenti di integrazione (es. sincronizzazione e-mail, servizi cloud, comunicazioni) a supporto dell’ecosistema PerX.
+  Componenti di integrazione, servizi cloud, comunicazioni e supporto operativo all’ecosistema PerX.
 
 - **`PerXHubMonitor/`**  
   Strumenti per monitorare e diagnosticare lo stato dell’hub, code di sync e job di integrazione.
-
-- **`perx_sync_agent/`**  
-  Non più integrato nell’Hub; codice di riferimento legacy.
-
-- **`perx_chrome_extension/`**  
-  Estensione Chrome per catturare contenuti dal browser e collegarli alle pratiche PerX (dettagli nel relativo `README`).
-  Pensata come bridge tra il gestionale legacy dello studio e la versione BETA di PerX.
 
 - **`portal-web/`**  
   Portale web self-service per gli assicurati, collegato al backend cloud e predisposto per magic link, timeline del sinistro, upload documenti, documentale guidata, firma atto e chat instradata verso i flussi interni.

@@ -22,7 +22,7 @@ class GoogleAuthService: ObservableObject {
     private let clientId = "150443834793-qcmmpkvm29tddfb9keirh3tevf78ansj.apps.googleusercontent.com"
     private let clientSecret = "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"
     private let redirectUri = "http://127.0.0.1:3000"
-    private let scope = "email https://mail.google.com/ https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/userinfo.email openid"
+    private let scope = "email https://www.googleapis.com/auth/userinfo.email openid"
     private let backendService = "com.perx.macos.auth"
     private let session = URLSession.shared
     private let decoder = JSONDecoder()
@@ -272,11 +272,6 @@ class GoogleAuthService: ObservableObject {
     }
     
     func signOut() {
-        if let email = userEmail, loadFromKeychain(forKey: "google_refresh_token") != nil {
-            let userId = email.components(separatedBy: "@").first ?? email
-            Task { await deleteTokenFromHub(userId: userId) }
-        }
-        
         clearBackendSession()
         removeFromKeychain(forKey: "google_access_token")
         removeFromKeychain(forKey: "google_refresh_token")
@@ -292,17 +287,6 @@ class GoogleAuthService: ObservableObject {
             self.userEmail = nil
             self.userName = nil
             NotificationCenter.default.post(name: .init("GoogleAuthStateChanged"), object: nil, userInfo: ["signedOut": true])
-        }
-    }
-    
-    /// Elimina il token dall'Hub
-    private func deleteTokenFromHub(userId: String) async {
-        do {
-            let hubClient = HubAPIClient.shared
-            try await hubClient.delete(endpoint: "/auth/token/\(userId)")
-            print("[GoogleAuth] ✅ Token eliminato dall'Hub per: \(userId)")
-        } catch {
-            print("[GoogleAuth] ⚠️ Impossibile eliminare token dall'Hub: \(error)")
         }
     }
     
@@ -364,12 +348,6 @@ class GoogleAuthService: ObservableObject {
                 let userId = email.components(separatedBy: "@").first ?? email
                 UserDefaults.standard.set(userId, forKey: "last_google_user_id")
             }
-            if let refreshToken = tokenResponse.refresh_token, let email = email {
-                Task { [weak self] in
-                    await self?.registerTokenWithHub(email: email, refreshToken: refreshToken)
-                }
-            }
-            
             let capturedEmail = email
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
                 guard let self else { return }
@@ -387,29 +365,6 @@ class GoogleAuthService: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
             print("❌ Errore autenticazione: \(error)")
-        }
-    }
-    
-    /// Registra il token con l'Hub per il Mail Worker
-    private func registerTokenWithHub(email: String, refreshToken: String) async {
-        do {
-            let hubClient = HubAPIClient.shared
-            
-            // Estrai user_id dall'email (local-part)
-            let userId = email.components(separatedBy: "@").first ?? email
-            
-            let payload: [String: String] = [
-                "user_id": userId,
-                "email": email,
-                "refresh_token": refreshToken
-            ]
-            
-            try await hubClient.post(endpoint: "/auth/register-token", body: payload)
-            print("[GoogleAuth] ✅ Token registrato con Hub per: \(userId)")
-            
-        } catch {
-            // Non blocchiamo l'autenticazione se l'Hub non è raggiungibile
-            print("[GoogleAuth] ⚠️ Impossibile registrare token con Hub: \(error)")
         }
     }
     

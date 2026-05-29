@@ -38,7 +38,6 @@ interface CAT {
   color_hex: string | null;
   notes: string | null;
   active: boolean | null;
-  alias_jfish: string | null;
 }
 
 interface Suspension {
@@ -60,8 +59,7 @@ const CATManager = () => {
     color_hex: '#0066FF',
     code: '',
     notes: '',
-    active: true,
-    alias_jfish: ''
+    active: true
   });
   const [expandedSuspensions, setExpandedSuspensions] = useState<Set<string>>(new Set());
   const [expandedArchive, setExpandedArchive] = useState<Set<string>>(new Set());
@@ -315,8 +313,7 @@ const CATManager = () => {
       color_hex: newColor,
       code: '',
       notes: '',
-      active: true,
-      alias_jfish: ''
+      active: true
     });
   };
 
@@ -327,8 +324,7 @@ const CATManager = () => {
       color_hex: cat.color_hex || '#0066FF',
       code: cat.code || '',
       notes: cat.notes || '',
-      active: cat.active ?? true,
-      alias_jfish: cat.alias_jfish || ''
+      active: cat.active ?? true
     });
   };
 
@@ -436,8 +432,7 @@ const CATManager = () => {
     const query = searchQuery.toLowerCase();
     return (
       cat.name.toLowerCase().includes(query) ||
-      cat.notes?.toLowerCase().includes(query) ||
-      cat.alias_jfish?.toLowerCase().includes(query)
+      cat.notes?.toLowerCase().includes(query)
     );
   });
 
@@ -491,18 +486,6 @@ const CATManager = () => {
                     className="flex-1"
                   />
                 </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="alias_jfish">Alias JFISH</Label>
-                <Input
-                  id="alias_jfish"
-                  value={formData.alias_jfish}
-                  onChange={(e) => setFormData({ ...formData, alias_jfish: e.target.value })}
-                  placeholder="es. LOMBARDIA - Franco Ciapponi"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Nome usato per l'integrazione con il portale JFISH
-                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="notes">Note</Label>
@@ -594,14 +577,6 @@ const CATManager = () => {
                         className="flex-1"
                       />
                     </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Alias JFISH</Label>
-                    <Input
-                      value={formData.alias_jfish}
-                      onChange={(e) => setFormData({ ...formData, alias_jfish: e.target.value })}
-                      placeholder="Nome per integrazione JFISH"
-                    />
                   </div>
                   <div className="space-y-2">
                     <Label>Note</Label>

@@ -20,7 +20,7 @@ final class OpenAIEmbeddingProvider: EmbeddingProvider {
     static let shared = OpenAIEmbeddingProvider()
     
     private var apiKey: String {
-        let tenantKey = TenantAIKeysService.shared.openAIKey
+        let tenantKey = TenantAIKeysCache.snapshot().openAIKey
         if !tenantKey.isEmpty { return tenantKey }
         return UserDefaults.standard.string(forKey: "ai_openai_api_key") ?? ""
     }
@@ -81,4 +81,3 @@ final class OpenAIEmbeddingProvider: EmbeddingProvider {
         return embedding.map { Float($0) }
     }
 }
-

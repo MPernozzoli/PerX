@@ -522,7 +522,7 @@ public actor EmailProcessor {
             let fileNotificationPatterns = [
                 "caricato", "caricati", "inserito", "inseriti",
                 "foto in cartella", "documenti in", "file in",
-                "aggiornato la cartella", "jfish", "gestionale"
+                "aggiornato la cartella", "gestionale"
             ]
             
             let bodyLower = body.lowercased()

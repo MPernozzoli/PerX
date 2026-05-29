@@ -698,9 +698,14 @@ final class SinistriViewModel: ObservableObject {
         
         do {
             try context.save()
-            if let rif = rifToDelete, !rif.isEmpty {
+            if let rif = rifToDelete, !rif.isEmpty,
+               BackendAPIClient.shared.isConfigured && BackendAPIClient.shared.hasAccessToken {
                 Task {
-                    await CloudKitSinistroSyncService.shared.deleteSinistro(riferimento: rif)
+                    do {
+                        try await BackendAPIClient.shared.delete("claims/\(rif)")
+                    } catch {
+                        print("[SinistriViewModel] ⚠️ Delete remoto Supabase fallito per \(rif): \(error)")
+                    }
                 }
             }
         } catch {

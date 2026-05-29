@@ -43,13 +43,8 @@ struct HubConfiguration {
     // MARK: - Worker Ports Configuration
     // Porte standard per tutti i servizi PerX:
     // - Hub:           8080
-    // - Email Worker:  5001
     // - WA Bridge:     5002
     // - AutoUpdater:   8084
-    
-    static var emailWorkerURL: String {
-        ProcessInfo.processInfo.environment["PERX_EMAIL_WORKER_URL"] ?? "http://localhost:5001"
-    }
     
     static var waBridgeURL: String {
         ProcessInfo.processInfo.environment["PERX_WA_BRIDGE_URL"] ?? "http://localhost:5002"
@@ -82,7 +77,7 @@ print("[Hub] Hub ID: \(HubConfiguration.hubID)")
 print("[Hub] Default tenant: \(HubConfiguration.defaultTenantSlug)")
 print("[Hub] Supabase configured: \(HubConfiguration.supabaseURL != nil && HubConfiguration.supabaseServiceRoleKey != nil ? "yes" : "no")")
 
-// Configure BackendAPIClient (drop-in replacement per CloudKitWebService)
+// Configure BackendAPIClient (backend Supabase source of truth)
 await BackendAPIClient.shared.configureFromEnvironment()
 
 // Create directories if needed

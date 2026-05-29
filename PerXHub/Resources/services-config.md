@@ -5,7 +5,6 @@
 | Servizio        | Porta | Protocollo | Posizione       | URL Tailscale                                |
 |-----------------|-------|------------|-----------------|---------------------------------------------|
 | PerX Hub        | 8080  | HTTPS      | Mac Mini        | https://mac-mini-di-massimo.tailca58be.ts.net |
-| Email Worker    | 5001  | HTTP       | Mac Mini        | (locale)                                    |
 | WA Bridge       | 5002  | HTTP       | Mac Mini        | (locale)                                    |
 | AutoUpdater     | 8084  | HTTP       | Mac Mini        | (locale)                                    |
 
@@ -20,8 +19,6 @@
 ├── logs/
 │   ├── hub.log
 │   ├── hub-error.log
-│   ├── email-worker.log
-│   ├── email-worker-error.log
 │   ├── wa-bridge.log
 │   ├── wa-bridge-error.log
 │   ├── autoupdater.log
@@ -29,7 +26,6 @@
 ├── vault/                     # File sinistri
 │   └── {riferimento}/
 ├── workers/
-│   ├── email/                 # perx_email_worker
 │   ├── wa-bridge/             # perx_wa_bridge
 │   └── autoupdater/           # perx_autoupdater
 └── repo/                      # Repository sorgente (per AutoUpdater)
@@ -42,7 +38,6 @@ PERX_ENV=production
 PERX_HUB_PATH=/opt/perx-hub
 PERX_HUB_HOST=0.0.0.0
 PERX_HUB_PORT=8080
-PERX_EMAIL_WORKER_URL=http://localhost:5001
 PERX_WA_BRIDGE_URL=http://localhost:5002
 PERX_AUTO_UPDATER_URL=http://localhost:8084
 PERX_REPO_PATH=/opt/perx-hub/repo
@@ -69,16 +64,7 @@ sudo cp Resources/com.perx.hub.plist /Library/LaunchDaemons/
 sudo launchctl load /Library/LaunchDaemons/com.perx.hub.plist
 ```
 
-### 2. Email Worker
-```bash
-cd perx_email_worker
-pip3 install -r requirements.txt
-sudo cp -r . /opt/perx-hub/workers/email/
-cp com.perx.email-worker.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.perx.email-worker.plist
-```
-
-### 3. WA Bridge
+### 2. WA Bridge
 ```bash
 cd perx_wa_bridge
 npm install
@@ -87,7 +73,7 @@ cp com.perx.wa-bridge.plist ~/Library/LaunchAgents/
 launchctl load ~/Library/LaunchAgents/com.perx.wa-bridge.plist
 ```
 
-### 4. AutoUpdater
+### 3. AutoUpdater
 ```bash
 cd perx_autoupdater
 pip3 install -r requirements.txt

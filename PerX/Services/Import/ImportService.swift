@@ -706,7 +706,7 @@ class ImportService: ObservableObject {
         )
     }
 
-    // MARK: - Ownership (Importa da Jfish / Excel / CSV)
+    // MARK: - Ownership (Import sinistri da file / Excel / CSV)
     
     private func applyImportOwnership(to sinistro: Sinistro, isNew: Bool) async {
         let currentEmail: String? = await MainActor.run {
@@ -1243,4 +1243,3 @@ enum ImportError: LocalizedError {
         }
     }
 }
-

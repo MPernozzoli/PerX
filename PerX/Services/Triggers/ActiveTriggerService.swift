@@ -287,33 +287,7 @@ class ActiveTriggerService {
     }
     
     private func downloadAttachment(messageId: String, attachmentId: String) async throws -> Data {
-        guard let accessToken = try? await GoogleAuthService.shared.getAccessToken() else {
-            throw NSError(domain: "ActiveTriggerService", code: 1, userInfo: [NSLocalizedDescriptionKey: "Token non disponibile"])
-        }
-        
-        let url = URL(string: "https://www.googleapis.com/gmail/v1/users/me/messages/\(messageId)/attachments/\(attachmentId)")!
-        var request = URLRequest(url: url)
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200,
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let attachmentDataString = json["data"] as? String else {
-            throw NSError(domain: "ActiveTriggerService", code: 2, userInfo: [NSLocalizedDescriptionKey: "Errore parsing allegato"])
-        }
-        
-        // Decodifica base64url
-        let base64 = attachmentDataString
-            .replacingOccurrences(of: "-", with: "+")
-            .replacingOccurrences(of: "_", with: "/")
-        
-        guard let attachmentData = Data(base64Encoded: base64, options: .ignoreUnknownCharacters) else {
-            throw NSError(domain: "ActiveTriggerService", code: 3, userInfo: [NSLocalizedDescriptionKey: "Errore decodifica base64"])
-        }
-        
-        return attachmentData
+        throw NSError(domain: "ActiveTriggerService", code: 1, userInfo: [NSLocalizedDescriptionKey: "Download allegati Gmail disabilitato: usare backend/Resend"])
     }
     
     private func updateSinistroState(
@@ -667,4 +641,3 @@ class ActiveTriggerService {
     
     // MARK: - Public API
 }
-

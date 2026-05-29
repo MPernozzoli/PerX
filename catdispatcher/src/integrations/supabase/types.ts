@@ -242,7 +242,6 @@ export type Database = {
       cats: {
         Row: {
           active: boolean | null
-          alias_jfish: string | null
           code: string | null
           color_hex: string | null
           created_at: string | null
@@ -253,7 +252,6 @@ export type Database = {
         }
         Insert: {
           active?: boolean | null
-          alias_jfish?: string | null
           code?: string | null
           color_hex?: string | null
           created_at?: string | null
@@ -264,7 +262,6 @@ export type Database = {
         }
         Update: {
           active?: boolean | null
-          alias_jfish?: string | null
           code?: string | null
           color_hex?: string | null
           created_at?: string | null

@@ -253,13 +253,6 @@ struct SinistroDetailView: View {
                 startiCloudMaintenance(for: sinistroPath)
             }
             
-            // Fetch dati completi da CloudKit (on-demand)
-            if let riferimento = sinistro.riferimento {
-                Task {
-                    await CloudKitSinistroSyncService.shared.fetchFullSinistro(riferimento: riferimento)
-                }
-            }
-            
             // Auto-associa compagnia all'agenzia in rubrica se non abbinata
             Task {
                 await CloudKitRubricaSyncService.shared.tryAutoAssociateCompagnia(
@@ -459,7 +452,7 @@ struct SinistroDetailView: View {
         await WhatsAppNumberCacheService.shared.checkNumbers(validNumbers)
     }
     
-    /// Reclama il sinistro: cambia l'assegnatario all'utente corrente e sincronizza immediatamente su CloudKit
+    /// Reclama il sinistro: cambia l'assegnatario all'utente corrente.
     private func reclaimSinistro() async {
         guard let currentUsername = CurrentUserService.shared.currentUsername,
               !currentUsername.isEmpty else {
@@ -469,18 +462,16 @@ struct SinistroDetailView: View {
         let currentName = UserProfileService.shared.currentProfile?.displayName ?? currentUsername
         let currentEmail = CurrentUserService.shared.currentEmail?.lowercased()
         
-        let previousEmail = (sinistro.assignedToUserEmail ?? sinistro.ownerEmail)?.lowercased()
+        let previousEmail = sinistro.assignedToUserEmail ?? sinistro.ownerEmail
         let previousName = sinistro.assignedToUserName ?? sinistro.ownerEmail ?? "Utente precedente"
         
         let oggi = Date()
         let riferimento = sinistro.riferimento ?? "N/A"
-        let nomeAssicurato = sinistro.nomeAssicurato ?? "Assicurato"
         
         await viewContext.perform {
             sinistro.assignedToUserEmail = currentUsername
             sinistro.assignedToUserName = currentName
             sinistro.dataAssegnazione = oggi
-            sinistro.cloudKitLastModified = oggi
             
             // Aggiungi entry al diario
             let diarioEntry = DiarioEntry(
@@ -496,18 +487,6 @@ struct SinistroDetailView: View {
         }
         
         print("[SinistroDetailView] ✅ Sinistro \(riferimento) reclamato da \(currentName)")
-        
-        // Push immediato su CloudKit
-        await CloudKitSinistroSyncService.shared.pushSinistro(sinistro)
-        
-        if let prevEmail = previousEmail, !prevEmail.isEmpty, prevEmail != currentUsername, prevEmail != (currentEmail ?? "") {
-            await SinistroReclaimNotificationService.shared.sendReclaimNotification(
-                toUserEmail: prevEmail,
-                reclaimedByName: currentName,
-                riferimento: riferimento,
-                nomeAssicurato: nomeAssicurato
-            )
-        }
         
         // Emetti notifica locale per aggiornare UI
         NotificationCenter.default.post(

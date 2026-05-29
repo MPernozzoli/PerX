@@ -70,7 +70,7 @@ struct SinistriSettingsView: View {
                 .frame(width: 800, height: 600)
         }
         .sheet(isPresented: $showingImportView) {
-            ImportJFISHView()
+            ImportSinistriFileView()
                 .frame(width: 1000, height: 700)
         }
         .sheet(isPresented: $showTemplateSheet) {
@@ -173,7 +173,7 @@ struct SinistriSettingsView: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Button("Importa da JFISH") {
+                    Button("Importa sinistri da file") {
                         showingImportView = true
                     }
                     .buttonStyle(.bordered)

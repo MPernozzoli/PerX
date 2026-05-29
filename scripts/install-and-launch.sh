@@ -5,7 +5,7 @@
 #
 # Cartella di lavoro (repo): /Users/mpernozzoli/PerX HUB
 #   Qui vanno clonati/copiati PerXHub, PerXHubMonitor, PerXCore,
-#   perx_email_worker, perx_wa_bridge, perx_autoupdater, scripts, ecc.
+#   perx_wa_bridge, perx_autoupdater, scripts, ecc.
 #
 # L'AutoUpdater scannerizza questa cartella; quando trovi aggiornamenti
 # riesegui questo script per copiare i file in /opt/perx-hub e reinstallare.
@@ -28,8 +28,8 @@ NC='\033[0m'
 REPO_BASE="${PERX_REPO_PATH:-/Users/mpernozzoli/PerX HUB}"
 HUB_BASE="/opt/perx-hub"
 DAEMONS_DIR="/Library/LaunchDaemons"
-# Porte usate da Hub e worker (liberate prima dell'install)
-PERX_PORTS="8080 5001 5002 8084"
+# Porte usate da Hub e servizi locali (liberate prima dell'install)
+PERX_PORTS="8080 5002 8084"
 
 # SwiftPM su Apple Silicon mette spesso l'eseguibile in .build/arm64-apple-macosx/release/, non in .build/release/
 resolve_swift_release_binary() {
@@ -64,13 +64,13 @@ fi
 
 if [ ! -d "$REPO_BASE" ]; then
     echo -e "${RED}[ERROR] Cartella repo non trovata: $REPO_BASE${NC}"
-    echo "  Crea la cartella e clona/copia dentro PerXHub, perx_email_worker, perx_wa_bridge, perx_autoupdater, scripts."
+    echo "  Crea la cartella e clona/copia dentro PerXHub, perx_wa_bridge, perx_autoupdater, scripts."
     exit 1
 fi
 
 echo -e "${YELLOW}[1/11] Liberazione porte $PERX_PORTS (arresto servizi esistenti)...${NC}"
 # Arresta i daemon PerX così rilasciano le porte
-for label in com.perx.hub com.perx.email-worker com.perx.wa-bridge com.perx.autoupdater; do
+for label in com.perx.hub com.perx.wa-bridge com.perx.autoupdater; do
     launchctl bootout system/$label 2>/dev/null || true
 done
 # Termina qualsiasi processo in ascolto sulle porte PerX
@@ -87,7 +87,7 @@ sleep 2
 echo "  ✓ Porte pronte"
 
 echo -e "${YELLOW}[2/11] Creazione directory in $HUB_BASE...${NC}"
-mkdir -p "$HUB_BASE"/{bin,logs,data,vault,workers/{email,wa-bridge,autoupdater},repo}
+mkdir -p "$HUB_BASE"/{bin,logs,data,vault,workers/{wa-bridge,autoupdater},repo}
 chmod -R 755 "$HUB_BASE"
 # Hub Monitor scrive monitor-secrets.json in data/ come utente del gruppo staff
 chown root:staff "$HUB_BASE/data" 2>/dev/null || true
@@ -120,19 +120,7 @@ else
     echo "  ⚠ Build non trovata in .build/release/ né .build/*-apple-macosx/release/ per PerXHub"
 fi
 
-echo -e "${YELLOW}[5/11] Email Worker (copia + venv + pip)...${NC}"
-if [ -d "$REPO_BASE/perx_email_worker" ]; then
-    rsync -a --delete "$REPO_BASE/perx_email_worker/" "$HUB_BASE/workers/email/" 2>/dev/null || cp -r "$REPO_BASE/perx_email_worker/"* "$HUB_BASE/workers/email/"
-    cd "$HUB_BASE/workers/email"
-    python3 -m venv venv 2>/dev/null || true
-    ./venv/bin/pip install --upgrade pip -q
-    ./venv/bin/pip install -r requirements.txt -q
-    echo "  ✓ Email Worker installato"
-else
-    echo "  ⚠ perx_email_worker non trovato in $REPO_BASE"
-fi
-
-echo -e "${YELLOW}[6/11] WA Bridge (copia + npm)...${NC}"
+echo -e "${YELLOW}[5/10] WA Bridge (copia + npm)...${NC}"
 if [ -d "$REPO_BASE/perx_wa_bridge" ]; then
     rsync -a --delete "$REPO_BASE/perx_wa_bridge/" "$HUB_BASE/workers/wa-bridge/" 2>/dev/null || cp -r "$REPO_BASE/perx_wa_bridge/"* "$HUB_BASE/workers/wa-bridge/"
     chmod +x "$HUB_BASE/workers/wa-bridge/run-wa-bridge.sh"
@@ -142,7 +130,7 @@ else
     echo "  ⚠ perx_wa_bridge non trovato in $REPO_BASE"
 fi
 
-echo -e "${YELLOW}[7/11] PerX Hub Monitor (build + app in /Applications)...${NC}"
+echo -e "${YELLOW}[6/10] PerX Hub Monitor (build + app in /Applications)...${NC}"
 if [ -d "$REPO_BASE/PerXHubMonitor" ] && command -v swift &>/dev/null; then
     (cd "$REPO_BASE/PerXHubMonitor" && swift build -c release 2>/dev/null) || true
     if MONITOR_BIN="$(resolve_swift_release_binary "$REPO_BASE/PerXHubMonitor" PerXHubMonitor)"; then
@@ -184,7 +172,7 @@ else
     echo "  ⚠ PerXHubMonitor non trovato in $REPO_BASE o Swift assente"
 fi
 
-echo -e "${YELLOW}[8/11] AutoUpdater (copia + venv + pip)...${NC}"
+echo -e "${YELLOW}[7/10] AutoUpdater (copia + venv + pip)...${NC}"
 if [ -d "$REPO_BASE/perx_autoupdater" ]; then
     rsync -a --delete "$REPO_BASE/perx_autoupdater/" "$HUB_BASE/workers/autoupdater/" 2>/dev/null || cp -r "$REPO_BASE/perx_autoupdater/"* "$HUB_BASE/workers/autoupdater/"
     cd "$HUB_BASE/workers/autoupdater"
@@ -196,9 +184,9 @@ else
     echo "  ⚠ perx_autoupdater non trovato in $REPO_BASE"
 fi
 
-echo -e "${YELLOW}[9/11] Mirror repo in $HUB_BASE/repo (opzionale, per riferimenti)...${NC}"
+echo -e "${YELLOW}[8/10] Mirror repo in $HUB_BASE/repo (opzionale, per riferimenti)...${NC}"
 # Copia solo le sottocartelle usate dall'install (non l'intero progetto)
-for dir in PerXHub PerXHubMonitor perx_email_worker perx_wa_bridge perx_autoupdater scripts; do
+for dir in PerXHub PerXHubMonitor perx_wa_bridge perx_autoupdater scripts; do
     if [ -d "$REPO_BASE/$dir" ]; then
         mkdir -p "$HUB_BASE/repo/$dir"
         rsync -a --exclude='.build' --exclude='node_modules' --exclude='venv' --exclude='.git' "$REPO_BASE/$dir/" "$HUB_BASE/repo/$dir/" 2>/dev/null || cp -r "$REPO_BASE/$dir/"* "$HUB_BASE/repo/$dir/"
@@ -206,8 +194,8 @@ for dir in PerXHub PerXHubMonitor perx_email_worker perx_wa_bridge perx_autoupda
 done
 echo "  ✓ Mirror aggiornato"
 
-echo -e "${YELLOW}[10/11] Launch Daemons (plist in $DAEMONS_DIR)...${NC}"
-for name in "PerXHub/Resources/com.perx.hub" "perx_email_worker/com.perx.email-worker" "perx_wa_bridge/com.perx.wa-bridge" "perx_autoupdater/com.perx.autoupdater"; do
+echo -e "${YELLOW}[9/10] Launch Daemons (plist in $DAEMONS_DIR)...${NC}"
+for name in "PerXHub/Resources/com.perx.hub" "perx_wa_bridge/com.perx.wa-bridge" "perx_autoupdater/com.perx.autoupdater"; do
     src="$REPO_BASE/${name}.plist"
     if [ -f "$src" ]; then
         base=$(basename "$name")
@@ -222,8 +210,8 @@ for name in "PerXHub/Resources/com.perx.hub" "perx_email_worker/com.perx.email-w
     fi
 done
 
-echo -e "${YELLOW}[11/11] Caricamento servizi (launchctl)...${NC}"
-for plist in com.perx.hub com.perx.email-worker com.perx.wa-bridge com.perx.autoupdater; do
+echo -e "${YELLOW}[10/10] Caricamento servizi (launchctl)...${NC}"
+for plist in com.perx.hub com.perx.wa-bridge com.perx.autoupdater; do
     launchctl bootout system/$plist 2>/dev/null || true
     launchctl bootstrap system "$DAEMONS_DIR/$plist.plist" 2>/dev/null || true
     if launchctl print system/$plist &>/dev/null; then

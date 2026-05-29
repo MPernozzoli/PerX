@@ -54,12 +54,6 @@ COMPONENTS = {
         "extensions": [".swift", ".json"],
         "remote": False,
     },
-    "perx_email_worker": {
-        "path": REPO_BASE / "perx_email_worker",
-        "type": "python",
-        "extensions": [".py", ".json", ".txt"],
-        "remote": False,
-    },
     "perx_wa_bridge": {
         "path": REPO_BASE / "perx_wa_bridge",
         "type": "node",

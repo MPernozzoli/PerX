@@ -16,6 +16,7 @@ Esempio:
 ```bash
 cd backend
 alembic upgrade head
+python scripts/bootstrap_single_tenant.py
 uvicorn app.main:app --reload
 ```
 
@@ -59,7 +60,19 @@ cp .env.example .env
 alembic upgrade head
 ```
 
-4. Run development server:
+4. Bootstrap primo tenant:
+```bash
+python scripts/bootstrap_single_tenant.py
+```
+
+5. Configura Resend per email in ingresso/uscita:
+```bash
+RESEND_API_KEY=...
+RESEND_DEFAULT_FROM_EMAIL=admin@example.com
+RESEND_SCHEDULED_EMAILS_ENABLED=True
+```
+
+6. Run development server:
 ```bash
 uvicorn app.main:app --reload
 ```
@@ -135,7 +148,7 @@ docker run -p 8080:8080 --env-file .env perx-cloud-api
 
 ## Multi-tenant e platform admin
 
-- Ogni studio peritale corrisponde a un tenant applicativo.
-- Gli utenti standard vedono solo i dati del proprio tenant.
-- L'account `info@pynkstudio.it` viene inizializzato come `is_platform_admin=true` e puo' accedere ai dati di tutti i tenant.
-- Gli endpoint claims supportano il query param `tenant_id` solo per il platform admin; senza parametro il platform admin vede tutti i tenant.
+- Per la V1 limitata usare `SINGLE_TENANT_MODE=True` e creare un solo tenant con `scripts/bootstrap_single_tenant.py`.
+- L'admin configurato via `SINGLE_TENANT_ADMIN_EMAIL` e' sia platform admin sia admin tenant, cosi puo' configurare credenziali provider e impostazioni studio.
+- Gli utenti standard restano filtrati sul proprio tenant.
+- Il codice conserva il supporto multi-tenant, ma la messa in produzione iniziale deve creare e usare un solo tenant.

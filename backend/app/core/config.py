@@ -45,9 +45,18 @@ class Settings(BaseSettings):
     APP_ADMIN_DEFAULT_PASSWORD: str = "change-me-now"
     PLATFORM_TENANT_NAME: str = "Pynk Studio"
     PLATFORM_TENANT_SLUG: str = "pynkstudio"
+
+    # Single-tenant V1 bootstrap
+    SINGLE_TENANT_MODE: bool = True
+    SINGLE_TENANT_ID: str = "perx-single-tenant"
+    SINGLE_TENANT_NAME: str = "PerX Studio"
+    SINGLE_TENANT_SLUG: str = "perx-studio"
+    SINGLE_TENANT_ADMIN_EMAIL: Optional[str] = None
+    SINGLE_TENANT_ADMIN_FULL_NAME: Optional[str] = None
+    SINGLE_TENANT_ADMIN_PASSWORD: Optional[str] = None
     
     # CORS
-    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:3001", "http://localhost:8080"]
+    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:3001", "http://localhost:5173", "http://localhost:8080"]
     
     # Storage
     STORAGE_BUCKET_NAME: str = "perx-attachments"
@@ -70,6 +79,13 @@ class Settings(BaseSettings):
     LOCAL_AI_WORKER_SHARED_SECRET: Optional[str] = None
     PERX_WA_BRIDGE_URL: str = "http://127.0.0.1:5002"
     WA_BRIDGE_INTERNAL_TOKEN: Optional[str] = None
+
+    # Resend outbound email
+    RESEND_API_KEY: Optional[str] = None
+    RESEND_DEFAULT_FROM_EMAIL: Optional[str] = None
+    RESEND_SCHEDULED_EMAILS_ENABLED: bool = True
+    RESEND_SCHEDULED_EMAIL_POLL_SECONDS: int = 30
+    RESEND_SCHEDULED_EMAIL_BATCH_SIZE: int = 25
     
     # Feature Flags
     FF_CLOUD_AUTH_ENABLED: bool = False

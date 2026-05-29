@@ -8,15 +8,15 @@ class ClaudeAIService {
     private let apiVersion = "2023-06-01"
 
     var isAvailable: Bool {
-        !TenantAIKeysService.shared.anthropicKey.isEmpty
+        TenantAIKeysCache.snapshot().hasAnthropicKey
     }
 
     private var apiKey: String {
-        TenantAIKeysService.shared.anthropicKey
+        TenantAIKeysCache.snapshot().anthropicKey
     }
 
     private var model: String {
-        TenantAIKeysService.shared.anthropicModel
+        TenantAIKeysCache.snapshot().anthropicModel
     }
 
     private let session: URLSession

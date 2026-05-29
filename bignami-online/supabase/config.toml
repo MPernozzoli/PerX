@@ -1,0 +1,8 @@
+project_id = "perx-bignami"
+
+[api]
+schemas = ["public", "bignami", "storage", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+
+[functions.find-policy]
+verify_jwt = false

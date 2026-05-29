@@ -1,9 +1,8 @@
 import Foundation
-import CloudKit
 import Combine
 import AppKit
 
-/// Servizio per gestire i profili utente sincronizzati con CloudKit
+/// Servizio per gestire i profili utente tramite backend Supabase con cache locale.
 @MainActor
 final class UserProfileService: ObservableObject {
     static let shared = UserProfileService()
@@ -13,7 +12,7 @@ final class UserProfileService: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var error: String?
     
-    /// True se l'utente corrente ha ruolo admin (CloudKit) o è l'admin hardcoded
+    /// True se l'utente corrente ha ruolo admin.
     var isCurrentUserAdmin: Bool {
         guard let p = currentProfile else { return false }
         return p.isAdmin
@@ -23,42 +22,12 @@ final class UserProfileService: ObservableObject {
         currentProfile?.canManageTenantSettings ?? false
     }
     
-    private let container: CKContainer
-    private let publicDB: CKDatabase
     private var cancellables = Set<AnyCancellable>()
     
     private let storageKey = "userProfileLocal"
     private let allProfilesKey = "allUserProfiles"
     
-    private enum RecordType {
-        static let userProfile = "UserProfile"
-    }
-    
-    private enum Keys {
-        static let email = "email"
-        static let username = "username"
-        static let firstName = "firstName"
-        static let lastName = "lastName"
-        static let birthDate = "birthDate"
-        static let birthdayVisibility = "birthdayVisibility"
-        static let notifyBirthday = "notifyBirthday"
-        static let avatarType = "avatarType"
-        static let avatarPhoto = "avatarPhoto"
-        static let generatedAvatarColor = "generatedAvatarColor"
-        static let generatedAvatarIcon = "generatedAvatarIcon"
-        static let avatarGifURL = "avatarGifURL"
-        static let contractType = "contractType"
-        static let roles = "roles"
-        static let enableBadges = "enableBadges"
-        static let sendReadReceipts = "sendReadReceipts"
-        static let createdAt = "createdAt"
-        static let updatedAt = "updatedAt"
-    }
-    
-    private init(container: CKContainer = CKContainer(identifier: "iCloud.it.pernozzoli.PerX")) {
-        self.container = container
-        self.publicDB = container.publicCloudDatabase
-        
+    private init() {
         // Carica profilo locale
         loadLocalProfile()
         loadAllProfilesLocal()
@@ -98,47 +67,25 @@ final class UserProfileService: ObservableObject {
         isLoading = true
         error = nil
         
-        if backendConfigured {
-            do {
-                let dto: BackendUserProfileDTO = try await BackendAPIClient.shared.get("profiles/me")
-                let profile = try await resolveProfileAssets(for: dto.toUserProfile())
-                currentProfile = profile
-                saveLocalProfile(profile)
-                isLoading = false
-                Task { await refreshAllProfiles() }
-                return
-            } catch {
-                self.error = error.localizedDescription
-                print("[UserProfileService] ⚠️ backend refreshCurrentProfile fallita, fallback CloudKit: \(error)")
-            }
+        guard backendConfigured else {
+            let cached = loadLocalProfile()
+            var localProfile = cached?.email.lowercased() == email ? cached! : UserProfile(email: email)
+            localProfile.username = UserProfile.validatedUsername(localProfile.username, email: email).0
+            currentProfile = localProfile
+            saveLocalProfile(localProfile)
+            isLoading = false
+            Task { await refreshAllProfiles() }
+            return
         }
 
-        // Prova a caricare da CloudKit
         do {
-            if var cloudProfile = try await fetchProfile(email: email) {
-                let (validated, wasRegenerated) = UserProfile.validatedUsername(cloudProfile.username, email: email)
-                cloudProfile.username = validated
-                if wasRegenerated {
-                    try await saveProfile(cloudProfile)
-                    print("[UserProfileService] Username non conforme, rigenerato e risincronizzato su CloudKit")
-                }
-                currentProfile = cloudProfile
-                saveLocalProfile(cloudProfile)
-            } else {
-                // Crea nuovo profilo
-                var newProfile = UserProfile(email: email)
-                // Pre-popola nome da email se disponibile
-                let parts = email.components(separatedBy: "@").first?.components(separatedBy: ".") ?? []
-                if parts.count >= 2 {
-                    newProfile.firstName = parts[0].capitalized
-                    newProfile.lastName = parts[1].capitalized
-                }
-                currentProfile = newProfile
-                try await saveProfile(newProfile)
-            }
+            let dto: BackendUserProfileDTO = try await BackendAPIClient.shared.get("profiles/me")
+            let profile = try await resolveProfileAssets(for: dto.toUserProfile())
+            currentProfile = profile
+            saveLocalProfile(profile)
         } catch {
             self.error = error.localizedDescription
-            print("[UserProfileService] ❌ refreshCurrentProfile: \(error)")
+            print("[UserProfileService] ❌ backend refreshCurrentProfile: \(error)")
         }
         
         isLoading = false
@@ -164,7 +111,7 @@ final class UserProfileService: ObservableObject {
             await refreshAllProfiles()
             return
         }
-        try await saveProfile(profile)
+        saveLocalProfile(profile)
     }
     
     /// Aggiorna un campo specifico del profilo
@@ -189,26 +136,20 @@ final class UserProfileService: ObservableObject {
         allProfiles.first { $0.email.lowercased() == email.lowercased() }
     }
     
-    /// Refresh tutti i profili da CloudKit
+    /// Refresh tutti i profili dal backend Supabase.
     func refreshAllProfiles() async {
-        if BackendAPIClient.shared.isConfigured && BackendAPIClient.shared.hasAccessToken {
-            do {
-                let profiles: [BackendUserProfileDTO] = try await BackendAPIClient.shared.get("profiles")
-                let mapped = profiles.map { $0.toUserProfile() }
-                allProfiles = mapped
-                saveAllProfilesLocal(mapped)
-                return
-            } catch {
-                print("[UserProfileService] ⚠️ backend refreshAllProfiles fallita, fallback CloudKit: \(error)")
-            }
+        guard BackendAPIClient.shared.isConfigured && BackendAPIClient.shared.hasAccessToken else {
+            allProfiles = currentProfile.map { [$0] } ?? loadAllProfilesLocal()
+            return
         }
 
         do {
-            let profiles = try await fetchAllProfiles()
-            allProfiles = profiles
-            saveAllProfilesLocal(profiles)
+            let profiles: [BackendUserProfileDTO] = try await BackendAPIClient.shared.get("profiles")
+            let mapped = profiles.map { $0.toUserProfile() }
+            allProfiles = mapped
+            saveAllProfilesLocal(mapped)
         } catch {
-            print("[UserProfileService] ⚠️ refreshAllProfiles: \(error)")
+            print("[UserProfileService] ⚠️ backend refreshAllProfiles: \(error)")
         }
     }
     
@@ -253,7 +194,7 @@ final class UserProfileService: ObservableObject {
             try await saveCurrentProfile()
             return
         }
-        try await saveProfile(profile)
+        try await saveCurrentProfile()
     }
     
     /// Imposta un avatar generato
@@ -287,126 +228,6 @@ final class UserProfileService: ObservableObject {
         try await saveCurrentProfile()
     }
     
-    // MARK: - CloudKit Operations
-    
-    private func fetchProfile(email: String) async throws -> UserProfile? {
-        let recordID = CKRecord.ID(recordName: "profile_\(email)")
-        
-        do {
-            let record = try await publicDB.record(for: recordID)
-            return profileFromRecord(record)
-        } catch let error as CKError where error.code == .unknownItem {
-            return nil
-        }
-    }
-    
-    private func fetchAllProfiles() async throws -> [UserProfile] {
-        // Usa un predicato su un campo queryable invece di 'true' puro
-        // che causa problemi con recordName non queryable
-        let predicate = NSPredicate(format: "%K != %@", Keys.email, "")
-        let query = CKQuery(recordType: RecordType.userProfile, predicate: predicate)
-        query.sortDescriptors = [NSSortDescriptor(key: Keys.lastName, ascending: true)]
-        
-        let (results, _) = try await publicDB.records(matching: query, desiredKeys: nil, resultsLimit: 100)
-        
-        return results.compactMap { result -> UserProfile? in
-            guard case .success(let record) = result.1 else { return nil }
-            return profileFromRecord(record)
-        }
-    }
-    
-    private func saveProfile(_ profile: UserProfile) async throws {
-        let recordID = CKRecord.ID(recordName: "profile_\(profile.email)")
-        
-        // Fetch o crea
-        let record: CKRecord
-        do {
-            record = try await publicDB.record(for: recordID)
-        } catch {
-            record = CKRecord(recordType: RecordType.userProfile, recordID: recordID)
-        }
-        
-        // Popola record
-        record[Keys.email] = profile.email
-        record[Keys.username] = profile.username
-        record[Keys.firstName] = profile.firstName
-        record[Keys.lastName] = profile.lastName
-        record[Keys.birthDate] = profile.birthDate
-        record[Keys.birthdayVisibility] = profile.birthdayVisibility.rawValue
-        record[Keys.notifyBirthday] = profile.notifyBirthday ? 1 : 0
-        record[Keys.avatarType] = profile.avatarType.rawValue
-        record[Keys.generatedAvatarColor] = profile.generatedAvatar.backgroundColor
-        record[Keys.generatedAvatarIcon] = profile.generatedAvatar.icon
-        record[Keys.avatarGifURL] = profile.avatarGifURL
-        record[Keys.contractType] = profile.contractType?.rawValue
-        record[Keys.roles] = profile.roles.map { $0.rawValue }
-        record[Keys.enableBadges] = profile.enableBadges ? 1 : 0
-        record[Keys.sendReadReceipts] = profile.sendReadReceipts ? 1 : 0
-        record[Keys.createdAt] = profile.createdAt
-        record[Keys.updatedAt] = profile.updatedAt
-        
-        // Salva foto avatar come asset se presente
-        if let photoData = profile.avatarPhotoData {
-            let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".jpg")
-            try photoData.write(to: tempURL)
-            record[Keys.avatarPhoto] = CKAsset(fileURL: tempURL)
-        }
-        
-        _ = try await publicDB.save(record)
-    }
-    
-    private func profileFromRecord(_ record: CKRecord) -> UserProfile? {
-        guard let email = record[Keys.email] as? String else { return nil }
-        
-        var profile = UserProfile(email: email)
-        
-        profile.username = UserProfile.validatedUsername(record[Keys.username] as? String, email: email).0
-        profile.firstName = (record[Keys.firstName] as? String) ?? ""
-        profile.lastName = (record[Keys.lastName] as? String) ?? ""
-        profile.birthDate = record[Keys.birthDate] as? Date
-        
-        if let visRaw = record[Keys.birthdayVisibility] as? String,
-           let vis = BirthdayVisibility(rawValue: visRaw) {
-            profile.birthdayVisibility = vis
-        }
-        
-        profile.notifyBirthday = (record[Keys.notifyBirthday] as? Int ?? 1) == 1
-        
-        if let typeRaw = record[Keys.avatarType] as? String,
-           let type = AvatarType(rawValue: typeRaw) {
-            profile.avatarType = type
-        }
-        
-        if let asset = record[Keys.avatarPhoto] as? CKAsset,
-           let url = asset.fileURL,
-           let data = try? Data(contentsOf: url) {
-            profile.avatarPhotoData = data
-        }
-        
-        if let color = record[Keys.generatedAvatarColor] as? String,
-           let icon = record[Keys.generatedAvatarIcon] as? String {
-            profile.generatedAvatar = GeneratedAvatar(backgroundColor: color, icon: icon)
-        }
-        
-        profile.avatarGifURL = record[Keys.avatarGifURL] as? String
-        
-        if let contractRaw = record[Keys.contractType] as? String,
-           let contract = ContractType(rawValue: contractRaw) {
-            profile.contractType = contract
-        }
-        
-        if let rolesRaw = record[Keys.roles] as? [String] {
-            profile.roles = rolesRaw.compactMap { UserRole(rawValue: $0) }
-        }
-        
-        profile.enableBadges = (record[Keys.enableBadges] as? Int ?? 0) == 1
-        profile.sendReadReceipts = (record[Keys.sendReadReceipts] as? Int ?? 1) == 1
-        profile.createdAt = (record[Keys.createdAt] as? Date) ?? Date()
-        profile.updatedAt = (record[Keys.updatedAt] as? Date) ?? Date()
-        
-        return profile
-    }
-    
     // MARK: - Local Storage
     
     private func saveLocalProfile(_ profile: UserProfile) {
@@ -415,9 +236,10 @@ final class UserProfileService: ObservableObject {
         }
     }
     
-    private func loadLocalProfile() {
+    @discardableResult
+    private func loadLocalProfile() -> UserProfile? {
         guard let data = UserDefaults.standard.data(forKey: storageKey),
-              var profile = try? JSONDecoder().decode(UserProfile.self, from: data) else { return }
+              var profile = try? JSONDecoder().decode(UserProfile.self, from: data) else { return nil }
         
         // Non caricare profilo se appartiene a un utente diverso da quello autenticato
         if let currentEmail = GoogleAuthService.shared.userEmail?.lowercased(),
@@ -425,12 +247,13 @@ final class UserProfileService: ObservableObject {
            profile.email.lowercased() != currentEmail {
             print("[UserProfileService] ⚠️ Profilo locale appartiene a utente diverso, ignorato")
             UserDefaults.standard.removeObject(forKey: storageKey)
-            return
+            return nil
         }
         
         let (validated, _) = UserProfile.validatedUsername(profile.username, email: profile.email)
         profile.username = validated
         currentProfile = profile
+        return profile
     }
     
     private func saveAllProfilesLocal(_ profiles: [UserProfile]) {
@@ -439,13 +262,15 @@ final class UserProfileService: ObservableObject {
         }
     }
     
-    private func loadAllProfilesLocal() {
+    @discardableResult
+    private func loadAllProfilesLocal() -> [UserProfile] {
         guard let data = UserDefaults.standard.data(forKey: allProfilesKey),
-              var profiles = try? JSONDecoder().decode([UserProfile].self, from: data) else { return }
+              var profiles = try? JSONDecoder().decode([UserProfile].self, from: data) else { return [] }
         for i in profiles.indices {
             profiles[i].username = UserProfile.validatedUsername(profiles[i].username, email: profiles[i].email).0
         }
         allProfiles = profiles
+        return profiles
     }
     
     // MARK: - Helpers

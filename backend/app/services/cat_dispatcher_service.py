@@ -69,7 +69,7 @@ class CatDispatcherService:
             {"term": term},
         ))
         cats = _items(await db.execute(
-            text("SELECT id, name, color_hex FROM cats WHERE name ILIKE :term OR alias_jfish ILIKE :term ORDER BY name LIMIT 15"),
+            text("SELECT id, name, color_hex FROM cats WHERE name ILIKE :term ORDER BY name LIMIT 15"),
             {"term": term},
         ))
         return {"results": {"communes": communes, "cats": cats}}
@@ -170,7 +170,6 @@ class CatDispatcherService:
                 SELECT
                   c.id,
                   c.name,
-                  coalesce(c.alias_jfish, c.name) AS alias_jfish,
                   c.active,
                   cc.is_primary,
                   s.reason AS suspension_reason,
@@ -202,7 +201,7 @@ class CatDispatcherService:
                 "success": True,
                 "cat_id": selected["id"],
                 "cat_name": selected["name"],
-                "cat_alias": selected["alias_jfish"],
+                "cat_alias": selected["name"],
                 "commune_name": commune["comune"],
                 "multiple_cats": len(available) > 1,
                 "needs_geocoding": False,
@@ -214,7 +213,7 @@ class CatDispatcherService:
             "suspended": True,
             "cat_id": selected["id"],
             "cat_name": selected["name"],
-            "cat_alias": selected["alias_jfish"],
+            "cat_alias": selected["name"],
             "commune_name": commune["comune"],
             "suspension_reason": selected["suspension_reason"] or "disattivato",
             "suspension_end_date": selected["suspension_end_date"],

@@ -97,10 +97,6 @@ struct PerXApp: App {
         Task { @MainActor in
             print("[PerXApp] 🚪 Logout rilevato - pulizia servizi")
             
-            // Ferma servizi CloudKit
-            CloudKitSyncService.shared.stop()
-            CloudKitSinistroSyncService.shared.stopBackgroundSync()
-            
             // Ferma Hub heartbeat
             HubConfigService.shared.stopHeartbeatTimer()
             
@@ -112,9 +108,6 @@ struct PerXApp: App {
             
             // Ferma trigger passivi
             PassiveTriggerService.shared.stopMonitoring()
-            
-            // Ferma folder packager per iPad
-            CloudKitFolderPackagerService.shared.stop()
             
             // Chiudi tutte le tab aperte
             AppState.shared.closeAllTabs()
@@ -195,28 +188,6 @@ struct PerXApp: App {
                             )
                         }
                     }
-                    Task {
-                        await CPUThrottler.shared.runAtStartup {
-                            CloudKitSyncService.shared.startIfEnabled(email: GoogleAuthService.shared.userEmail)
-                        }
-                    }
-                    Task {
-                        await CPUThrottler.shared.runAtStartup {
-                            try? await Task.sleep(nanoseconds: 500_000_000)
-                            await CloudKitSyncService.shared.syncNow(reason: "startup")
-                        }
-                    }
-                    Task {
-                        await CPUThrottler.shared.runAtStartup {
-                            CloudKitSinistroSyncService.shared.startBackgroundSync()
-                        }
-                    }
-                    Task {
-                        await CPUThrottler.shared.runAtStartup {
-                            try? await Task.sleep(nanoseconds: 2_000_000_000)
-                            await SinistroReclaimNotificationService.shared.checkAndShowLocalNotifications()
-                        }
-                    }
                     Task.detached(priority: .utility) {
                         try? await Task.sleep(nanoseconds: 3_000_000_000)
                         await CPUThrottler.shared.runAtStartup {
@@ -252,17 +223,7 @@ struct PerXApp: App {
                     }
                 }
                 
-                // Nota: Email/WA per iPad passano direttamente all'Hub, non serve worker Mac
-                // CloudKitFolderPackagerService gestisce richieste cartelle da iPad via Hub
-                if GoogleAuthService.shared.isAuthenticated {
-                    Task {
-                        await CPUThrottler.shared.runAtStartup {
-                            try? await Task.sleep(nanoseconds: 5_000_000_000) // 5 secondi dopo avvio
-                            print("[PerXApp] 📦 Avvio folder packager per richieste da iPad")
-                            CloudKitFolderPackagerService.shared.start()
-                        }
-                    }
-                }
+                // Nota: Email/WA e richieste iPad passano dal backend Supabase/Hub.
             }
         }
     }
@@ -282,10 +243,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     private var shutdownInProgress = false
     
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Registra per notifiche remote (CloudKit push)
-        NSApplication.shared.registerForRemoteNotifications()
-        print("[PerXApp] 📱 Registrazione notifiche remote CloudKit")
-        
         // Imposta il delegate per le notifiche locali
         UNUserNotificationCenter.current().delegate = self
         
@@ -347,12 +304,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             // Ferma sync temporanee
             await ClaimSyncService.shared.pauseAllTemporarySyncs()
             
-            // Ferma sync CloudKit
-            CloudKitSinistroSyncService.shared.stopBackgroundSync()
-            CloudKitSyncService.shared.stop()
-            
-            // Ferma polling chat
-            CloudKitChatService.shared.stopPolling()
+            // La sincronizzazione remota passa dal backend Supabase.
         }
     }
     
@@ -364,47 +316,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             // Ripristina sync se necessario
             await ClaimSyncService.shared.resumeTemporarySyncsIfNeeded()
             
-            // Ripristina sync CloudKit se abilitata
-            if CloudKitSettingsService.shared.isEnabled {
-                CloudKitSinistroSyncService.shared.startBackgroundSync()
-            }
-            
-            // Ripristina polling chat
-            CloudKitChatService.shared.startPolling()
-            
-            // Controlla notifiche di reclamo sinistro pending
-            await SinistroReclaimNotificationService.shared.checkAndShowLocalNotifications()
-        }
-    }
-    
-    // MARK: - Remote Notifications (CloudKit Push)
-    
-    func application(_ application: NSApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
-        let tokenString = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
-        print("[PerXApp] ✅ Registrato per notifiche remote: \(tokenString.prefix(20))...")
-    }
-    
-    func application(_ application: NSApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
-        print("[PerXApp] ⚠️ Errore registrazione notifiche remote: \(error.localizedDescription)")
-    }
-    
-    func application(_ application: NSApplication, didReceiveRemoteNotification userInfo: [String : Any]) {
-        // Notifica CloudKit ricevuta - fetch immediato!
-        print("[PerXApp] 📨 Notifica CloudKit ricevuta")
-        
-        // Verifica se è una notifica CloudKit
-        if let ck = userInfo["ck"] as? [String: Any] {
-            print("[PerXApp] 📨 CloudKit notification: \(ck)")
-            
-            // Fetch immediato dei messaggi e sinistri
-            Task { @MainActor in
-                // Chat
-                let chatService = CloudKitChatService.shared
-                await chatService.handleCloudKitNotification()
-                
-                // Sinistri
-                await CloudKitSinistroSyncService.shared.handleCloudKitNotification()
-            }
+            // La sincronizzazione remota passa dal backend Supabase.
         }
     }
     

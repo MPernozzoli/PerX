@@ -868,10 +868,19 @@ struct DiarioView: View {
         sinistro.addDiarioEntry(diarioEntry)
         try? viewContext.save()
         
-        // Se l'utente corrente non è l'owner, push immediato su CloudKit (best-effort)
+        // Se l'utente corrente non è l'owner, registra la nota anche sul backend Supabase (best-effort).
         if isViewingAsNonOwner, let riferimento = sinistro.riferimento, let email = actorEmail {
             Task {
-                await CloudKitSyncService.shared.pushDiarioEntry(diarioEntry, sinistroRiferimento: riferimento, actorEmail: email)
+                do {
+                    _ = try await CloudContentAdapter.shared.createDiaryNote(
+                        sinistroRef: riferimento,
+                        title: titolo,
+                        body: noteText,
+                        happenedAt: diarioEntry.timestamp
+                    )
+                } catch {
+                    print("[DiarioView] Backend diary sync failed for \(riferimento) by \(email): \(error.localizedDescription)")
+                }
             }
         }
         

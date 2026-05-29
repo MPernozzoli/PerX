@@ -213,7 +213,6 @@ final class AutomaticClaimAssignmentService: ObservableObject {
                     object: nil,
                     userInfo: ["sinistroID": claim.riferimento ?? ""]
                 )
-                await CloudKitSinistroSyncService.shared.pushSinistro(claim)
             }
         } catch {
             print("[AutomaticClaimAssignment] ❌ Errore salvataggio: \(error.localizedDescription)")

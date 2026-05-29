@@ -28,6 +28,7 @@ from app.models.document_version import DocumentVersion
 from app.models.email import Email, EmailClaimLink
 from app.models.user import User
 from app.models.whatsapp import WhatsAppAccount, WhatsAppMessage, WhatsAppThread
+from app.services.resend_email_service import ResendEmailMessage, ResendEmailService
 from app.services.vault_storage_service import VaultStorageService
 
 router = APIRouter()
@@ -66,6 +67,35 @@ async def _wa_bridge_request(method: str, path: str, json_body: dict | None = No
         return response.json()
     except ValueError:
         return {"raw": response.text}
+
+
+def _resolve_resend_from_address(payload: EmailSendRequest, current_user: User) -> str:
+    try:
+        return ResendEmailService.resolve_from_address(account_id=payload.accountId, user=current_user)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _resend_attachments(payload: EmailSendRequest) -> list[dict]:
+    return ResendEmailService.normalize_attachments(payload.attachments)
+
+
+async def _send_email_via_resend(payload: EmailSendRequest, current_user: User) -> tuple[bool, str | None, str | None]:
+    result = await ResendEmailService.send(
+        ResendEmailMessage(
+            from_address=_resolve_resend_from_address(payload, current_user),
+            to=payload.to,
+            cc=payload.cc,
+            bcc=payload.bcc,
+            subject=payload.subject,
+            body=payload.body,
+            is_html=payload.isHtml,
+            in_reply_to=payload.inReplyTo,
+            references=payload.references,
+            attachments=_resend_attachments(payload),
+        )
+    )
+    return result.success, result.message_id, result.error
 
 
 def _verify_wa_bridge_token(x_perx_wa_bridge_token: str | None) -> None:
@@ -342,6 +372,13 @@ def _email_metadata(email: Email) -> dict:
         return json.loads(email.raw_headers)
     except json.JSONDecodeError:
         return {}
+
+
+def _resolve_resend_schedule_from_address(account_id: str, current_user: User) -> str:
+    try:
+        return ResendEmailService.resolve_from_address(account_id=account_id, user=current_user)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def _canonical_whatsapp_account_id(current_user: User) -> str:
@@ -1012,6 +1049,7 @@ async def compat_send_email(
     current_user: User = Depends(get_current_active_user),
 ):
     now = datetime.now(timezone.utc)
+    success, resend_message_id, error_message = await _send_email_via_resend(payload, current_user)
     metadata = {
         "accountId": payload.accountId,
         "to": payload.to,
@@ -1019,27 +1057,30 @@ async def compat_send_email(
         "bcc": payload.bcc or [],
         "direction": "out",
         "compat": True,
+        "provider": "resend",
+        "resendMessageId": resend_message_id,
+        "error": error_message,
     }
     email = Email(
         id=str(uuid.uuid4()),
         tenant_id=current_user.tenant_id,
-        message_id=f"compat-{uuid.uuid4()}",
+        message_id=resend_message_id or f"resend-failed-{uuid.uuid4()}",
         thread_id=payload.replyToThreadId,
-        from_address=current_user.email,
+        from_address=_resolve_resend_from_address(payload, current_user),
         to_addresses=json.dumps(payload.to),
         cc_addresses=json.dumps(payload.cc or []),
         subject=payload.subject,
         body_text=None if payload.isHtml else payload.body,
         body_html=payload.body if payload.isHtml else None,
         received_at=now,
-        status="outbound_sent",
+        status="outbound_sent" if success else "outbound_failed",
         raw_headers=json.dumps(metadata),
         mailbox_id=payload.accountId,
-        provider_id="fastapi_compat",
+        provider_id=resend_message_id or "resend",
     )
     db.add(email)
     await db.commit()
-    return {"success": True, "message_id": email.message_id, "error": None}
+    return {"success": success, "message_id": resend_message_id, "error": error_message}
 
 
 @router.post("/emails/schedule")
@@ -1055,15 +1096,17 @@ async def compat_schedule_email(
         "sinistroRef": payload.sinistroRef,
         "direction": "out",
         "compat": True,
+        "provider": "resend",
         "scheduledFor": payload.scheduledFor.isoformat(),
         "body": payload.body,
+        "isHtml": False,
     }
     email = Email(
         id=str(uuid.uuid4()),
         tenant_id=current_user.tenant_id,
         message_id=f"scheduled-{uuid.uuid4()}",
         thread_id=None,
-        from_address=current_user.email,
+        from_address=_resolve_resend_schedule_from_address(payload.accountId, current_user),
         to_addresses=json.dumps(payload.to),
         cc_addresses=json.dumps(payload.cc or []),
         subject=payload.subject,
@@ -1073,7 +1116,7 @@ async def compat_schedule_email(
         status="scheduled",
         raw_headers=json.dumps(metadata),
         mailbox_id=payload.accountId,
-        provider_id="fastapi_compat",
+        provider_id="resend",
     )
     db.add(email)
     await db.commit()

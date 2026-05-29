@@ -67,7 +67,6 @@ struct SettingsView: View {
                     case .sync:
                         VStack(spacing: 20) {
                             HubSettingsView()
-                            CloudSettingsView()
                         }
                         
                     case .info:

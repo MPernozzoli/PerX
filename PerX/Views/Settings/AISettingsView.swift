@@ -914,7 +914,7 @@ final class RAGBuildManager: ObservableObject {
     private func openAIEnv() -> [String: String] {
         var env = ProcessInfo.processInfo.environment
         // Usa la chiave dal backend (Supabase); fallback a UserDefaults per retrocompatibilità
-        let tenantKey = TenantAIKeysService.shared.openAIKey
+        let tenantKey = TenantAIKeysCache.snapshot().openAIKey
         if env["OPENAI_API_KEY"]?.isEmpty ?? true {
             let key = tenantKey.isEmpty
                 ? (UserDefaults.standard.string(forKey: "ai_openai_api_key") ?? "")
@@ -1007,4 +1007,3 @@ extension ResourceMonitor.MemoryPressure {
         }
     }
 }
-

@@ -55,8 +55,7 @@ public actor HubStatoManager {
         // Log cambio stato
         print("[HubStatoManager] ✅ \(sinistroRef): \(currentState?.descrizione ?? "N/A") → \(newState.descrizione)")
         
-        // Trigger sync CloudKit
-        await syncToCloudKit(sinistroRef: sinistroRef)
+        await syncToBackend(sinistroRef: sinistroRef)
     }
     
     /// Ottiene lo stato corrente di un sinistro
@@ -161,11 +160,10 @@ public actor HubStatoManager {
         }
     }
     
-    // MARK: - CloudKit Sync
+    // MARK: - Backend Sync
     
-    private func syncToCloudKit(sinistroRef: String) async {
-        // TODO: Trigger sync CloudKit
-        print("[HubStatoManager] ☁️ Sync CloudKit scheduled: \(sinistroRef)")
+    private func syncToBackend(sinistroRef: String) async {
+        print("[HubStatoManager] Sync backend Supabase scheduled: \(sinistroRef)")
     }
     
     // MARK: - State Resolution

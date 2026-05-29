@@ -13,10 +13,6 @@ class AttoTemplateManager: ObservableObject {
     
     private init() {
         loadTemplates()
-        // Sync con iCloud in background
-        Task {
-            await syncWithiCloud()
-        }
     }
     
     // MARK: - Paths
@@ -30,18 +26,6 @@ class AttoTemplateManager: ObservableObject {
             return nil
         }
         let attiDir = appSupport.appendingPathComponent("PerX/Atti", isDirectory: true)
-        if !fileManager.fileExists(atPath: attiDir.path) {
-            try? fileManager.createDirectory(at: attiDir, withIntermediateDirectories: true)
-        }
-        return attiDir.appendingPathComponent(templatesFileName)
-    }
-    
-    private var iCloudTemplatesURL: URL? {
-        guard let containerURL = fileManager.url(forUbiquityContainerIdentifier: nil) else {
-            print("[AttoTemplateManager] iCloud non disponibile")
-            return nil
-        }
-        let attiDir = containerURL.appendingPathComponent("Documents/Atti", isDirectory: true)
         if !fileManager.fileExists(atPath: attiDir.path) {
             try? fileManager.createDirectory(at: attiDir, withIntermediateDirectories: true)
         }
@@ -114,13 +98,7 @@ class AttoTemplateManager: ObservableObject {
     }
     
     func saveTemplates() {
-        // Salva in locale
         saveToLocal()
-        
-        // Salva su iCloud in background
-        Task {
-            await saveToiCloud()
-        }
     }
     
     private func saveToLocal() {
@@ -147,87 +125,10 @@ class AttoTemplateManager: ObservableObject {
         }
     }
     
-    private func saveToiCloud() async {
-        guard let iCloudURL = iCloudTemplatesURL else {
-            print("[AttoTemplateManager] iCloud non disponibile per salvataggio")
-            return
-        }
-        
-        let storage = AttoTemplatesStorage(templates: templates, lastUpdated: Date())
-        
-        do {
-            let data = try jsonEncoder.encode(storage)
-            try data.write(to: iCloudURL, options: .atomic)
-            print("[AttoTemplateManager] Salvati \(templates.count) template su iCloud: \(iCloudURL.path)")
-        } catch {
-            print("[AttoTemplateManager] Errore salvataggio iCloud: \(error)")
-        }
-    }
-    
-    // MARK: - iCloud Sync
+    // MARK: - Sync
     
     func syncWithiCloud() async {
-        guard let iCloudURL = iCloudTemplatesURL else { return }
-        
-        // Avvia download se necessario
-        do {
-            try fileManager.startDownloadingUbiquitousItem(at: iCloudURL)
-        } catch {
-            // File potrebbe non esistere ancora su iCloud
-        }
-        
-        // Attendi che il file sia scaricato (max 5 secondi)
-        var attempts = 0
-        while attempts < 10 {
-            if let resourceValues = try? iCloudURL.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey]),
-               let status = resourceValues.ubiquitousItemDownloadingStatus,
-               status == .current || status == .downloaded {
-                break
-            }
-            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s
-            attempts += 1
-        }
-        
-        // Carica da iCloud se esiste
-        guard fileManager.fileExists(atPath: iCloudURL.path),
-              let iCloudData = try? Data(contentsOf: iCloudURL),
-              let iCloudStorage = try? jsonDecoder.decode(AttoTemplatesStorage.self, from: iCloudData) else {
-            // iCloud vuoto, carica da locale
-            print("[AttoTemplateManager] iCloud vuoto o non accessibile, upload locale")
-            if !templates.isEmpty {
-                await saveToiCloud()
-            }
-            return
-        }
-        
-        print("[AttoTemplateManager] Trovati \(iCloudStorage.templates.count) template su iCloud")
-        
-        // Carica da locale per confronto
-        var localStorage: AttoTemplatesStorage?
-        if let localURL = localTemplatesURL,
-           fileManager.fileExists(atPath: localURL.path),
-           let localData = try? Data(contentsOf: localURL) {
-            localStorage = try? jsonDecoder.decode(AttoTemplatesStorage.self, from: localData)
-        }
-        
-        // Determina quale versione è più recente
-        let iCloudDate = iCloudStorage.lastUpdated
-        let localDate = localStorage?.lastUpdated ?? Date.distantPast
-        
-        if iCloudDate > localDate {
-            // iCloud più recente, aggiorna locale
-            await MainActor.run {
-                templates = iCloudStorage.templates
-                print("[AttoTemplateManager] Sincronizzati \(templates.count) template da iCloud")
-            }
-            saveToLocal()
-        } else if localDate > iCloudDate {
-            // Locale più recente, aggiorna iCloud
-            await saveToiCloud()
-        } else {
-            // Stesso timestamp, unisci (preferendo ID più recenti)
-            await mergeTemplates(local: localStorage?.templates ?? [], cloud: iCloudStorage.templates)
-        }
+        loadTemplates()
     }
     
     private func mergeTemplates(local: [AttoTemplate], cloud: [AttoTemplate]) async {
@@ -258,9 +159,7 @@ class AttoTemplateManager: ObservableObject {
             }
         }
         
-        // Salva versione merged ovunque
         saveToLocal()
-        await saveToiCloud()
     }
     
     // MARK: - Template CRUD
@@ -340,7 +239,7 @@ class AttoTemplateManager: ObservableObject {
     }
     
     func getPDFURL(for template: AttoTemplate) -> URL? {
-        // Prima cerca nel cloud service (include cache locale e iCloud)
+        // Prima cerca nel servizio PDF locale.
         if let cloudURL = cloudService.getPDFURL(forFileName: template.pdfFileName) {
             return cloudURL
         }

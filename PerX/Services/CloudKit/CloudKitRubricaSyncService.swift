@@ -2,12 +2,11 @@
 //  CloudKitRubricaSyncService.swift
 //  PerX
 //
-//  Servizio per sincronizzazione pubblica della rubrica agenzie via CloudKit
+//  Servizio rubrica agenzie. CloudKit e' stato rimosso dal runtime.
 //  NOTA: Gruppi e Compagnie sono presi da CompagniaService (enum fissi, non editabili)
 //
 
 import Foundation
-import CloudKit
 import CoreData
 import Combine
 
@@ -31,13 +30,10 @@ final class CloudKitRubricaSyncService: ObservableObject {
     
     // MARK: - Private
     
-    private let container: CKContainer
-    private let publicDB: CKDatabase
     private var cancellables = Set<AnyCancellable>()
+    private let backend = BackendAPIClient.shared
     
     private init() {
-        self.container = CKContainer(identifier: "iCloud.it.pernozzoli.PerX")
-        self.publicDB = container.publicCloudDatabase
         // Cache caricata in loadInitial() in background per non bloccare la UI
     }
     
@@ -60,7 +56,7 @@ final class CloudKitRubricaSyncService: ObservableObject {
     
     // MARK: - Public API
     
-    /// Sincronizza tutti i dati dal CloudKit pubblico
+    /// Ricarica i dati dal backend Supabase, con fallback su cache locale.
     func syncAll() async {
         guard !isSyncing else { return }
         
@@ -70,11 +66,15 @@ final class CloudKitRubricaSyncService: ObservableObject {
         defer { isSyncing = false }
         
         do {
-            async let agenzieTask = fetchAgenzie()
-            async let agentiTask = fetchAgenti()
-            async let liquidatoriTask = fetchLiquidatori()
-            
-            let (a, ag, l) = try await (agenzieTask, agentiTask, liquidatoriTask)
+            let (a, ag, l): ([RubricaAgenzia], [RubricaAgente], [RubricaLiquidatore])
+            if backend.isConfigured && backend.hasAccessToken {
+                let response: RubricaAllDTO = try await backend.get("rubrica/all")
+                a = response.agenzie.map { $0.toRubricaAgenzia() }
+                ag = response.agenti.map { $0.toRubricaAgente() }
+                l = response.liquidatori.map { $0.toRubricaLiquidatore() }
+            } else {
+                (a, ag, l) = try await (fetchAgenzie(), fetchAgenti(), fetchLiquidatori())
+            }
             
             // Merge e sort in background per non saturare la CPU sul main thread
             let (mergedAgenzie, sortedAgenti, sortedLiquidatori) = await Task.detached(priority: .utility) {
@@ -92,7 +92,7 @@ final class CloudKitRubricaSyncService: ObservableObject {
             lastSyncDate = Date()
             saveToLocalCache()
             
-            print("[RubricaSync] Sincronizzati: \(agenzie.count) agenzie, \(agenti.count) agenti, \(liquidatori.count) liquidatori")
+            print("[RubricaSync] Rubrica caricata: \(agenzie.count) agenzie, \(agenti.count) agenti, \(liquidatori.count) liquidatori")
             
         } catch {
             self.error = error.localizedDescription
@@ -100,7 +100,7 @@ final class CloudKitRubricaSyncService: ObservableObject {
         }
     }
     
-    /// Carica i dati iniziali (da cache poi CloudKit). Lavoro pesante in background per non bloccare la UI.
+    /// Carica i dati iniziali da cache locale. Lavoro pesante in background per non bloccare la UI.
     func loadInitial() async {
         guard agenzie.isEmpty else { return }
         
@@ -131,33 +131,23 @@ final class CloudKitRubricaSyncService: ObservableObject {
         var a = agenzia
         a.lastModified = Date()
         addOrUpdateAgenziaLocally(a)
-        let record = a.toCKRecord()
-        _ = try await publicDB.saveRecordAsync(record)
+        guard backend.isConfigured && backend.hasAccessToken else { return }
+        do {
+            let saved: RubricaAgenziaDTO = try await backend.put("rubrica/agenzie/\(a.id)", body: RubricaAgenziaUpsertDTO(agenzia: a))
+            addOrUpdateAgenziaLocally(saved.toRubricaAgenzia())
+        } catch BackendAPIError.notFound {
+            let saved: RubricaAgenziaDTO = try await backend.post("rubrica/agenzie", body: RubricaAgenziaUpsertDTO(agenzia: a))
+            addOrUpdateAgenziaLocally(saved.toRubricaAgenzia())
+        }
     }
     
-    /// Salva solo su CloudKit (nessun aggiornamento array/cache). Usato dopo import locale.
-    /// Se il record esiste già (es. "record to insert already exists" CK 14), fa fetch → update → save.
+    /// Mantiene compatibilita' con il vecchio import: ora aggiorna solo cache locale.
     private func saveAgenziaToCloudOnly(_ agenzia: RubricaAgenzia) async throws {
         var a = agenzia
         a.lastModified = Date()
-        let recordID = CKRecord.ID(recordName: a.id)
-        
-        if let existing = try? await publicDB.fetchRecordIfExists(recordID) {
-            a.applyToExistingRecord(existing)
-            _ = try await publicDB.saveRecordAsync(existing)
-        } else {
-            let record = a.toCKRecord()
-            do {
-                _ = try await publicDB.saveRecordAsync(record)
-            } catch let err as CKError where err.code == .serverRecordChanged {
-                // Record esiste sul server (es. creato da altro device): fetch e update
-                if let existing = try? await publicDB.fetchRecordIfExists(recordID) {
-                    a.applyToExistingRecord(existing)
-                    _ = try await publicDB.saveRecordAsync(existing)
-                } else {
-                    throw err
-                }
-            }
+        addOrUpdateAgenziaLocally(a)
+        if backend.isConfigured && backend.hasAccessToken {
+            try await saveAgenzia(a)
         }
     }
     
@@ -174,16 +164,12 @@ final class CloudKitRubricaSyncService: ObservableObject {
     }
     
     func deleteAgenzia(_ id: String) async throws {
-        let recordID = CKRecord.ID(recordName: id)
-        try await publicDB.deleteRecordAsync(recordID)
-        
+        if backend.isConfigured && backend.hasAccessToken {
+            try await backend.delete("rubrica/agenzie/\(id)")
+        }
         // Trova e rimuovi filiali associate
         let filialiIds = agenzie.filter { $0.agenziaParentId == id }.map { $0.id }
-        for filialeId in filialiIds {
-            let filialeRecordID = CKRecord.ID(recordName: filialeId)
-            try? await publicDB.deleteRecordAsync(filialeRecordID)
-        }
-        
+
         agenzie.removeAll { $0.id == id || $0.agenziaParentId == id }
         // Rimuovi agenti associati all'agenzia e alle filiali
         agenti.removeAll { $0.agenziaId == id || filialiIds.contains($0.agenziaId) }
@@ -191,32 +177,10 @@ final class CloudKitRubricaSyncService: ObservableObject {
         saveToLocalCache()
     }
     
-    /// DEBUG: Cancella tutte le agenzie, agenti e liquidatori (locale + CloudKit)
+    /// DEBUG: Cancella tutte le agenzie, agenti e liquidatori locali.
     func deleteAllData() async {
         print("[RubricaSync] 🗑️ Cancellazione completa rubrica...")
-        
-        // Cancella da CloudKit (in batch per evitare timeout)
-        let allAgenzieIds = agenzie.map { CKRecord.ID(recordName: $0.id) }
-        let allAgentiIds = agenti.map { CKRecord.ID(recordName: $0.id) }
-        let allLiquidatoriIds = liquidatori.map { CKRecord.ID(recordName: $0.id) }
-        
-        // Cancella in batch di 100
-        for chunk in allAgenzieIds.chunked(into: 100) {
-            for id in chunk {
-                try? await publicDB.deleteRecordAsync(id)
-            }
-        }
-        for chunk in allAgentiIds.chunked(into: 100) {
-            for id in chunk {
-                try? await publicDB.deleteRecordAsync(id)
-            }
-        }
-        for chunk in allLiquidatoriIds.chunked(into: 100) {
-            for id in chunk {
-                try? await publicDB.deleteRecordAsync(id)
-            }
-        }
-        
+
         // Svuota liste locali
         agenzie.removeAll()
         agenti.removeAll()
@@ -233,25 +197,33 @@ final class CloudKitRubricaSyncService: ObservableObject {
     func saveAgente(_ agente: RubricaAgente) async throws {
         var a = agente
         a.lastModified = Date()
-        
-        let record = a.toCKRecord()
-        _ = try await publicDB.saveRecordAsync(record)
-        
-        if let index = agenti.firstIndex(where: { $0.id == a.id }) {
-            agenti[index] = a
-        } else {
-            agenti.append(a)
-            agenti.sort { $0.cognome < $1.cognome }
+
+        upsertAgenteLocally(a)
+        guard backend.isConfigured && backend.hasAccessToken else { return }
+        do {
+            let saved: RubricaAgenteDTO = try await backend.put("rubrica/agenti/\(a.id)", body: RubricaAgenteUpsertDTO(agente: a))
+            upsertAgenteLocally(saved.toRubricaAgente())
+        } catch BackendAPIError.notFound {
+            let saved: RubricaAgenteDTO = try await backend.post("rubrica/agenti", body: RubricaAgenteUpsertDTO(agente: a))
+            upsertAgenteLocally(saved.toRubricaAgente())
         }
-        
-        saveToLocalCache()
     }
     
     func deleteAgente(_ id: String) async throws {
-        let recordID = CKRecord.ID(recordName: id)
-        try await publicDB.deleteRecordAsync(recordID)
-        
+        if backend.isConfigured && backend.hasAccessToken {
+            try await backend.delete("rubrica/agenti/\(id)")
+        }
         agenti.removeAll { $0.id == id }
+        saveToLocalCache()
+    }
+
+    private func upsertAgenteLocally(_ agente: RubricaAgente) {
+        if let index = agenti.firstIndex(where: { $0.id == agente.id }) {
+            agenti[index] = agente
+        } else {
+            agenti.append(agente)
+        }
+        agenti.sort { $0.cognome < $1.cognome }
         saveToLocalCache()
     }
     
@@ -260,10 +232,7 @@ final class CloudKitRubricaSyncService: ObservableObject {
     func saveLiquidatore(_ liquidatore: RubricaLiquidatore) async throws {
         var l = liquidatore
         l.lastModified = Date()
-        
-        let record = l.toCKRecord()
-        _ = try await publicDB.saveRecordAsync(record)
-        
+
         if let index = liquidatori.firstIndex(where: { $0.id == l.id }) {
             liquidatori[index] = l
         } else {
@@ -272,13 +241,31 @@ final class CloudKitRubricaSyncService: ObservableObject {
         }
         
         saveToLocalCache()
+        guard backend.isConfigured && backend.hasAccessToken else { return }
+        do {
+            let saved: RubricaLiquidatoreDTO = try await backend.put("rubrica/liquidatori/\(l.id)", body: RubricaLiquidatoreUpsertDTO(liquidatore: l))
+            upsertLiquidatoreLocally(saved.toRubricaLiquidatore())
+        } catch BackendAPIError.notFound {
+            let saved: RubricaLiquidatoreDTO = try await backend.post("rubrica/liquidatori", body: RubricaLiquidatoreUpsertDTO(liquidatore: l))
+            upsertLiquidatoreLocally(saved.toRubricaLiquidatore())
+        }
     }
     
     func deleteLiquidatore(_ id: String) async throws {
-        let recordID = CKRecord.ID(recordName: id)
-        try await publicDB.deleteRecordAsync(recordID)
-        
+        if backend.isConfigured && backend.hasAccessToken {
+            try await backend.delete("rubrica/liquidatori/\(id)")
+        }
         liquidatori.removeAll { $0.id == id }
+        saveToLocalCache()
+    }
+
+    private func upsertLiquidatoreLocally(_ liquidatore: RubricaLiquidatore) {
+        if let index = liquidatori.firstIndex(where: { $0.id == liquidatore.id }) {
+            liquidatori[index] = liquidatore
+        } else {
+            liquidatori.append(liquidatore)
+        }
+        liquidatori.sort { $0.cognome < $1.cognome }
         saveToLocalCache()
     }
     
@@ -542,73 +529,18 @@ final class CloudKitRubricaSyncService: ObservableObject {
         Self.mergeDuplicateAgenzieStatic(list)
     }
     
-    // MARK: - Fetch from CloudKit
-    
-    // NOTA: Gruppi e Compagnie non vengono più sincronizzati su CK (usano gli enum fissi)
+    // MARK: - Fetch locale
     
     private func fetchAgenzie() async throws -> [RubricaAgenzia] {
-        let query = CKQuery(recordType: RubricaAgenzia.recordType, predicate: NSPredicate(value: true))
-        query.sortDescriptors = [NSSortDescriptor(key: "nome", ascending: true)]
-        
-        // Fetch in batch per gestire grandi quantità
-        var allRecords: [CKRecord] = []
-        var cursor: CKQueryOperation.Cursor?
-        
-        repeat {
-            let (records, nextCursor) = try await fetchBatch(query: query, cursor: cursor)
-            allRecords.append(contentsOf: records)
-            cursor = nextCursor
-        } while cursor != nil
-        
-        return allRecords.map { RubricaAgenzia(from: $0) }
+        agenzie
     }
     
     private func fetchAgenti() async throws -> [RubricaAgente] {
-        let query = CKQuery(recordType: RubricaAgente.recordType, predicate: NSPredicate(value: true))
-        query.sortDescriptors = [NSSortDescriptor(key: "cognome", ascending: true)]
-        
-        let records = try await publicDB.performQueryAsync(query)
-        return records.map { RubricaAgente(from: $0) }
+        agenti
     }
     
     private func fetchLiquidatori() async throws -> [RubricaLiquidatore] {
-        let query = CKQuery(recordType: RubricaLiquidatore.recordType, predicate: NSPredicate(value: true))
-        query.sortDescriptors = [NSSortDescriptor(key: "cognome", ascending: true)]
-        
-        let records = try await publicDB.performQueryAsync(query)
-        return records.map { RubricaLiquidatore(from: $0) }
-    }
-    
-    private func fetchBatch(query: CKQuery, cursor: CKQueryOperation.Cursor?) async throws -> ([CKRecord], CKQueryOperation.Cursor?) {
-        try await withCheckedThrowingContinuation { continuation in
-            let operation: CKQueryOperation
-            if let cursor = cursor {
-                operation = CKQueryOperation(cursor: cursor)
-            } else {
-                operation = CKQueryOperation(query: query)
-            }
-            
-            operation.resultsLimit = 400
-            
-            var fetchedRecords: [CKRecord] = []
-            
-            operation.recordMatchedBlock = { _, result in
-                if case .success(let record) = result {
-                    fetchedRecords.append(record)
-                }
-            }
-            
-            operation.queryResultBlock = { result in
-                switch result {
-                case .success(let cursor):
-                    continuation.resume(returning: (fetchedRecords, cursor))
-                case .failure(let error):
-                    continuation.resume(throwing: error)
-                }
-            }
-            
-            publicDB.add(operation)
-        }
+        liquidatori
     }
     
     // MARK: - Local Cache
@@ -1168,17 +1100,13 @@ final class CloudKitRubricaSyncService: ObservableObject {
         
         let savedCount = toSyncToCloud.count
         let listToSync = toSyncToCloud
-        print("[RubricaSync] Import nuovo formato: \(rows.count) righe → \(savedCount) agenzie in locale (cache salvata). Sync CloudKit in background...")
-        
-        // 2. Sync su CloudKit in background con CPUThrottler; Task.detached così continua anche uscendo dalla vista
-        Task.detached(priority: .utility) { [weak self] in
-            await self?.syncImportedAgenzieToCloudInBackground(listToSync)
-        }
+        print("[RubricaSync] Import nuovo formato: \(rows.count) righe -> \(savedCount) agenzie in locale (cache salvata).")
+        await syncImportedAgenzieToCloudInBackground(listToSync)
         
         return savedCount
     }
     
-    /// Sync su CloudKit delle agenzie importate in locale. Usa CPUThrottler e continua in background (chiamare da Task.detached).
+    /// Compatibilita' vecchio nome: aggiorna solo cache locale.
     private func syncImportedAgenzieToCloudInBackground(_ list: [RubricaAgenzia]) async {
         let total = list.count
         var ok = 0
@@ -1188,10 +1116,10 @@ final class CloudKitRubricaSyncService: ObservableObject {
                 try await saveAgenziaToCloudOnly(a)
                 ok += 1
             } catch {
-                print("[RubricaSync] ⚠️ Sync CK fallita per \(a.nomeCompleto): \(error)")
+                print("[RubricaSync] ⚠️ Aggiornamento cache fallito per \(a.nomeCompleto): \(error)")
             }
         }
-        print("[RubricaSync] CloudKit sync completata: \(ok)/\(total) agenzie")
+        print("[RubricaSync] Cache aggiornata: \(ok)/\(total) agenzie")
     }
     
     /// Vecchio formato JSON legacy: id_agenzia, ragione_sociale, etc.
@@ -1279,5 +1207,183 @@ final class CloudKitRubricaSyncService: ObservableObject {
         }
         
         return newAgenzie.count
+    }
+}
+
+private struct RubricaAllDTO: Codable {
+    let agenzie: [RubricaAgenziaDTO]
+    let agenti: [RubricaAgenteDTO]
+    let liquidatori: [RubricaLiquidatoreDTO]
+    let synced_at: Date
+}
+
+private struct RubricaAgenziaDTO: Codable {
+    let id: String
+    let tenant_id: String?
+    let nome: String
+    let codice: String?
+    let indirizzo: String?
+    let citta: String?
+    let provincia: String?
+    let telefono: String?
+    let email: String?
+    let compagnia: String?
+    let gruppo: String?
+    let note: String?
+    let is_active: Bool
+    let created_at: Date?
+    let updated_at: Date?
+
+    func toRubricaAgenzia() -> RubricaAgenzia {
+        let compagnia = Compagnia.detect(gruppo: gruppo, compagnia: compagnia)
+        return RubricaAgenzia(
+            id: id,
+            compagniaId: compagnia.rubricaId,
+            codice: codice ?? "",
+            nome: nome,
+            indirizzo: indirizzo,
+            citta: citta,
+            provincia: provincia,
+            telefoni: telefono.map { [$0] } ?? [],
+            email: email.map { [$0] } ?? [],
+            note: note
+        )
+    }
+}
+
+private struct RubricaAgenziaUpsertDTO: Codable {
+    let id: String
+    let nome: String
+    let codice: String?
+    let indirizzo: String?
+    let citta: String?
+    let provincia: String?
+    let telefono: String?
+    let email: String?
+    let compagnia: String?
+    let gruppo: String?
+    let note: String?
+    let is_active: Bool
+
+    init(agenzia: RubricaAgenzia) {
+        let compagnia = Compagnia(rawValue: agenzia.compagniaId)
+        self.id = agenzia.id
+        self.nome = agenzia.nome
+        self.codice = agenzia.codice.isEmpty ? nil : agenzia.codice
+        self.indirizzo = agenzia.indirizzo
+        self.citta = agenzia.citta
+        self.provincia = agenzia.provincia
+        self.telefono = agenzia.telefoni.first
+        self.email = agenzia.email.first
+        self.compagnia = compagnia?.rawValue ?? agenzia.compagniaId
+        self.gruppo = compagnia?.gruppo.rawValue
+        self.note = agenzia.note
+        self.is_active = true
+    }
+}
+
+private struct RubricaAgenteDTO: Codable {
+    let id: String
+    let tenant_id: String?
+    let agenzia_id: String
+    let nome: String
+    let cognome: String
+    let ruolo: String?
+    let telefono: String?
+    let email: String?
+    let note: String?
+    let is_active: Bool
+    let created_at: Date?
+    let updated_at: Date?
+
+    func toRubricaAgente() -> RubricaAgente {
+        RubricaAgente(
+            id: id,
+            agenziaId: agenzia_id,
+            nome: nome,
+            cognome: cognome,
+            ruolo: ruolo,
+            telefoni: telefono.map { [$0] } ?? [],
+            email: email.map { [$0] } ?? [],
+            note: note
+        )
+    }
+}
+
+private struct RubricaAgenteUpsertDTO: Codable {
+    let id: String
+    let agenzia_id: String
+    let nome: String
+    let cognome: String
+    let ruolo: String?
+    let telefono: String?
+    let email: String?
+    let note: String?
+    let is_active: Bool
+
+    init(agente: RubricaAgente) {
+        self.id = agente.id
+        self.agenzia_id = agente.agenziaId
+        self.nome = agente.nome
+        self.cognome = agente.cognome
+        self.ruolo = agente.ruolo
+        self.telefono = agente.telefoni.first
+        self.email = agente.email.first
+        self.note = agente.note
+        self.is_active = true
+    }
+}
+
+private struct RubricaLiquidatoreDTO: Codable {
+    let id: String
+    let tenant_id: String?
+    let nome: String?
+    let cognome: String
+    let email: String?
+    let telefono: String?
+    let compagnia: String?
+    let zona: String?
+    let is_active: Bool
+    let note: String?
+    let created_at: Date?
+    let updated_at: Date?
+
+    func toRubricaLiquidatore() -> RubricaLiquidatore {
+        let compagnia = Compagnia.from(nomeCompagnia: compagnia)
+        return RubricaLiquidatore(
+            id: id,
+            gruppoId: compagnia.gruppo.rubricaId,
+            compagniaId: compagnia.rubricaId,
+            nome: nome ?? "",
+            cognome: cognome,
+            telefoni: telefono.map { [$0] } ?? [],
+            email: email.map { [$0] } ?? [],
+            area: zona,
+            note: note
+        )
+    }
+}
+
+private struct RubricaLiquidatoreUpsertDTO: Codable {
+    let id: String
+    let nome: String?
+    let cognome: String
+    let email: String?
+    let telefono: String?
+    let compagnia: String?
+    let zona: String?
+    let is_active: Bool
+    let note: String?
+
+    init(liquidatore: RubricaLiquidatore) {
+        self.id = liquidatore.id
+        self.nome = liquidatore.nome.isEmpty ? nil : liquidatore.nome
+        self.cognome = liquidatore.cognome
+        self.email = liquidatore.email.first
+        self.telefono = liquidatore.telefoni.first
+        self.compagnia = liquidatore.compagniaId.flatMap { Compagnia(rawValue: $0)?.rawValue } ?? liquidatore.compagniaId
+        self.zona = liquidatore.area
+        self.is_active = true
+        self.note = liquidatore.note
     }
 }

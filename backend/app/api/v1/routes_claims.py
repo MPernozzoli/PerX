@@ -106,6 +106,27 @@ async def update_claim(
     return response
 
 
+@router.delete("/{claim_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_claim(
+    claim_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Delete a claim within the current tenant."""
+    deleted = await ClaimService.delete_claim(db, current_user.tenant_id, claim_id, current_user.id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Claim not found")
+    try:
+        from app.api.v1.routes_realtime import sse_manager
+        await sse_manager.broadcast(
+            current_user.tenant_id,
+            "claim_deleted",
+            {"claim_id": claim_id, "deleted_by": current_user.id},
+        )
+    except Exception:
+        pass
+
+
 @router.post("/{claim_id}/state-transitions")
 async def transition_state(
     claim_id: str,

@@ -12,6 +12,7 @@ from app.api.v1 import (
     routes_admin,
     routes_attachments,
     routes_auth,
+    routes_bignami,
     routes_claims,
     routes_cat_dispatcher,
     routes_diary,
@@ -41,6 +42,7 @@ from app.api.v1 import (
 )
 from app.services.inspection_workflow_service import InspectionAutomationRuntime
 from app.services.automation_service import AutomationRuntime
+from app.services.scheduled_email_service import ScheduledEmailRuntime
 
 
 @asynccontextmanager
@@ -50,12 +52,14 @@ async def lifespan(app: FastAPI):
     setup_logging()
     # Create tables (in production, use migrations)
     # Base.metadata.create_all(bind=engine)
+    await ScheduledEmailRuntime.start()
     await AutomationRuntime.start()
     await InspectionAutomationRuntime.start()
     yield
     # Shutdown
     await InspectionAutomationRuntime.stop()
     await AutomationRuntime.stop()
+    await ScheduledEmailRuntime.stop()
 
 
 app = FastAPI(
@@ -78,6 +82,7 @@ app.add_middleware(
 app.include_router(routes_auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(routes_profiles.router, prefix="/api/v1/profiles", tags=["profiles"])
 app.include_router(routes_reporting.router, prefix="/api/v1/reports", tags=["reporting"])
+app.include_router(routes_bignami.router, prefix="/api/v1", tags=["bignami"])
 app.include_router(routes_claims.router, prefix="/api/v1/claims", tags=["claims"])
 app.include_router(routes_cat_dispatcher.router, prefix="/api/v1/cat-dispatcher", tags=["cat-dispatcher"])
 app.include_router(routes_tasks.router, prefix="/api/v1", tags=["tasks"])

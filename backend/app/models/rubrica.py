@@ -1,5 +1,5 @@
 """
-Rubrica models: agenzie e liquidatori
+Rubrica models: agenzie, agenti e liquidatori
 """
 from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey
 from sqlalchemy.sql import func
@@ -21,6 +21,23 @@ class RubricaAgenzia(Base):
     email = Column(String, nullable=True)
     compagnia = Column(String, nullable=True)
     gruppo = Column(String, nullable=True)
+    note = Column(String, nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class RubricaAgente(Base):
+    __tablename__ = "rubrica_agenti"
+
+    id = Column(String, primary_key=True, index=True)
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    agenzia_id = Column(String, ForeignKey("rubrica_agenzie.id"), nullable=False, index=True)
+    nome = Column(String, nullable=False)
+    cognome = Column(String, nullable=False)
+    ruolo = Column(String, nullable=True)
+    telefono = Column(String, nullable=True)
+    email = Column(String, nullable=True)
     note = Column(String, nullable=True)
     is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

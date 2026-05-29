@@ -77,7 +77,7 @@ public actor CrossUserNotificationService {
             return cached
         }
         
-        // TODO: Query da CloudKit o database locale
+        // TODO: Query da backend Supabase o database locale
         // Per ora ritorna nil - in produzione questo andrebbe a cercare
         // nel database dei sinistri chi è il perito assegnato
         

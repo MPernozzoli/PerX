@@ -11,7 +11,7 @@ class Email(Base):
     
     id = Column(String, primary_key=True, index=True)
     tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
-    message_id = Column(String, unique=True, nullable=False, index=True)  # Gmail message ID
+    message_id = Column(String, unique=True, nullable=False, index=True)  # Provider or internal message ID
     thread_id = Column(String, nullable=True, index=True)
     from_address = Column(String, nullable=False, index=True)
     to_addresses = Column(Text, nullable=True)  # JSON array as string
@@ -24,7 +24,7 @@ class Email(Base):
     status = Column(String, nullable=False, default="ingested")  # ingested, processed, linked, archived
     raw_headers = Column(Text, nullable=True)  # Raw email headers
     mailbox_id = Column(String, nullable=True, index=True)
-    provider_id = Column(String, nullable=True)  # gmail, imap, etc.
+    provider_id = Column(String, nullable=True)  # Resend provider ID when available
     
     __table_args__ = (
         Index("idx_emails_tenant_received", "tenant_id", "received_at"),
@@ -49,7 +49,7 @@ class Mailbox(Base):
     id = Column(String, primary_key=True, index=True)
     tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
     label = Column(String, nullable=False)
-    provider = Column(String, nullable=False)  # gmail, imap, etc.
+    provider = Column(String, nullable=False)  # resend
     email_address = Column(String, nullable=False)
     auth_type = Column(String, nullable=False)  # "oauth", "password"
     oauth_token_ref = Column(String, nullable=True)  # Reference to secret manager

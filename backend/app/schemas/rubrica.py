@@ -1,5 +1,5 @@
 """
-Pydantic schemas for rubrica (agenzie e liquidatori)
+Pydantic schemas for rubrica (agenzie, agenti e liquidatori)
 """
 from __future__ import annotations
 from datetime import datetime
@@ -12,6 +12,7 @@ from pydantic import BaseModel
 # ------------------------------------------------------------------
 
 class AgenziaBase(BaseModel):
+    id: Optional[str] = None
     nome: str
     codice: Optional[str] = None
     indirizzo: Optional[str] = None
@@ -58,10 +59,56 @@ class AgenziaListResponse(BaseModel):
 
 
 # ------------------------------------------------------------------
+# Agente
+# ------------------------------------------------------------------
+
+class AgenteBase(BaseModel):
+    id: Optional[str] = None
+    agenzia_id: str
+    nome: str
+    cognome: str
+    ruolo: Optional[str] = None
+    telefono: Optional[str] = None
+    email: Optional[str] = None
+    note: Optional[str] = None
+    is_active: bool = True
+
+
+class AgenteCreate(AgenteBase):
+    pass
+
+
+class AgenteUpdate(BaseModel):
+    agenzia_id: Optional[str] = None
+    nome: Optional[str] = None
+    cognome: Optional[str] = None
+    ruolo: Optional[str] = None
+    telefono: Optional[str] = None
+    email: Optional[str] = None
+    note: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class AgenteResponse(AgenteBase):
+    id: str
+    tenant_id: str
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class AgenteListResponse(BaseModel):
+    items: List[AgenteResponse]
+    total: int
+
+
+# ------------------------------------------------------------------
 # Liquidatore
 # ------------------------------------------------------------------
 
 class LiquidatoreBase(BaseModel):
+    id: Optional[str] = None
     nome: Optional[str] = None
     cognome: str
     email: Optional[str] = None
@@ -107,5 +154,6 @@ class LiquidatoreListResponse(BaseModel):
 
 class RubricaAllResponse(BaseModel):
     agenzie: List[AgenziaResponse]
+    agenti: List[AgenteResponse]
     liquidatori: List[LiquidatoreResponse]
     synced_at: datetime

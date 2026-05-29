@@ -23,7 +23,7 @@ class ScheduledEmailService {
         }
     }
     
-    /// Invia email immediatamente via Hub -> Mail Worker
+    /// Invia email immediatamente tramite il flusso backend/Resend configurato nell'Hub.
     func sendEmail(
         accountId: String,
         to: [String],
