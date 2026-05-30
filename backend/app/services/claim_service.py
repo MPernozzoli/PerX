@@ -55,7 +55,16 @@ class ClaimService:
         await ClaimService._create_event(
             db, tenant_id, claim.id, "claim_created", user_id, {"stato": claim_data.stato_corrente}
         )
-        
+
+        # Auto-provisioning portale assicurati (assicurato / contraente / danneggiato)
+        # + invio email di benvenuto con magic link.
+        try:
+            from app.services.portal_service import PortalService
+            await PortalService.provision_portal_access_for_claim(db, claim)
+        except Exception:
+            # Non bloccare la creazione del sinistro se il provisioning portale fallisce.
+            await db.rollback()
+
         return claim
     
     @staticmethod

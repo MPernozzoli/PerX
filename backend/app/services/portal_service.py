@@ -52,10 +52,12 @@ from app.schemas.portal import (
     PortalSignatureRequestCreate,
     PortalUploadIntentCreate,
 )
+from app.core.portal_security import generate_otp_code
 from app.services.iban_service import IbanService
 from app.services.inspection_workflow_service import InspectionWorkflowService
 from app.services.portal_status_service import PortalStatusService
 from app.services.process_job_service import ProcessJobService
+from app.services.resend_email_service import ResendEmailMessage, ResendEmailService
 from app.services.state_service import StateService
 from app.services.supabase_storage_service import SupabaseStorageService
 from app.schemas.inspection import InspectionPreferredSlotInput
@@ -877,6 +879,7 @@ class PortalService:
         db: AsyncSession,
         token: str,
         portal_host: str | None = None,
+        remember_me: bool = False,
     ) -> tuple[PortalClaimAccess, str, int]:
         hashed = hash_secret(token)
         now = datetime.now(timezone.utc)
@@ -910,9 +913,379 @@ class PortalService:
             access.claim_id,
             access.id,
             access.role,
+            remember_me=remember_me,
         )
         await db.commit()
         return access, session_token, expires_in
+
+    @staticmethod
+    async def _find_access_by_phone(
+        db: AsyncSession,
+        claim: Claim,
+        phone_number: str,
+    ) -> PortalClaimAccess | None:
+        normalized_phone = normalize_phone_number(phone_number)
+        if not normalized_phone:
+            return None
+        result = await db.execute(
+            select(PortalClaimAccess)
+            .where(
+                PortalClaimAccess.tenant_id == claim.tenant_id,
+                PortalClaimAccess.claim_id == claim.id,
+                PortalClaimAccess.status == "active",
+                PortalClaimAccess.normalized_phone_number == normalized_phone,
+            )
+            .order_by(PortalClaimAccess.is_primary.desc(), PortalClaimAccess.created_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def request_otp_for_claim(
+        db: AsyncSession,
+        *,
+        claim_reference: str,
+        phone_number: str,
+        channel: str = "sms",
+        portal_host: str | None = None,
+    ) -> tuple[PortalClaimAccess | None, PortalAuthChallenge | None, str | None]:
+        tenant_id = await PortalService.resolve_tenant_id_for_portal_host(db, portal_host)
+        if not tenant_id and PortalService._requires_configured_tenant(portal_host):
+            return None, None, None
+
+        claim = await PortalService._find_claim_by_reference(db, claim_reference, tenant_id)
+        if not claim:
+            return None, None, None
+
+        access = await PortalService._find_access_by_phone(db, claim, phone_number)
+        if not access:
+            # Auto-provision a fallback access tied to the supplied phone if the claim has
+            # matching insured contact info but no portal access yet.
+            normalized_phone = normalize_phone_number(phone_number)
+            claim_phones = {
+                normalize_phone_number(claim.telefono_assicurato),
+                normalize_phone_number(claim.telefono_contraente),
+                normalize_phone_number(claim.telefono_danneggiato),
+            }
+            if normalized_phone and normalized_phone in claim_phones:
+                access = await PortalService._ensure_dev_access_for_claim(db, claim)
+                access.phone_number = phone_number
+                access.normalized_phone_number = normalized_phone
+                access.preferred_channel = channel
+                await db.flush()
+            else:
+                return None, None, None
+
+        now = datetime.now(timezone.utc)
+        otp_code = generate_otp_code()
+        challenge = PortalAuthChallenge(
+            id=str(uuid.uuid4()),
+            tenant_id=access.tenant_id,
+            claim_id=access.claim_id,
+            portal_access_id=access.id,
+            challenge_type="otp",
+            delivery_channel=channel,
+            destination=access.phone_number if channel == "sms" else access.email,
+            otp_code_hash=hash_secret(otp_code),
+            status="pending",
+            requested_at=now,
+            expires_at=now + timedelta(minutes=settings.PORTAL_OTP_EXPIRE_MINUTES),
+            metadata_json={
+                "issued_via": "portal_auth_request_otp",
+                "claim_reference": claim_reference,
+                "portal_host": PortalService.normalize_portal_host(portal_host),
+                "attempts": 0,
+            },
+        )
+        access.last_access_requested_at = now
+        db.add(challenge)
+        await db.flush()
+
+        # TODO: integrazione SMS provider (perx_wa_bridge / Twilio) per channel=="sms".
+        # Per ora, se channel=="email" inviamo via Resend; per "sms" lasciamo solo il preview.
+        if channel == "email" and access.email:
+            await PortalService._send_portal_otp_email(access.email, otp_code, claim)
+            access.last_delivery_status = "otp_email_sent"
+        else:
+            access.last_delivery_status = "otp_pending_sms_dispatch"
+
+        await db.commit()
+        await db.refresh(challenge)
+        return access, challenge, otp_code
+
+    @staticmethod
+    async def verify_otp_and_create_session(
+        db: AsyncSession,
+        *,
+        claim_reference: str,
+        phone_number: str,
+        otp_code: str,
+        remember_me: bool = False,
+        portal_host: str | None = None,
+    ) -> tuple[PortalClaimAccess, str, int]:
+        tenant_id = await PortalService.resolve_tenant_id_for_portal_host(db, portal_host)
+        if not tenant_id and PortalService._requires_configured_tenant(portal_host):
+            raise ValueError("Invalid portal tenant")
+
+        claim = await PortalService._find_claim_by_reference(db, claim_reference, tenant_id)
+        if not claim:
+            raise ValueError("Sinistro non trovato")
+
+        access = await PortalService._find_access_by_phone(db, claim, phone_number)
+        if not access:
+            raise ValueError("Numero di telefono non riconosciuto per questo sinistro")
+
+        now = datetime.now(timezone.utc)
+        hashed = hash_secret(otp_code.strip())
+        result = await db.execute(
+            select(PortalAuthChallenge)
+            .where(
+                PortalAuthChallenge.portal_access_id == access.id,
+                PortalAuthChallenge.challenge_type == "otp",
+                PortalAuthChallenge.status == "pending",
+                PortalAuthChallenge.expires_at >= now,
+            )
+            .order_by(PortalAuthChallenge.requested_at.desc())
+            .limit(1)
+        )
+        challenge = result.scalar_one_or_none()
+        if not challenge:
+            raise ValueError("OTP scaduto o non richiesto")
+
+        metadata = dict(challenge.metadata_json or {})
+        attempts = int(metadata.get("attempts") or 0)
+        if attempts >= settings.PORTAL_OTP_MAX_ATTEMPTS:
+            challenge.status = "expired"
+            await db.commit()
+            raise ValueError("Troppi tentativi: richiedi un nuovo codice")
+
+        if challenge.otp_code_hash != hashed:
+            metadata["attempts"] = attempts + 1
+            challenge.metadata_json = metadata
+            await db.commit()
+            raise ValueError("Codice OTP non valido")
+
+        challenge.status = "consumed"
+        challenge.consumed_at = now
+        access.last_authenticated_at = now
+        session_token, expires_in = create_portal_session_token(
+            access.tenant_id,
+            access.claim_id,
+            access.id,
+            access.role,
+            remember_me=remember_me,
+        )
+        await PortalService._create_claim_event(
+            db,
+            access.tenant_id,
+            access.claim_id,
+            "portal_otp_authenticated",
+            "portal",
+            {"portal_access_id": access.id, "remember_me": remember_me},
+        )
+        await db.commit()
+        return access, session_token, expires_in
+
+    @staticmethod
+    async def _send_portal_otp_email(email: str, otp_code: str, claim: Claim) -> None:
+        if not settings.RESEND_API_KEY or not settings.RESEND_DEFAULT_FROM_EMAIL:
+            return
+        claim_ref = claim.external_ref or claim.numero_sinistro or claim.id
+        subject = f"Codice di accesso al portale sinistro {claim_ref}"
+        body = (
+            f"<p>Ciao,</p>"
+            f"<p>il tuo codice di accesso al portale per il sinistro <strong>{claim_ref}</strong> è:</p>"
+            f"<p style=\"font-size:24px;letter-spacing:4px;font-family:monospace\"><strong>{otp_code}</strong></p>"
+            f"<p>Il codice è valido {settings.PORTAL_OTP_EXPIRE_MINUTES} minuti.</p>"
+            f"<p>Se non hai richiesto questo accesso, ignora il messaggio.</p>"
+        )
+        try:
+            await ResendEmailService.send(
+                ResendEmailMessage(
+                    from_address=settings.RESEND_DEFAULT_FROM_EMAIL,
+                    to=[email],
+                    subject=subject,
+                    body=body,
+                    is_html=True,
+                )
+            )
+        except Exception:
+            # delivery non bloccante: il preview_otp resta a log per debug
+            pass
+
+    @staticmethod
+    async def provision_portal_access_for_claim(
+        db: AsyncSession,
+        claim: Claim,
+        *,
+        portal_host: str | None = None,
+    ) -> list[tuple[PortalClaimAccess, str]]:
+        """
+        Crea gli accessi al portale per assicurato/contraente/danneggiato (se
+        contatti distinti) e invia l'email di benvenuto con il magic link.
+        Ritorna la lista di (access, magic_link_url) generati.
+        """
+        provisioned: list[tuple[PortalClaimAccess, str]] = []
+        seen_emails: set[str] = set()
+        seen_phones: set[str] = set()
+
+        roles_to_provision = [
+            (
+                "insured",
+                claim.nome_assicurato,
+                claim.email_assicurato,
+                claim.telefono_assicurato,
+                True,
+            ),
+            (
+                "policyholder",
+                claim.nome_contraente,
+                getattr(claim, "email_contraente", None),
+                claim.telefono_contraente,
+                False,
+            ),
+            (
+                "damaged_party",
+                claim.nome_danneggiato,
+                getattr(claim, "email_danneggiato", None),
+                claim.telefono_danneggiato,
+                False,
+            ),
+        ]
+
+        for role, full_name, email, phone, is_primary in roles_to_provision:
+            if not full_name:
+                continue
+            normalized_email = normalize_email(email)
+            normalized_phone = normalize_phone_number(phone)
+            if not normalized_email and not normalized_phone:
+                continue
+            if normalized_email and normalized_email in seen_emails:
+                continue
+            if normalized_phone and normalized_phone in seen_phones:
+                continue
+
+            payload = PortalAccessInviteRequest(
+                full_name=full_name,
+                email=normalized_email or f"no-email+{claim.id}-{role}@portal.local.invalid",
+                phone_number=phone,
+                tax_code=None,
+                role=role,
+                is_primary=is_primary,
+                preferred_channel="email" if normalized_email else "sms",
+                metadata_json={"provisioned_via": "claim_created_hook"},
+            )
+            access = await PortalService.create_or_update_access(
+                db, claim.tenant_id, claim.id, payload
+            )
+            challenge, raw_token = await PortalService.create_magic_link_challenge(
+                db,
+                access,
+                metadata_json={"issued_via": "claim_created_hook"},
+            )
+            magic_link_url = await PortalService.build_magic_link_url_for_tenant(
+                db, claim.tenant_id, raw_token, portal_host
+            )
+            # Link diretto alla pagina di accesso telefono+OTP (formato sinistri.<tenant>/p/<ref>)
+            claim_reference = claim.external_ref or claim.numero_sinistro
+            if claim_reference:
+                claim_portal_url = magic_link_url.split("/access/", 1)[0] + f"/p/{claim_reference}"
+            else:
+                claim_portal_url = magic_link_url
+            await PortalService._create_claim_event(
+                db,
+                claim.tenant_id,
+                claim.id,
+                "portal_access_issued",
+                "portal",
+                {
+                    "portal_access_id": access.id,
+                    "challenge_id": challenge.id,
+                    "role": role,
+                    "auto_provisioned": True,
+                },
+            )
+
+            if normalized_email:
+                await PortalService._send_portal_welcome_email(
+                    email=normalized_email,
+                    full_name=full_name,
+                    claim=claim,
+                    magic_link_url=magic_link_url,
+                    claim_portal_url=claim_portal_url,
+                )
+                access.last_delivery_status = "welcome_email_sent"
+            else:
+                access.last_delivery_status = "welcome_pending_sms_dispatch"
+
+            provisioned.append((access, magic_link_url))
+            if normalized_email:
+                seen_emails.add(normalized_email)
+            if normalized_phone:
+                seen_phones.add(normalized_phone)
+
+        # TODO: notifiche Web Push al primo accesso (registrare subscription
+        # endpoint nel portal-web tramite service worker e inviarle da qui).
+        await db.commit()
+        return provisioned
+
+    @staticmethod
+    async def _send_portal_welcome_email(
+        *,
+        email: str,
+        full_name: str,
+        claim: Claim,
+        magic_link_url: str,
+        claim_portal_url: str | None = None,
+    ) -> None:
+        if not settings.RESEND_API_KEY or not settings.RESEND_DEFAULT_FROM_EMAIL:
+            return
+        claim_ref = claim.external_ref or claim.numero_sinistro or claim.id
+        subject = f"Il tuo portale sinistro {claim_ref}"
+        first_name = (full_name or "").split(" ")[0] or "ciao"
+        primary_url = claim_portal_url or magic_link_url
+        body = (
+            f"<p>Gentile {first_name},</p>"
+            f"<p>abbiamo aperto la gestione del sinistro <strong>{claim_ref}</strong> "
+            f"e ti diamo accesso al portale dedicato dove potrai:</p>"
+            f"<ul>"
+            f"<li>seguire lo stato della pratica in tempo reale;</li>"
+            f"<li>caricare la documentazione richiesta;</li>"
+            f"<li>indicare le coordinate bancarie (IBAN) per la liquidazione;</li>"
+            f"<li>fissare il sopralluogo e firmare l'atto a fine pratica.</li>"
+            f"</ul>"
+            f"<p style=\"margin:24px 0\">"
+            f"<a href=\"{primary_url}\" "
+            f"style=\"background:#111;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none\">"
+            f"Apri il portale</a></p>"
+            f"<p style=\"font-size:13px;color:#555\">"
+            f"Se il pulsante non funziona, accedi da <a href=\"{primary_url}\">{primary_url}</a> "
+            f"con il tuo numero di telefono, oppure usa il link diretto: "
+            f"<a href=\"{magic_link_url}\">accesso immediato</a>."
+            f"</p>"
+            f"<p>Il link è personale: non condividerlo.</p>"
+            f"<h3 style=\"margin-top:32px\">Aggiungi il portale alla schermata Home</h3>"
+            f"<p>Per usarlo come una app:</p>"
+            f"<ul>"
+            f"<li><strong>iPhone (Safari)</strong>: tocca il pulsante Condividi e scegli "
+            f"\"Aggiungi alla schermata Home\".</li>"
+            f"<li><strong>Android (Chrome)</strong>: tocca il menu &#x22EE; e scegli "
+            f"\"Aggiungi alla schermata Home\".</li>"
+            f"</ul>"
+            f"<p>Se hai problemi, rispondi a questa email.</p>"
+        )
+        try:
+            await ResendEmailService.send(
+                ResendEmailMessage(
+                    from_address=settings.RESEND_DEFAULT_FROM_EMAIL,
+                    to=[email],
+                    subject=subject,
+                    body=body,
+                    is_html=True,
+                )
+            )
+        except Exception:
+            pass
 
     @staticmethod
     async def get_access(

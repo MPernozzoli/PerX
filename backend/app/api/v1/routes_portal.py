@@ -23,8 +23,11 @@ from app.schemas.portal import (
     PortalAdditionalDocumentSubmissionResponse,
     PortalAuthExchangeRequest,
     PortalAuthExchangeResponse,
+    PortalAuthRequestOtpRequest,
+    PortalAuthRequestOtpResponse,
     PortalAuthStartRequest,
     PortalAuthStartResponse,
+    PortalAuthVerifyOtpRequest,
     PortalBankAccountSubmissionCreate,
     PortalBankAccountSubmissionResponse,
     PortalClaimSummaryResponse,
@@ -137,6 +140,70 @@ async def exchange_auth_token(
             db,
             payload.token,
             portal_host,
+            remember_me=payload.remember_me,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+    return PortalAuthExchangeResponse(
+        access_token=session_token,
+        expires_in=expires_in,
+        claim_id=access.claim_id,
+        portal_access_id=access.id,
+    )
+
+
+@router.post("/auth/request-otp", response_model=PortalAuthRequestOtpResponse)
+async def request_auth_otp(
+    payload: PortalAuthRequestOtpRequest,
+    host: str | None = Header(default=None),
+    x_forwarded_host: str | None = Header(default=None, alias="x-forwarded-host"),
+    db: AsyncSession = Depends(get_db),
+):
+    portal_host = _portal_host(payload.portal_host, x_forwarded_host, host)
+    access, challenge, otp_code = await PortalService.request_otp_for_claim(
+        db,
+        claim_reference=payload.claim_reference,
+        phone_number=payload.phone_number,
+        channel=payload.channel,
+        portal_host=portal_host,
+    )
+    if not access or not challenge:
+        # Risposta volutamente generica per non rivelare se il sinistro esiste.
+        return PortalAuthRequestOtpResponse(status="accepted")
+
+    masked_destination = (
+        PortalService.mask_email(access.email)
+        if challenge.delivery_channel == "email"
+        else PortalService.mask_phone(access.phone_number)
+    )
+    preview_otp = otp_code if settings.PORTAL_DEBUG_PREVIEW_LINKS else None
+    return PortalAuthRequestOtpResponse(
+        status="otp_sent",
+        challenge_id=challenge.id,
+        delivery_channel=challenge.delivery_channel,
+        masked_destination=masked_destination,
+        expires_at=challenge.expires_at,
+        preview_otp_code=preview_otp,
+    )
+
+
+@router.post("/auth/verify-otp", response_model=PortalAuthExchangeResponse)
+async def verify_auth_otp(
+    payload: PortalAuthVerifyOtpRequest,
+    host: str | None = Header(default=None),
+    x_forwarded_host: str | None = Header(default=None, alias="x-forwarded-host"),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        portal_host = _portal_host(payload.portal_host, x_forwarded_host, host)
+        access, session_token, expires_in = await PortalService.verify_otp_and_create_session(
+            db,
+            claim_reference=payload.claim_reference,
+            phone_number=payload.phone_number,
+            otp_code=payload.otp_code,
+            remember_me=payload.remember_me,
+            portal_host=portal_host,
         )
     except ValueError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc

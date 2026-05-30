@@ -259,6 +259,8 @@ async def _apply_photo_analysis_result(
 
     # --- Apply to claim ---
     changed: list[str] = []
+    previous_complessita = claim.complessita
+    previous_priority = claim.priority
 
     if claim.complessita != complessita_label:
         claim.complessita = complessita_label
@@ -336,3 +338,50 @@ async def _apply_photo_analysis_result(
                 source="local_worker",
             )
         )
+
+        # Hook re-routing: se la banda di complessità è cambiata o la priorità
+        # si è spostata di almeno 2 punti, emetti un evento di review per il
+        # planner (lato iOS / Hub) che valuta la riassegnazione del perito.
+        complessita_band_changed = (
+            "complessita" in changed and previous_complessita != complessita_label
+        )
+        priority_delta = abs((normalized_priority or 0) - (previous_priority or 0))
+        priority_changed_significantly = (
+            "priority" in changed and priority_delta >= 2
+        )
+        if complessita_band_changed or priority_changed_significantly:
+            db.add(
+                ClaimEvent(
+                    id=str(_uuid.uuid4()),
+                    tenant_id=job.tenant_id,
+                    claim_id=job.claim_id,
+                    event_type="claim_routing_review_requested",
+                    actor_user_id=None,
+                    data_json={
+                        "trigger": "ai_photo_analysis",
+                        "previous_complessita": previous_complessita,
+                        "new_complessita": complessita_label,
+                        "previous_priority": previous_priority,
+                        "new_priority": normalized_priority,
+                        "priority_delta": round(priority_delta, 3),
+                        "complexity_score": complexity_total,
+                        "reason": (
+                            "complexity_band_changed"
+                            if complessita_band_changed
+                            else "priority_delta_threshold"
+                        ),
+                    },
+                    source="local_worker",
+                )
+            )
+            existing_meta = dict(claim.metadata_json or {})
+            existing_meta["routing_review"] = {
+                "requested_at": now.isoformat(),
+                "trigger": "ai_photo_analysis",
+                "previous_complessita": previous_complessita,
+                "new_complessita": complessita_label,
+                "previous_priority": previous_priority,
+                "new_priority": normalized_priority,
+                "status": "pending_review",
+            }
+            claim.metadata_json = existing_meta

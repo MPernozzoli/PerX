@@ -20,32 +20,24 @@ struct DashboardView: View {
     @State private var aiSummaryLoading = false
     @State private var aiSummaryRequested = false
     @State private var showingCalendarDetail = false
-    
+    @State private var taskPerOggi: [ScheduledTask] = []
+    @State private var sinistriInGestione: Int = 0
+    @State private var assegnazioniRecenti: Int = 0
+
     private var currentUserEmail: String? { CurrentUserService.shared.currentEmail }
-    private var sinistriInGestione: Int {
-        summaryService.sinistriInGestione(context: viewContext, userEmail: currentUserEmail)
-    }
-    private var assegnazioniRecenti: Int {
-        summaryService.assegnazioniDallUltimoAccesso(context: viewContext, userEmail: currentUserEmail)
-    }
-    private var taskPerOggi: [ScheduledTask] { summaryService.taskPerOggi() }
-    
-    // Placeholder minimale per debug: disaccoppiamo temporaneamente la dashboard reale
-    var body: some View {
-        VStack(spacing: 16) {
-            Text("Dashboard disattivata temporaneamente")
-                .font(.title2)
-            Text("Stiamo isolando il problema dei \"Publishing changes from within view updates\".\nQuesta vista è un placeholder.")
-                .font(.subheadline)
-                .multilineTextAlignment(.center)
-                .foregroundColor(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(NSColor.windowBackgroundColor))
+
+    private func refreshSummaryCounters() {
+        sinistriInGestione = summaryService.sinistriInGestione(context: viewContext, userEmail: currentUserEmail)
+        assegnazioniRecenti = summaryService.assegnazioniDallUltimoAccesso(context: viewContext, userEmail: currentUserEmail)
     }
 
-    // Corpo originale preservato per ripristino futuro (NON usato al momento)
-    private var _realDashboardBody: some View {
+    private func refreshTaskPerOggi() {
+        // Eseguito fuori dal body per evitare "Publishing changes from within view updates"
+        // (distributeTasksInSchedule muta taskManager.tasks).
+        taskPerOggi = summaryService.taskPerOggi()
+    }
+
+    var body: some View {
         ScrollView {
             VStack(spacing: 24) {
                 headerSection
@@ -65,8 +57,15 @@ struct DashboardView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(NSColor.windowBackgroundColor))
         .onDisappear { summaryService.markDashboardClosed() }
-        .onReceive(taskManager.$updateCounter.dropFirst()) { _ in }
-        .onReceive(NotificationCenter.default.publisher(for: .taskCreated)) { _ in }
+        .onReceive(taskManager.$updateCounter.dropFirst()) { _ in
+            Task { @MainActor in
+                refreshTaskPerOggi()
+                refreshSummaryCounters()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .taskCreated)) { _ in
+            Task { @MainActor in refreshTaskPerOggi() }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .emailReceived)) { _ in
             Task { await taskManager.regenerateBaseTasks(triggeredByEmail: true) }
         }
@@ -82,9 +81,14 @@ struct DashboardView: View {
             revocationEvents.insert(event, at: 0)
         }
         .onAppear {
+            Task { @MainActor in
+                refreshSummaryCounters()
+                refreshTaskPerOggi()
+            }
             Task {
                 await taskManager.regenerateTaskTitles()
                 await taskManager.regenerateBaseTasks()
+                await MainActor.run { refreshTaskPerOggi() }
             }
             Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 800_000_000)
@@ -239,10 +243,12 @@ struct DashboardView: View {
             taskTitles: taskTitles,
             studioNewsTitles: newsTitles
         ) { result in
-            aiSummaryLoading = false
-            switch result {
-            case .success(let text): aiSummaryText = text
-            case .failure: aiSummaryText = nil
+            Task { @MainActor in
+                aiSummaryLoading = false
+                switch result {
+                case .success(let text): aiSummaryText = text
+                case .failure: aiSummaryText = nil
+                }
             }
         }
     }
@@ -377,6 +383,8 @@ struct DashboardView: View {
             await taskManager.regenerateBaseTasks()
             await taskManager.ensureBaseTasksAreScheduled()
             ScheduleManager.shared.reorganizeAllTasksBasedOnSchedule(userInitiated: true)
+            refreshSummaryCounters()
+            refreshTaskPerOggi()
             isRefreshing = false
         }
     }

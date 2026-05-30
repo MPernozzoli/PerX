@@ -32,7 +32,10 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
     PORTAL_TOKEN_SECRET: Optional[str] = None
     PORTAL_SESSION_EXPIRE_MINUTES: int = 60 * 12
+    PORTAL_SESSION_REMEMBER_ME_DAYS: int = 30
     PORTAL_CHALLENGE_EXPIRE_MINUTES: int = 30
+    PORTAL_OTP_EXPIRE_MINUTES: int = 10
+    PORTAL_OTP_MAX_ATTEMPTS: int = 5
     PORTAL_APP_URL: str = "http://localhost:3001"
     PORTAL_DEBUG_PREVIEW_LINKS: bool = True
     PORTAL_DEV_CLAIM_REFERENCE_ONLY_AUTH: bool = True

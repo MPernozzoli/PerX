@@ -78,8 +78,13 @@ def create_portal_session_token(
     claim_id: str,
     portal_access_id: str,
     role: str,
+    *,
+    remember_me: bool = False,
 ) -> tuple[str, int]:
-    expires_in = settings.PORTAL_SESSION_EXPIRE_MINUTES * 60
+    if remember_me:
+        expires_in = settings.PORTAL_SESSION_REMEMBER_ME_DAYS * 24 * 60 * 60
+    else:
+        expires_in = settings.PORTAL_SESSION_EXPIRE_MINUTES * 60
     expire = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
     payload = {
         "sub": portal_access_id,

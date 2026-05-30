@@ -47,6 +47,7 @@ class PortalAuthStartResponse(BaseModel):
 class PortalAuthExchangeRequest(BaseModel):
     token: str
     portal_host: Optional[str] = None
+    remember_me: bool = False
 
 
 class PortalAuthExchangeResponse(BaseModel):
@@ -55,6 +56,30 @@ class PortalAuthExchangeResponse(BaseModel):
     expires_in: int
     claim_id: str
     portal_access_id: str
+
+
+class PortalAuthRequestOtpRequest(BaseModel):
+    claim_reference: str
+    phone_number: str
+    channel: str = "sms"
+    portal_host: Optional[str] = None
+
+
+class PortalAuthRequestOtpResponse(BaseModel):
+    status: str
+    challenge_id: Optional[str] = None
+    delivery_channel: Optional[str] = None
+    masked_destination: Optional[str] = None
+    expires_at: Optional[datetime] = None
+    preview_otp_code: Optional[str] = None
+
+
+class PortalAuthVerifyOtpRequest(BaseModel):
+    claim_reference: str
+    phone_number: str
+    otp_code: str
+    remember_me: bool = False
+    portal_host: Optional[str] = None
 
 
 class PortalMacroStateResponse(BaseModel):

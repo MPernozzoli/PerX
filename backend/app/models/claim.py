@@ -2,6 +2,7 @@
 Claim (Sinistro) model - core entity
 """
 from sqlalchemy import Column, String, DateTime, Integer, Numeric, Boolean, ForeignKey, JSON, Index
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
 from app.core.database import Base
 
@@ -14,7 +15,8 @@ class Claim(Base):
     external_ref = Column(String, nullable=True, index=True)  # riferimento
     numero_sinistro = Column(String, nullable=True, index=True)  # numeroSinistroCompagnia
     compagnia = Column(String, nullable=True)  # nomeCompagnia
-    stato_corrente = Column(String, nullable=False, index=True)  # stato (ID come "SV001")
+    stato_corrente = Column(String, nullable=False, index=True)  # slug, vedi ClaimStatus
+    stato_substati = Column(JSONB, nullable=False, server_default="[]")  # [{tag, source, added_at}]
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     closed_at = Column(DateTime(timezone=True), nullable=True)  # dataChiusura
