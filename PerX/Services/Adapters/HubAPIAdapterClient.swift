@@ -396,6 +396,86 @@ final class HubAPIAdapterClient {
         ]
         SecItemDelete(query as CFDictionary)
     }
+
+    // MARK: - Actors (anagrafica unificata)
+
+    func listActors(
+        query: String? = nil,
+        actorType: CloudActorType? = nil,
+        limit: Int = 50,
+        offset: Int = 0
+    ) async throws -> CloudActorListResponse {
+        var items: [URLQueryItem] = [
+            URLQueryItem(name: "limit", value: String(limit)),
+            URLQueryItem(name: "offset", value: String(offset)),
+        ]
+        if let query, !query.isEmpty { items.append(URLQueryItem(name: "q", value: query)) }
+        if let actorType { items.append(URLQueryItem(name: "actor_type", value: actorType.rawValue)) }
+
+        var components = URLComponents()
+        components.queryItems = items
+        let qs = components.percentEncodedQuery ?? ""
+        let path = "/api/v1/actors" + (qs.isEmpty ? "" : "?\(qs)")
+        return try await cloudGet(path)
+    }
+
+    func createActor(_ payload: CloudActorCreate) async throws -> CloudActorResponse {
+        try await cloudPost("/api/v1/actors", body: payload)
+    }
+
+    func getActor(id: String) async throws -> CloudActorDetail {
+        try await cloudGet("/api/v1/actors/\(id)")
+    }
+
+    func updateActor(id: String, payload: CloudActorUpdate) async throws -> CloudActorResponse {
+        // Backend usa PATCH per gli attori
+        guard let url = URL(string: "\(cloudBaseURL)/api/v1/actors/\(id)") else {
+            throw HubClientError.invalidURL
+        }
+        var request = try await authorizedCloudRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.httpBody = try encoder.encode(payload)
+
+        let (data, response) = try await session.data(for: request)
+        try validateResponse(response)
+        return try decoder.decode(CloudActorResponse.self, from: data)
+    }
+
+    func addActorAddress(actorId: String, payload: CloudActorAddressCreate) async throws -> CloudActorAddress {
+        try await cloudPost("/api/v1/actors/\(actorId)/addresses", body: payload)
+    }
+
+    func listActorAddresses(actorId: String) async throws -> [CloudActorAddress] {
+        try await cloudGet("/api/v1/actors/\(actorId)/addresses")
+    }
+
+    func addActorIban(actorId: String, payload: CloudActorIbanCreate) async throws -> CloudActorIban {
+        try await cloudPost("/api/v1/actors/\(actorId)/ibans", body: payload)
+    }
+
+    func listActorIbans(actorId: String) async throws -> [CloudActorIban] {
+        try await cloudGet("/api/v1/actors/\(actorId)/ibans")
+    }
+
+    func addActorRelation(actorId: String, payload: CloudActorRelationCreate) async throws -> CloudActorRelation {
+        try await cloudPost("/api/v1/actors/\(actorId)/relations", body: payload)
+    }
+
+    /// Tutti i sinistri in cui l'attore compare in uno qualsiasi dei ruoli
+    /// (contraente / assicurato / danneggiato).
+    func listActorClaims(actorId: String) async throws -> [CloudClaimResponse] {
+        try await cloudGet("/api/v1/actors/\(actorId)/claims")
+    }
+
+    func listActorAgencies(actorId: String) async throws -> [CloudActorAgencyLink] {
+        try await cloudGet("/api/v1/actors/\(actorId)/agencies")
+    }
+
+    func listActorCompanies(actorId: String) async throws -> [CloudActorCompanyLink] {
+        try await cloudGet("/api/v1/actors/\(actorId)/companies")
+    }
 }
 
 // MARK: - Types

@@ -48,6 +48,8 @@ class TenantInspectionProviderSettingsPayload(BaseModel):
     maps_api_key: str = ""
     routing_provider: str = "google_routes"
     routing_api_key: str = ""
+    routing_enabled: bool = False
+    routing_cache_ttl_days: int = 14
     geocoding_provider: str = "google_geocoding"
     geocoding_api_key: str = ""
     messaging_provider: str = "twilio"

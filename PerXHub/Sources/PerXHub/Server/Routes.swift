@@ -907,7 +907,41 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
         
         let directionEmoji = isOutgoing ? "📤" : "📨"
         print("[Hub] \(directionEmoji) WhatsApp \(direction) from \(message.from) to \(message.to): \(message.body?.prefix(50) ?? "media")")
-        
+
+        // Replica su Supabase (wa_messages) per app iOS / portale via Realtime.
+        let tenantSlug = req.perxTenantSlug()
+        let timestampDate = Date(timeIntervalSince1970: Double(message.timestamp ?? Int(now)))
+        Task.detached {
+            do {
+                try await SupabaseClient.shared.insertWAMessage(
+                    SupabaseClient.WAMessageRow(
+                        id: id,
+                        tenantSlug: tenantSlug,
+                        accountId: message.accountId,
+                        chatId: chatId,
+                        waMessageId: message.messageId,
+                        direction: direction,
+                        fromNumber: message.from,
+                        toNumber: message.to,
+                        body: message.body,
+                        messageType: message.type ?? "chat",
+                        hasMedia: (message.hasMedia ?? false) || (message.media != nil),
+                        mediaMimetype: message.media?.mimetype,
+                        mediaFilename: message.media?.filename,
+                        mediaBase64: message.media?.data,
+                        timestamp: timestampDate,
+                        status: isOutgoing ? "sent" : "received",
+                        ackStatus: nil,
+                        sinistroRef: sinistroRef,
+                        isGroup: isGroup,
+                        author: message.author
+                    )
+                )
+            } catch {
+                print("[Hub] ⚠️ Supabase sync failed for message \(id): \(error)")
+            }
+        }
+
         // Se il messaggio ha un sinistroRef, aggiungilo al diario come conversazione
         if let sinistroRef = sinistroRef, !sinistroRef.isEmpty {
             Task {
@@ -952,6 +986,24 @@ func configureRoutes(_ app: Application, startTime: Date) throws {
         
         if updated > 0 {
             print("[Hub] 📬 ACK \(ackData.ackName) for message \(ackData.messageId)")
+        }
+
+        // Replica ACK su Supabase.
+        let accountIdForAck = ackData.accountId
+        let waMessageIdForAck = ackData.messageId
+        let ackValue = ackData.ack
+        let ackDate = Date(timeIntervalSince1970: ackData.timestamp ?? Date().timeIntervalSince1970)
+        Task.detached {
+            do {
+                try await SupabaseClient.shared.updateWAMessageAck(
+                    accountId: accountIdForAck,
+                    waMessageId: waMessageIdForAck,
+                    ack: ackValue,
+                    at: ackDate
+                )
+            } catch {
+                print("[Hub] ⚠️ Supabase ACK sync failed for \(waMessageIdForAck): \(error)")
+            }
         }
         
         return .ok

@@ -37,7 +37,7 @@ struct AgenziaRubricaView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        Task { await service.syncAll() }
+                        Task { await service.loadInitial() }
                     } label: {
                         Image(systemName: "arrow.triangle.2.circlepath")
                     }
@@ -111,7 +111,7 @@ struct AgenziaRubricaView: View {
         }
         .listStyle(.insetGrouped)
         .refreshable {
-            await service.syncAll()
+            await service.loadInitial()
         }
     }
     

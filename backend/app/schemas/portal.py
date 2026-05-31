@@ -74,6 +74,22 @@ class PortalAuthRequestOtpResponse(BaseModel):
     preview_otp_code: Optional[str] = None
 
 
+class PortalPushSubscribeRequest(BaseModel):
+    endpoint: str
+    p256dh: str
+    auth: str
+    user_agent: Optional[str] = None
+
+
+class PortalPushSubscriptionResponse(BaseModel):
+    id: str
+    status: str
+
+
+class PortalPushVapidKeyResponse(BaseModel):
+    public_key: Optional[str]
+
+
 class PortalAuthVerifyOtpRequest(BaseModel):
     claim_reference: str
     phone_number: str

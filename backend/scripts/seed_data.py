@@ -14,6 +14,25 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 import asyncpg
 from app.core.security import get_password_hash
 from app.core.config import settings
+from app.core.claim_status import LEGACY_SV_TO_SLUG, ClaimStatus
+
+
+def _slug_for_legacy_state(state_id: str | None) -> str | None:
+    """Map legacy SVxxx code (used throughout this seed script's internal
+    state graph) to the canonical slug expected by the runtime."""
+    if state_id is None:
+        return None
+    mapping = LEGACY_SV_TO_SLUG.get(state_id)
+    return mapping[0] if mapping else ClaimStatus.ISTRUZIONE.value
+
+
+def _substati_for_legacy_state(state_id: str | None) -> list[dict]:
+    if state_id is None:
+        return []
+    mapping = LEGACY_SV_TO_SLUG.get(state_id)
+    if not mapping or not mapping[1]:
+        return []
+    return [{"tag": mapping[1], "source": "system", "added_at": "1970-01-01T00:00:00Z"}]
 
 
 async def ensure_supabase_auth_user(email: str, password: str, full_name: str):
@@ -636,6 +655,7 @@ CLAIM_COLUMNS = [
     "numero_sinistro",
     "compagnia",
     "stato_corrente",
+    "stato_substati",
     "created_at",
     "updated_at",
     "closed_at",
@@ -1169,7 +1189,8 @@ def build_claim_record(
         "external_ref": riferimento,
         "numero_sinistro": f"{company_profile['agenzia_prefix']}/{year_prefix}/{index:05d}",
         "compagnia": company_profile["compagnia"],
-        "stato_corrente": state_id,
+        "stato_corrente": _slug_for_legacy_state(state_id),
+        "stato_substati": _substati_for_legacy_state(state_id),
         "created_at": created_at,
         "updated_at": timeline[-1]["changed_at"],
         "closed_at": tracked_dates["closed_at"],
@@ -1278,7 +1299,7 @@ async def insert_claim_rows(conn: asyncpg.Connection, claims: list[dict]):
         row = []
         for column in CLAIM_COLUMNS:
             value = claim[column]
-            if column == "metadata_json":
+            if column in ("metadata_json", "stato_substati"):
                 value = serialize_json(value)
             row.append(value)
         rows.append(tuple(row))
@@ -1324,8 +1345,8 @@ async def seed_related_rows(
                     str(uuid.uuid5(DEMO_NAMESPACE, f"{claim_id}:state:{offset}")),
                     tenant_id,
                     claim_id,
-                    timeline_item["from_state"],
-                    timeline_item["state_id"],
+                    _slug_for_legacy_state(timeline_item["from_state"]) if timeline_item["from_state"] else None,
+                    _slug_for_legacy_state(timeline_item["state_id"]),
                     actor_user_id,
                     timeline_item["changed_at"],
                     "Seed demo FE",

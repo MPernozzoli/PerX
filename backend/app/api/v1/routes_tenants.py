@@ -126,6 +126,8 @@ def _default_provider_settings() -> dict:
         "maps_api_key": "",
         "routing_provider": "google_routes",
         "routing_api_key": "",
+        "routing_enabled": False,
+        "routing_cache_ttl_days": 14,
         "geocoding_provider": "google_geocoding",
         "geocoding_api_key": "",
         "messaging_provider": "twilio",

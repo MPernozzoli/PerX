@@ -97,7 +97,7 @@ class WhatsAppService: ObservableObject {
         
         do {
             // Inizializza client tramite Hub
-            try await hubClient.post(
+            try await hubClient.localPost(
                 endpoint: "whatsapp/clients/\(selectedAccountId)/init",
                 body: ["phoneNumber": ""]
             )
@@ -119,7 +119,7 @@ class WhatsAppService: ObservableObject {
         stopPolling()
         
         do {
-            try await hubClient.post(
+            try await hubClient.localPost(
                 endpoint: "whatsapp/clients/\(selectedAccountId)/disconnect",
                 body: EmptyBody()
             )
@@ -138,7 +138,7 @@ class WhatsAppService: ObservableObject {
         guard !selectedAccountId.isEmpty else { return }
         
         do {
-            let response: QRStatusResponse = try await hubClient.get(
+            let response: QRStatusResponse = try await hubClient.localGet(
                 endpoint: "whatsapp/clients/\(selectedAccountId)/qr"
             )
             
@@ -193,7 +193,7 @@ class WhatsAppService: ObservableObject {
         let endpoint = "whatsapp/chats?accountId=\(encodedAccountId)"
         print("[WhatsAppService] fetchChats: \(endpoint)")
         
-        let response: [WhatsAppChatResponse] = try await hubClient.get(endpoint: endpoint)
+        let response: [WhatsAppChatResponse] = try await hubClient.localGet(endpoint: endpoint)
         print("[WhatsAppService] fetchChats: ricevute \(response.count) chat")
         
         return response.map { WhatsAppChat(from: $0) }
@@ -205,7 +205,7 @@ class WhatsAppService: ObservableObject {
         
         let encodedChatId = chatId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? chatId
         let encodedAccountId = selectedAccountId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? selectedAccountId
-        let response: [WhatsAppMessageResponse] = try await hubClient.get(
+        let response: [WhatsAppMessageResponse] = try await hubClient.localGet(
             endpoint: "whatsapp/messages?accountId=\(encodedAccountId)&chatId=\(encodedChatId)&limit=\(limit)"
         )
         
@@ -218,7 +218,7 @@ class WhatsAppService: ObservableObject {
         
         let encodedAccountId = selectedAccountId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? selectedAccountId
         let encodedSinistroRef = sinistroRef.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? sinistroRef
-        let response: [WhatsAppMessageResponse] = try await hubClient.get(
+        let response: [WhatsAppMessageResponse] = try await hubClient.localGet(
             endpoint: "whatsapp/messages?accountId=\(encodedAccountId)&sinistroRef=\(encodedSinistroRef)"
         )
         
@@ -242,7 +242,7 @@ class WhatsAppService: ObservableObject {
             let numberId: String?
         }
         
-        let response: CheckResponse = try await hubClient.post(
+        let response: CheckResponse = try await hubClient.localPost(
             endpoint: "whatsapp/clients/\(selectedAccountId)/check-number",
             body: CheckRequest(phoneNumber: normalizePhoneNumber(phoneNumber))
         )
@@ -265,7 +265,7 @@ class WhatsAppService: ObservableObject {
         // Encode contactId per URL (potrebbe contenere @)
         let encodedContactId = contactId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? contactId
         
-        let response: ProfilePicResponse = try await hubClient.get(
+        let response: ProfilePicResponse = try await hubClient.localGet(
             endpoint: "whatsapp/clients/\(selectedAccountId)/profile-pic/\(encodedContactId)"
         )
         
@@ -296,7 +296,7 @@ class WhatsAppService: ObservableObject {
             media: mediaPayload
         )
         
-        let response: SendMessageResponse = try await hubClient.post(
+        let response: SendMessageResponse = try await hubClient.localPost(
             endpoint: "whatsapp/clients/\(selectedAccountId)/send",
             body: payload
         )
@@ -329,7 +329,7 @@ class WhatsAppService: ObservableObject {
             payload.mediaFilename = URL(fileURLWithPath: mediaPath).lastPathComponent
         }
         
-        let response: ScheduleResponse = try await hubClient.post(
+        let response: ScheduleResponse = try await hubClient.localPost(
             endpoint: "whatsapp/schedule",
             body: payload
         )
@@ -342,7 +342,7 @@ class WhatsAppService: ObservableObject {
         guard !selectedAccountId.isEmpty else { return [] }
         
         let encodedAccountId = selectedAccountId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? selectedAccountId
-        let response: [ScheduledWhatsAppMessageResponse] = try await hubClient.get(
+        let response: [ScheduledWhatsAppMessageResponse] = try await hubClient.localGet(
             endpoint: "whatsapp/scheduled?accountId=\(encodedAccountId)"
         )
         
@@ -350,14 +350,14 @@ class WhatsAppService: ObservableObject {
     }
     
     func cancelScheduledMessage(id: String) async throws {
-        try await hubClient.delete(endpoint: "whatsapp/scheduled/\(id)")
+        try await hubClient.localDelete(endpoint: "whatsapp/scheduled/\(id)")
     }
     
     // MARK: - Chat Management (via Hub)
     
     func markAsRead(chatId: String) async throws {
         let encodedChatId = chatId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? chatId
-        try await hubClient.post(
+        try await hubClient.localPost(
             endpoint: "whatsapp/chats/\(encodedChatId)/read",
             body: EmptyBody()
         )
@@ -365,7 +365,7 @@ class WhatsAppService: ObservableObject {
     
     func associateChatToSinistro(chatId: String, sinistroRef: String) async throws {
         let encodedChatId = chatId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? chatId
-        try await hubClient.post(
+        try await hubClient.localPost(
             endpoint: "whatsapp/chats/\(encodedChatId)/associate",
             body: ["sinistroRef": sinistroRef]
         )

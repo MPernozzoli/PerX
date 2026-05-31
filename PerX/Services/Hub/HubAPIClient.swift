@@ -225,7 +225,85 @@ class HubAPIClient: ObservableObject {
     func delete(endpoint: String, tenantSlug: String? = nil) async throws {
         try await cloudClient.cloudDelete(compatEndpoint(endpoint))
     }
-    
+
+    // MARK: - Local Hub (PerXHub Vapor su LAN)
+    //
+    // Endpoint che vivono SOLO sull'Hub locale (es. WhatsApp dopo la migrazione
+    // del bridge OpenWA dall'app Render). Niente prefisso `/api/v1/hub/`,
+    // niente chiamata cloud: si parla direttamente al Vapor a
+    // `HubConfigService.resolvedHubBaseURL`.
+    private func localPath(_ endpoint: String) -> String {
+        let trimmed = endpoint.hasPrefix("/") ? String(endpoint.dropFirst()) : endpoint
+        return "/\(trimmed)"
+    }
+
+    private func localRequest(
+        endpoint: String,
+        method: String,
+        tenantSlug: String?,
+        body: Data? = nil,
+        contentType: String? = nil
+    ) throws -> URLRequest {
+        let path = localPath(endpoint)
+        let url = try url(path: path, tenantSlug: tenantSlug)
+        var request = makeRequest(url: url, method: method, tenantSlug: tenantSlug, contentType: contentType)
+        if let body { request.httpBody = body }
+        return request
+    }
+
+    private func localPerform<T: Decodable>(_ request: URLRequest) async throws -> T {
+        let (data, response) = try await session.data(for: request)
+        try validateResponse(response)
+        if data.isEmpty, let empty = HubAPIEmptyResponse() as? T { return empty }
+        return try decoder.decode(T.self, from: data)
+    }
+
+    /// GET diretto verso l'Hub locale.
+    func localGet<T: Decodable>(endpoint: String, tenantSlug: String? = nil) async throws -> T {
+        let request = try localRequest(endpoint: endpoint, method: "GET", tenantSlug: tenantSlug)
+        return try await localPerform(request)
+    }
+
+    /// GET diretto verso l'Hub locale che ritorna i byte raw (download media, ecc.).
+    func localGetData(endpoint: String, tenantSlug: String? = nil) async throws -> Data {
+        let request = try localRequest(endpoint: endpoint, method: "GET", tenantSlug: tenantSlug)
+        let (data, response) = try await session.data(for: request)
+        try validateResponse(response)
+        return data
+    }
+
+    /// POST con body verso l'Hub locale.
+    func localPost<B: Encodable, T: Decodable>(endpoint: String, body: B, tenantSlug: String? = nil) async throws -> T {
+        let payload = try encoder.encode(body)
+        let request = try localRequest(
+            endpoint: endpoint,
+            method: "POST",
+            tenantSlug: tenantSlug,
+            body: payload,
+            contentType: "application/json"
+        )
+        return try await localPerform(request)
+    }
+
+    /// POST con body senza risposta (void).
+    func localPost<B: Encodable>(endpoint: String, body: B, tenantSlug: String? = nil) async throws {
+        let payload = try encoder.encode(body)
+        let request = try localRequest(
+            endpoint: endpoint,
+            method: "POST",
+            tenantSlug: tenantSlug,
+            body: payload,
+            contentType: "application/json"
+        )
+        let _: HubAPIEmptyResponse = try await localPerform(request)
+    }
+
+    /// DELETE verso l'Hub locale.
+    func localDelete(endpoint: String, tenantSlug: String? = nil) async throws {
+        let request = try localRequest(endpoint: endpoint, method: "DELETE", tenantSlug: tenantSlug)
+        let _: HubAPIEmptyResponse = try await localPerform(request)
+    }
+
     // MARK: - Helpers
     
     private func validateResponse(_ response: URLResponse) throws {

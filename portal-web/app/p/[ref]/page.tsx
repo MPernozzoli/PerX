@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { PortalShell } from "@/components/portal-shell";
@@ -13,6 +13,8 @@ type Stage = "phone" | "otp" | "done";
 export default function ClaimPortalEntryPage() {
   const params = useParams<{ ref: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const focus = searchParams?.get("focus");
   const claimReference =
     typeof params?.ref === "string" ? decodeURIComponent(params.ref).toUpperCase() : "";
 
@@ -72,7 +74,8 @@ export default function ClaimPortalEntryPage() {
       });
       setStoredPortalSession(session);
       setStage("done");
-      router.replace("/claim");
+      const destination = focus === "atto" ? "/claim/atto" : "/claim";
+      router.replace(destination);
     } catch (requestError) {
       setError(
         requestError instanceof Error

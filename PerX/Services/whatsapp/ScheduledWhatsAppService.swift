@@ -72,7 +72,7 @@ class ScheduledWhatsAppService {
             let sinistroRef: String?
         }
 
-        return try await hubClient.post(
+        return try await hubClient.localPost(
             endpoint: "whatsapp/schedule",
             body: SchedulePayload(
                 accountId: accountId,
@@ -89,11 +89,11 @@ class ScheduledWhatsAppService {
     
     /// Ottiene lista messaggi programmati per account
     func getScheduledMessages(accountId: String) async throws -> [ScheduledWhatsApp] {
-        try await hubClient.get(endpoint: "whatsapp/scheduled?accountId=\(accountId)")
+        try await hubClient.localGet(endpoint: "whatsapp/scheduled?accountId=\(accountId)")
     }
     
     /// Cancella messaggio programmato (solo se pending)
     func cancelScheduledMessage(id: String) async throws {
-        try await hubClient.delete(endpoint: "whatsapp/scheduled/\(id)")
+        try await hubClient.localDelete(endpoint: "whatsapp/scheduled/\(id)")
     }
 }

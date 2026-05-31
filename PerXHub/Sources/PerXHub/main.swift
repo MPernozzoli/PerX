@@ -135,6 +135,10 @@ app.http.server.configuration.port = HubConfiguration.port
 // Configure routes
 try configureRoutes(app, startTime: startTime)
 
+// Avvia outbox poller WhatsApp: legge righe `wa_messages` con status='pending'
+// e le invia tramite il bridge OpenWA locale.
+await WAOutboxPoller.shared.start()
+
 print("[Hub] Server starting on \(HubConfiguration.hostname):\(HubConfiguration.port)")
 
 // Run

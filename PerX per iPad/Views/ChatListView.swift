@@ -87,9 +87,9 @@ struct ChatRoomRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Image(systemName: room.roomType == "group" ? "person.3.fill" : "person.fill")
+                Image(systemName: "person.fill")
                     .foregroundColor(.accentColor)
-                
+
                 Text(room.name)
                     .font(.headline)
                     .lineLimit(1)
@@ -116,11 +116,6 @@ struct ChatRoomRow: View {
                 }
             }
             
-            if let rif = room.linkedSinistroRif {
-                Label(rif, systemImage: "link")
-                    .font(.caption2)
-                    .foregroundColor(.blue)
-            }
         }
         .padding(.vertical, 4)
     }
@@ -229,33 +224,39 @@ struct ChatDetailView: View {
 
 struct ChatMessageBubble: View {
     let message: ChatMessageDTO
-    
+    @EnvironmentObject var session: SessionCoordinator
+
+    private var isFromCurrentUser: Bool {
+        guard let email = session.currentUserEmail else { return false }
+        return message.senderName.lowercased() == email.lowercased()
+    }
+
     var body: some View {
         HStack {
-            if message.isFromCurrentUser {
+            if isFromCurrentUser {
                 Spacer()
             }
-            
-            VStack(alignment: message.isFromCurrentUser ? .trailing : .leading, spacing: 4) {
-                if !message.isFromCurrentUser {
+
+            VStack(alignment: isFromCurrentUser ? .trailing : .leading, spacing: 4) {
+                if !isFromCurrentUser {
                     Text(message.senderName)
                         .font(.caption2)
                         .foregroundColor(.secondary)
                 }
-                
+
                 Text(message.content)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
-                    .background(message.isFromCurrentUser ? Color.accentColor : Color(.systemGray5))
-                    .foregroundColor(message.isFromCurrentUser ? .white : .primary)
+                    .background(isFromCurrentUser ? Color.accentColor : Color(.systemGray5))
+                    .foregroundColor(isFromCurrentUser ? .white : .primary)
                     .clipShape(RoundedRectangle(cornerRadius: 16))
-                
+
                 Text(message.timestamp, style: .time)
                     .font(.caption2)
                     .foregroundColor(.secondary)
             }
-            
-            if !message.isFromCurrentUser {
+
+            if !isFromCurrentUser {
                 Spacer()
             }
         }

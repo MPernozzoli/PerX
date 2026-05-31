@@ -57,7 +57,12 @@ async def migrate_claims(
                 # Mappa i campi (adatta i nomi colonne SQLite al tuo schema CoreData)
                 claim_id = str(uuid.uuid4())
                 external_ref = row[1]  # ZRIFERIMENTO
-                stato = row[2] or "SV001"  # ZSTATO, default "da scaricare"
+                # ZSTATO è ancora un codice SV legacy nel CoreData sorgente;
+                # convertiamo allo slug canonico (default: istruzione).
+                from app.core.claim_status import LEGACY_SV_TO_SLUG, ClaimStatus
+                _raw_stato = row[2] or "SV001"
+                _mapping = LEGACY_SV_TO_SLUG.get(_raw_stato)
+                stato = _mapping[0] if _mapping else ClaimStatus.ISTRUZIONE.value
                 
                 # Converti date
                 def parse_date(val):

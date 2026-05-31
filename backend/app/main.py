@@ -9,6 +9,7 @@ from app.core.config import settings
 from app.core.database import engine, Base
 from app.core.logging import setup_logging
 from app.api.v1 import (
+    routes_actors,
     routes_admin,
     routes_attachments,
     routes_auth,
@@ -23,6 +24,7 @@ from app.api.v1 import (
     routes_inspections,
     routes_hub_compat,
     routes_ai_chat,
+    routes_ai_prompts,
     routes_planning,
     routes_portal,
     routes_process_jobs,
@@ -32,7 +34,6 @@ from app.api.v1 import (
     routes_routing,
     routes_tasks,
     routes_tenants,
-    routes_whatsapp,
     routes_rubrica,
     routes_user_settings,
     routes_user_directory,
@@ -92,10 +93,10 @@ app.include_router(routes_emails.router, prefix="/api/v1/emails", tags=["emails"
 app.include_router(routes_email_processing.router, prefix="/api/v1/email-processing", tags=["email-processing"])
 app.include_router(routes_process_jobs.router, prefix="/api/v1/process-jobs", tags=["process-jobs"])
 app.include_router(routes_attachments.router, prefix="/api/v1/attachments", tags=["attachments"])
-app.include_router(routes_whatsapp.router, prefix="/api/v1/whatsapp", tags=["whatsapp"])
 app.include_router(routes_hub_compat.router, prefix="/api/v1/hub", tags=["hub-compat"])
 app.include_router(routes_internal_chat.router, prefix="/api/v1/internal-chat", tags=["internal-chat"])
 app.include_router(routes_ai_chat.router, prefix="/api/v1/ai-chat", tags=["ai-chat"])
+app.include_router(routes_ai_prompts.router, prefix="/api/v1/ai-prompts", tags=["ai-prompts"])
 app.include_router(routes_inspections.router, prefix="/api/v1", tags=["inspections"])
 app.include_router(routes_planning.router, prefix="/api/v1", tags=["planning"])
 app.include_router(routes_portal.router, prefix="/api/v1/portal", tags=["portal"])
@@ -104,6 +105,7 @@ app.include_router(routes_invitations.router, prefix="/api/v1/invitations", tags
 app.include_router(routes_tenants.router, prefix="/api/v1/tenants", tags=["tenants"])
 app.include_router(routes_routing.router, prefix="/api/v1/routing", tags=["routing"])
 app.include_router(routes_rubrica.router, prefix="/api/v1/rubrica", tags=["rubrica"])
+app.include_router(routes_actors.router, prefix="/api/v1/actors", tags=["actors"])
 app.include_router(routes_user_settings.router, prefix="/api/v1/user-settings", tags=["user-settings"])
 app.include_router(routes_user_directory.router, prefix="/api/v1/user-directory", tags=["user-directory"])
 app.include_router(routes_processed_emails_sync.router, prefix="/api/v1/processed-emails", tags=["processed-emails"])

@@ -28,6 +28,9 @@ from app.schemas.portal import (
     PortalAuthStartRequest,
     PortalAuthStartResponse,
     PortalAuthVerifyOtpRequest,
+    PortalPushSubscribeRequest,
+    PortalPushSubscriptionResponse,
+    PortalPushVapidKeyResponse,
     PortalBankAccountSubmissionCreate,
     PortalBankAccountSubmissionResponse,
     PortalClaimSummaryResponse,
@@ -578,3 +581,38 @@ async def signature_provider_webhook(
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return PortalActFlowResponse.model_validate(act_flow)
+
+
+@router.get("/push/vapid-public-key", response_model=PortalPushVapidKeyResponse)
+async def get_push_vapid_public_key():
+    return PortalPushVapidKeyResponse(public_key=settings.PORTAL_VAPID_PUBLIC_KEY)
+
+
+@router.post("/push/subscribe", response_model=PortalPushSubscriptionResponse)
+async def subscribe_push(
+    payload: PortalPushSubscribeRequest,
+    session: PortalSessionContext = Depends(get_current_portal_session),
+    db: AsyncSession = Depends(get_db),
+    user_agent: str | None = Header(default=None, alias="user-agent"),
+):
+    subscription = await PortalService.register_push_subscription(
+        db,
+        session,
+        endpoint=payload.endpoint,
+        p256dh=payload.p256dh,
+        auth=payload.auth,
+        user_agent=payload.user_agent or user_agent,
+    )
+    return PortalPushSubscriptionResponse(id=subscription.id, status=subscription.status)
+
+
+@router.post("/push/unsubscribe")
+async def unsubscribe_push(
+    payload: PortalPushSubscribeRequest,
+    session: PortalSessionContext = Depends(get_current_portal_session),
+    db: AsyncSession = Depends(get_db),
+):
+    await PortalService.revoke_push_subscription(
+        db, session, endpoint=payload.endpoint
+    )
+    return {"status": "revoked"}

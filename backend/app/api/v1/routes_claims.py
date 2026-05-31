@@ -1,18 +1,40 @@
 """
 Claims routes
 """
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from typing import Literal, Optional
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, status, Query, UploadFile
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import get_current_active_user
 from app.models.user import User
 from app.services.claim_service import ClaimService
+from app.services.portal_service import PortalService
 from app.services.state_service import StateService
 from app.schemas.claim import (
     ClaimCreate, ClaimUpdate, ClaimResponse, ClaimListResponse,
     ClaimStateTransitionRequest, ClaimAssignmentRequest, ClaimEventResponse
 )
+
+
+AttoChannel = Literal["push", "email", "whatsapp"]
+
+
+class AttoSendRequest(BaseModel):
+    document_id: str = Field(..., description="ID del Document che contiene il PDF dell'atto")
+    channels: list[AttoChannel] = Field(default_factory=lambda: ["push", "email"])
+    wa_account_id: Optional[str] = None
+
+
+class AttoSendResponse(BaseModel):
+    status: str
+    claim_id: str
+    document_id: str
+    channels: list[str]
+    delivery: dict
+    act_flow: Optional[dict] = None
 
 router = APIRouter()
 
@@ -127,6 +149,62 @@ async def delete_claim(
         pass
 
 
+@router.post("/{claim_id}/perizia/generate", status_code=status.HTTP_202_ACCEPTED)
+async def request_perizia_generation(
+    claim_id: str,
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Richiede al server la generazione della perizia per il sinistro.
+
+    Il client invia i dati strutturati (beni, danni, foto refs) nel payload.
+    Il server enqueua un `ProcessJob` di tipo `perizia.generate`; un worker
+    (Mac Mini o futuro fallback in-process) eseguirà la pipeline AI e
+    caricherà il PDF risultante sul bucket Supabase.
+
+    Idempotente per (claim, clientRequestId): replay con lo stesso
+    clientRequestId restituisce il job esistente invece di duplicare.
+    """
+    from app.services.process_job_service import ProcessJobService
+    from app.models.claim import Claim
+    from sqlalchemy import select as _select
+
+    claim = (
+        await db.execute(
+            _select(Claim).where(
+                Claim.id == claim_id, Claim.tenant_id == current_user.tenant_id
+            )
+        )
+    ).scalar_one_or_none()
+    if claim is None:
+        raise HTTPException(status_code=404, detail="Claim not found")
+
+    client_req_id = (payload or {}).get("clientRequestId")
+    idempotency_key = (
+        f"perizia.generate:{current_user.tenant_id}:{claim_id}:{client_req_id}"
+        if client_req_id else None
+    )
+
+    job = await ProcessJobService.enqueue(
+        db,
+        tenant_id=current_user.tenant_id,
+        claim_id=claim_id,
+        created_by_user_id=current_user.id,
+        job_type="perizia.generate",
+        priority=70,
+        idempotency_key=idempotency_key,
+        input_json={
+            "claimId": claim_id,
+            "claimRef": claim.external_ref,
+            "data": payload or {},
+        },
+        tags_json={"source": "client", "kind": "perizia"},
+    )
+    await db.commit()
+    return {"jobId": job.id, "status": job.status}
+
+
 @router.post("/{claim_id}/state-transitions")
 async def transition_state(
     claim_id: str,
@@ -138,7 +216,8 @@ async def transition_state(
     success = await StateService.transition_state(
         db, current_user.tenant_id, claim_id,
         transition.from_state, transition.to_state,
-        current_user.id, transition.reason, transition.payload
+        current_user.id, transition.reason, transition.payload,
+        sopralluogo_substato=transition.sopralluogo_substato,
     )
     if not success:
         raise HTTPException(status_code=400, detail="Invalid state transition")
@@ -174,3 +253,127 @@ async def get_claim_events(
     )
     events = result.scalars().all()
     return [ClaimEventResponse.model_validate(e) for e in events]
+
+
+@router.post("/{claim_id}/atto/send", response_model=AttoSendResponse)
+async def send_atto_to_insured(
+    claim_id: str,
+    payload: AttoSendRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    try:
+        result = await PortalService.send_act_to_insured(
+            db,
+            tenant_id=current_user.tenant_id,
+            claim_id=claim_id,
+            document_id=payload.document_id,
+            channels=list(payload.channels),
+            wa_account_id=payload.wa_account_id,
+            actor_user_id=current_user.id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return AttoSendResponse.model_validate(result)
+
+
+@router.post("/{claim_id}/atto/upload-and-send", response_model=AttoSendResponse)
+async def upload_and_send_atto(
+    claim_id: str,
+    file: UploadFile = File(...),
+    channels: str = Form("push,email"),
+    wa_account_id: Optional[str] = Form(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Upload PDF dell'atto in un colpo solo + invio multicanale.
+    Pensato per il client iOS che genera il PDF localmente.
+    """
+    import uuid as _uuid
+    from pathlib import Path as _Path
+    from datetime import datetime as _dt, timezone as _tz
+    from app.core.config import settings
+    from app.models.document import Document
+    from app.services.supabase_storage_service import SupabaseStorageService
+
+    claim = await ClaimService.get_claim(db, current_user.tenant_id, claim_id)
+    if not claim:
+        raise HTTPException(status_code=404, detail="Claim not found")
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="File vuoto")
+
+    document_id = str(_uuid.uuid4())
+    safe_name = (file.filename or f"atto_{claim.external_ref or claim.id}.pdf").strip()
+    mime_type = file.content_type or "application/pdf"
+
+    if SupabaseStorageService.is_configured():
+        claim_ref = "".join(
+            c if c.isalnum() or c in {"-", "_"} else "_"
+            for c in (claim.external_ref or claim.numero_sinistro or claim.id)
+        ).strip("_") or claim.id
+        object_path = SupabaseStorageService.build_object_path(
+            current_user.tenant_id, claim_ref, document_id, safe_name
+        )
+        blob = await SupabaseStorageService.upload(
+            object_path=object_path, content=content, mime_type=mime_type
+        )
+        storage_provider = "supabase"
+        storage_bucket = blob.bucket
+        storage_path = blob.storage_path
+    else:
+        # Fallback locale
+        target_dir = (
+            _Path(__file__).resolve().parents[3]
+            / "runtime"
+            / "atti_uploads"
+            / current_user.tenant_id
+            / claim.id
+        )
+        target_dir.mkdir(parents=True, exist_ok=True)
+        local_path = target_dir / f"{document_id}_{safe_name}"
+        local_path.write_bytes(content)
+        storage_provider = "local"
+        storage_bucket = None
+        storage_path = str(local_path)
+
+    document = Document(
+        id=document_id,
+        tenant_id=current_user.tenant_id,
+        claim_id=claim.id,
+        source_type="manual",
+        file_name=safe_name,
+        original_file_name=safe_name,
+        mime_type=mime_type,
+        extension=_Path(safe_name).suffix.lstrip(".") or "pdf",
+        size_bytes=len(content),
+        storage_provider=storage_provider,
+        storage_bucket=storage_bucket,
+        storage_path=storage_path,
+        status="uploaded",
+        category="atto",
+        tags_json=["atto", "perizia"],
+        uploaded_by_user_id=current_user.id,
+        uploaded_at=_dt.now(_tz.utc),
+        metadata_json={"uploaded_via": "atto_send_flow"},
+    )
+    db.add(document)
+    await db.commit()
+    await db.refresh(document)
+
+    channels_list = [c.strip() for c in channels.split(",") if c.strip()]
+    try:
+        result = await PortalService.send_act_to_insured(
+            db,
+            tenant_id=current_user.tenant_id,
+            claim_id=claim_id,
+            document_id=document.id,
+            channels=channels_list,
+            wa_account_id=wa_account_id,
+            actor_user_id=current_user.id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return AttoSendResponse.model_validate(result)

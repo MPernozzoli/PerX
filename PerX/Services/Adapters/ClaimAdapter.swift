@@ -86,29 +86,46 @@ final class ClaimAdapter: ObservableObject {
         return SinistroDetail(from: response)
     }
 
+    /// Accoda il cambio di stato sul server tramite `ClaimStateSyncQueue`
+    /// (offline-first: il flush avviene subito se online, altrimenti al ritorno
+    /// della connessione). Lo `stato_corrente` corrente è recuperato dalla copia
+    /// CoreData se disponibile, così il backend può validare la transizione e
+    /// rifiutare in modo idempotente eventuali replay.
     private func changeStateOnCloud(
         riferimento: String,
         newState: StatoSinistro,
         reason: String?
     ) async throws {
-        struct CloudStateChangeRequest: Codable {
-            let to_state: String
-            let reason: String?
-            let payload: [String: String]?
+        // Slug canonico per il backend (post-migration 020).
+        // Se lo stato non ha equivalente cloud (es. stati di sistema SI*), non
+        // accodare niente: la transizione resta puramente locale.
+        guard let toSlug = newState.cloudSlug else {
+            print("[ClaimAdapter] ⏭️ Stato \(newState.rawValue) senza equivalente cloud: skip")
+            return
         }
-
-        struct CloudStateChangeResponse: Codable {
-            let status: String
-        }
-
-        let _: CloudStateChangeResponse = try await hubClient.cloudPost(
-            "/api/v1/claims/\(riferimento)/state-transitions",
-            body: CloudStateChangeRequest(
-                to_state: newState.rawValue,
-                reason: reason,
-                payload: nil
-            )
+        let fromSlug = await fetchCurrentStateLocally(riferimento: riferimento)
+        await ClaimStateSyncQueue.shared.enqueue(
+            riferimento: riferimento,
+            fromState: fromSlug,
+            toState: toSlug,
+            sopralluogo_substato: newState.impliedSubstato,
+            reason: reason
         )
+    }
+
+    /// Stato corrente del sinistro in CoreData, tradotto in slug canonico.
+    /// Restituisce `nil` se il sinistro non è in cache o lo stato non ha
+    /// equivalente cloud.
+    private func fetchCurrentStateLocally(riferimento: String) async -> String? {
+        let context = PersistenceController.shared.container.viewContext
+        let request = NSFetchRequest<Sinistro>(entityName: "Sinistro")
+        request.predicate = NSPredicate(format: "riferimento == %@", riferimento)
+        request.fetchLimit = 1
+        let raw: String? = await context.perform {
+            (try? context.fetch(request).first)?.stato
+        }
+        guard let raw = raw else { return nil }
+        return BackendStatoMapping.cloudSlug(forCoreDataRaw: raw)
     }
 
     private func fetchFromHub(userId: String, userEmail: String? = nil) async throws -> [SinistroListItem] {
@@ -241,7 +258,7 @@ struct SinistroListItem: Identifiable {
         self.id = dto.id
         self.riferimento = dto.external_ref ?? dto.id
         self.garanzia = dto.garanzia
-        self.stato = StatoSinistro(rawValue: dto.stato_corrente) ?? .istruzione
+        self.stato = BackendStatoMapping.statoSinistro(forCloudSlug: dto.stato_corrente) ?? .istruzione
         self.nomeAssicurato = dto.nome_assicurato
         self.nomeCompagnia = dto.compagnia
         self.dataAssegnazione = dto.created_at
@@ -294,7 +311,7 @@ struct SinistroDetail: Identifiable {
         self.id = dto.id
         self.riferimento = dto.external_ref ?? dto.id
         self.garanzia = dto.garanzia
-        self.stato = StatoSinistro(rawValue: dto.stato_corrente) ?? .istruzione
+        self.stato = BackendStatoMapping.statoSinistro(forCloudSlug: dto.stato_corrente) ?? .istruzione
         self.numeroSinistroCompagnia = dto.numero_sinistro
         self.nomeAssicurato = dto.nome_assicurato
         self.nomeCompagnia = dto.compagnia

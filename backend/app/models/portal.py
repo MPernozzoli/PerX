@@ -106,6 +106,29 @@ class PortalSignatureRequest(Base):
     metadata_json = Column(JSON, nullable=True)
 
 
+class PortalPushSubscription(Base):
+    __tablename__ = "portal_push_subscriptions"
+
+    id = Column(String, primary_key=True, index=True)
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    claim_id = Column(String, ForeignKey("claims.id"), nullable=False, index=True)
+    portal_access_id = Column(
+        String, ForeignKey("portal_claim_accesses.id"), nullable=False, index=True
+    )
+    endpoint = Column(Text, nullable=False)
+    p256dh = Column(String, nullable=False)
+    auth = Column(String, nullable=False)
+    user_agent = Column(String, nullable=True)
+    status = Column(String, nullable=False, default="active")
+    last_used_at = Column(DateTime(timezone=True), nullable=True)
+    revoked_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("idx_portal_push_subscriptions_access", "portal_access_id", "status"),
+    )
+
+
 class PortalConversation(Base):
     __tablename__ = "portal_conversations"
 

@@ -36,7 +36,7 @@ final class WhatsAppMediaService {
         try createDirectoryIfNeeded(at: mediaFolderPath, sinistroPath: sinistroPath)
         
         // 3. Scarica il media tramite Hub
-        let mediaData = try await hubClient.get(endpoint: "whatsapp/media/\(accountId)/\(messageId)") as Data
+        let mediaData = try await hubClient.localGetData(endpoint: "whatsapp/media/\(accountId)/\(messageId)")
         
         // 4. Determina il nome file stabile (ancorato al messageId)
         let filename = generateFilename(messageId: messageId, suggestedFilename: suggestedFilename, mimeType: mimeType)

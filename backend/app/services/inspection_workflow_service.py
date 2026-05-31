@@ -43,8 +43,18 @@ from app.schemas.inspection import (
     InspectionSchedulingPreferencesUpsert,
 )
 from app.schemas.tenant_settings import TenantCATMunicipality, TenantCATPOI, TenantCATSettingsPayload
+from app.core.claim_status import ClaimStatus
 from app.services.claim_service import ClaimService
-from app.services.state_service import StateService
+from app.services.cat_duration_stats_service import (
+    bucket_for_asset_count,
+    load_median_minutes,
+)
+from app.services.state_service import StateService, has_substato
+from app.services.travel_time_service import (
+    Coordinate,
+    TravelEstimate,
+    TravelTimeService,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +62,17 @@ LOCAL_TIMEZONE = ZoneInfo("Europe/Rome")
 ROUTE_PROPOSAL_EVENT_TYPE = "cat_route_proposal"
 CONFIRMED_APPOINTMENT_EVENT_TYPE = "inspection_appointment"
 INSPECTION_LEAD_DAYS = 2
-AUTO_ENTRY_STATES = {"SV006", "SV007", "SV008", "SV009", "SV015", "SV053"}
-CAT_ACTIVE_STATES = {"SV052", "SV053", "SV050"}
+# Stati da cui il sinistro può auto-entrare nel workflow di scheduling CAT.
+AUTO_ENTRY_STATES = {
+    ClaimStatus.ISTRUZIONE.value,
+    ClaimStatus.PRIMO_CONTATTO.value,
+    ClaimStatus.SECONDO_CONTATTO.value,
+    ClaimStatus.IN_ATTESA_ASSEGNAZIONE.value,
+    ClaimStatus.SOPRALLUOGO.value,
+}
+# Stato unico per la fase di sopralluogo: le sotto-fasi sono substati
+# ("da_fissare", "fissato", "confermato", "da_concordare", "da_rifissare").
+CAT_ACTIVE_STATES = {ClaimStatus.SOPRALLUOGO.value}
 
 
 @dataclass
@@ -271,26 +290,69 @@ class InspectionWorkflowService:
             )
         return sorted(slots, key=lambda item: item["start_at"])
 
+    INSPECTION_DURATION_BASE_MINUTES = 20
+    INSPECTION_DURATION_FREE_ASSET_THRESHOLD = 3
+    INSPECTION_DURATION_PER_EXTRA_ASSET_MINUTES = 5
+    INSPECTION_DURATION_SAFETY_MARGIN_MINUTES = 5
+    INSPECTION_DURATION_MAX_MINUTES = 60
+    INSPECTION_DURATION_MIN_MINUTES = 15
+
+    @staticmethod
+    def _asset_count_for_claim(claim: Claim) -> int:
+        metadata = InspectionWorkflowService._metadata(claim)
+        raw = metadata.get("numero_beni")
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            return 1
+        return max(1, value)
+
+    @staticmethod
+    def _estimate_default_duration_minutes(asset_count: int) -> int:
+        extra = max(0, asset_count - InspectionWorkflowService.INSPECTION_DURATION_FREE_ASSET_THRESHOLD)
+        base = (
+            InspectionWorkflowService.INSPECTION_DURATION_BASE_MINUTES
+            + extra * InspectionWorkflowService.INSPECTION_DURATION_PER_EXTRA_ASSET_MINUTES
+        )
+        return min(
+            InspectionWorkflowService.INSPECTION_DURATION_MAX_MINUTES,
+            max(
+                InspectionWorkflowService.INSPECTION_DURATION_MIN_MINUTES,
+                base + InspectionWorkflowService.INSPECTION_DURATION_SAFETY_MARGIN_MINUTES,
+            ),
+        )
+
+    @staticmethod
+    def _resolve_inspection_duration_minutes(
+        asset_count: int,
+        cat_stats_map: Optional[dict[tuple[str, int], int]] = None,
+        cat_user_id: Optional[str] = None,
+    ) -> int:
+        default = InspectionWorkflowService._estimate_default_duration_minutes(asset_count)
+        if not cat_stats_map or not cat_user_id:
+            return default
+        bucket = bucket_for_asset_count(asset_count)
+        cat_minutes = cat_stats_map.get((cat_user_id, bucket))
+        if cat_minutes is None:
+            return default
+        return min(
+            InspectionWorkflowService.INSPECTION_DURATION_MAX_MINUTES,
+            max(
+                InspectionWorkflowService.INSPECTION_DURATION_MIN_MINUTES,
+                cat_minutes + InspectionWorkflowService.INSPECTION_DURATION_SAFETY_MARGIN_MINUTES,
+            ),
+        )
+
     @staticmethod
     def _duration_minutes_for_claim(claim: Claim, preferences: dict) -> int:
         requested = preferences.get("requested_duration_minutes")
         if isinstance(requested, int):
-            return max(15, min(60, requested))
-
-        metadata = InspectionWorkflowService._metadata(claim)
-        goods_count = metadata.get("numero_beni")
-        try:
-            goods_count = int(goods_count)
-        except (TypeError, ValueError):
-            goods_count = 1
-
-        complexity = InspectionWorkflowService._normalize_text(claim.complessita)
-        duration = 15 + max(goods_count - 1, 0) * 5
-        if "alta" in complexity or "high" in complexity:
-            duration += 20
-        elif "media" in complexity or "medium" in complexity:
-            duration += 10
-        return max(15, min(60, duration))
+            return min(
+                InspectionWorkflowService.INSPECTION_DURATION_MAX_MINUTES,
+                max(InspectionWorkflowService.INSPECTION_DURATION_MIN_MINUTES, requested),
+            )
+        asset_count = InspectionWorkflowService._asset_count_for_claim(claim)
+        return InspectionWorkflowService._estimate_default_duration_minutes(asset_count)
 
     @staticmethod
     def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -789,6 +851,37 @@ class InspectionWorkflowService:
         return state
 
     @staticmethod
+    def _merge_contiguous_windows(windows: list[dict]) -> list[dict]:
+        """Fonde finestre adiacenti (gap <= 60s) in una sola.
+
+        L'assicurato può selezionare slot consecutivi (es. 09-11 + 11-13):
+        per noi diventa una sola finestra 09-13 da cui pescare qualunque orario.
+        """
+        if not windows:
+            return []
+        ordered = sorted(windows, key=lambda item: item["preferred_start"])
+        merged: list[dict] = [dict(ordered[0])]
+        for window in ordered[1:]:
+            current = merged[-1]
+            gap = (window["preferred_start"] - current["preferred_end"]).total_seconds()
+            if abs(gap) <= 60:
+                current["preferred_end"] = max(current["preferred_end"], window["preferred_end"])
+                current["allowed_end"] = current["preferred_end"]
+                current["slot_minutes"] = int(
+                    (current["preferred_end"] - current["preferred_start"]).total_seconds() / 60
+                )
+                merged_labels = [
+                    label
+                    for label in (current.get("label"), window.get("label"))
+                    if label
+                ]
+                if merged_labels:
+                    current["label"] = " + ".join(dict.fromkeys(merged_labels))
+            else:
+                merged.append(dict(window))
+        return merged
+
+    @staticmethod
     def _preferred_windows_for_plan_date(
         claim: Claim,
         plan_date: date,
@@ -798,6 +891,11 @@ class InspectionWorkflowService:
         slots = preferences.get("preferred_slots")
         if not isinstance(slots, list):
             return []
+
+        # `tolerance_percent` è stato mantenuto in firma per compatibilità ma
+        # non amplia più la finestra: l'orario proposto deve sempre cadere
+        # dentro lo slot scelto dall'assicurato (hard constraint).
+        _ = tolerance_percent
 
         windows: list[dict] = []
         for raw_slot in slots:
@@ -815,21 +913,18 @@ class InspectionWorkflowService:
                 continue
 
             slot_minutes = max(1, int((preferred_end - preferred_start).total_seconds() / 60))
-            tolerance_minutes = int(slot_minutes * max(tolerance_percent, 0) / 100)
-            allowed_start = preferred_start - timedelta(minutes=tolerance_minutes)
-            allowed_end = preferred_end + timedelta(minutes=tolerance_minutes)
             windows.append(
                 {
                     "label": raw_slot.get("label"),
                     "preferred_start": preferred_start,
                     "preferred_end": preferred_end,
-                    "allowed_start": allowed_start,
-                    "allowed_end": allowed_end,
+                    "allowed_start": preferred_start,
+                    "allowed_end": preferred_end,
                     "slot_minutes": slot_minutes,
-                    "tolerance_minutes": tolerance_minutes,
+                    "tolerance_minutes": 0,
                 }
             )
-        return sorted(windows, key=lambda item: item["preferred_start"])
+        return InspectionWorkflowService._merge_contiguous_windows(windows)
 
     @staticmethod
     def _build_claim_context(
@@ -1121,6 +1216,8 @@ class InspectionWorkflowService:
         claim_context: ClaimPlanningContext,
         technician: TechnicianContext,
         max_outside_zone_km: int,
+        travel_matrix: Optional[dict[tuple[str, str, int, int], TravelEstimate]] = None,
+        cat_stats_map: Optional[dict[tuple[str, int], int]] = None,
     ) -> Optional[tuple[ProposedStop, float]]:
         working_intervals = list(getattr(technician, "working_intervals", []))
         if not working_intervals:
@@ -1141,12 +1238,21 @@ class InspectionWorkflowService:
         if forbidden_outside_zone:
             return None
 
+        asset_count = InspectionWorkflowService._asset_count_for_claim(claim_context.claim)
+        duration_minutes = InspectionWorkflowService._resolve_inspection_duration_minutes(
+            asset_count,
+            cat_stats_map=cat_stats_map,
+            cat_user_id=technician.user_id,
+        )
+
         best: Optional[tuple[ProposedStop, float]] = None
         last_stop = InspectionWorkflowService._last_provisional_stop(technician)
         for window in claim_context.preferred_windows:
             for free_start, free_end in free_intervals:
-                interval_start = max(free_start, window["allowed_start"])
-                interval_end = min(free_end, window["allowed_end"])
+                # Hard constraint: l'intervento deve cadere dentro la finestra
+                # scelta dall'assicurato (eventualmente già fusa con quelle contigue).
+                interval_start = max(free_start, window["preferred_start"])
+                interval_end = min(free_end, window["preferred_end"])
                 if interval_end <= interval_start:
                     continue
 
@@ -1162,12 +1268,20 @@ class InspectionWorkflowService:
                     claim_context.latitude,
                     claim_context.longitude,
                 )
-                travel_minutes = InspectionWorkflowService._estimate_travel_minutes(distance_from_previous)
+                travel_minutes = InspectionWorkflowService._travel_minutes_for_leg(
+                    origin_lat,
+                    origin_lon,
+                    claim_context.latitude,
+                    claim_context.longitude,
+                    departure=interval_start,
+                    travel_matrix=travel_matrix,
+                    fallback_distance_km=distance_from_previous,
+                )
                 earliest_start = interval_start
                 if last_stop is not None:
                     earliest_start = max(earliest_start, last_stop.ends_at + timedelta(minutes=travel_minutes))
 
-                proposed_end = earliest_start + timedelta(minutes=claim_context.duration_minutes)
+                proposed_end = earliest_start + timedelta(minutes=duration_minutes)
                 if proposed_end > interval_end:
                     continue
 
@@ -1194,12 +1308,43 @@ class InspectionWorkflowService:
                     longitude=claim_context.longitude,
                     outside_zone=outside_distance > 0 and InspectionWorkflowService._normalize_text(claim_context.municipality) not in technician.assigned_municipalities,
                     distance_from_previous_km=round(distance_from_previous, 1),
-                    duration_minutes=claim_context.duration_minutes,
+                    duration_minutes=duration_minutes,
                     preferred_start=window["preferred_start"],
                 )
                 if best is None or score < best[1]:
                     best = (stop, score)
         return best
+
+    @staticmethod
+    def _travel_minutes_for_leg(
+        origin_lat: Optional[float],
+        origin_lon: Optional[float],
+        dest_lat: Optional[float],
+        dest_lon: Optional[float],
+        *,
+        departure: datetime,
+        travel_matrix: Optional[dict[tuple[str, str, int, int], TravelEstimate]],
+        fallback_distance_km: float,
+    ) -> int:
+        if (
+            travel_matrix is not None
+            and origin_lat is not None
+            and origin_lon is not None
+            and dest_lat is not None
+            and dest_lon is not None
+        ):
+            origin = Coordinate(origin_lat, origin_lon)
+            dest = Coordinate(dest_lat, dest_lon)
+            key = (
+                origin.grid(),
+                dest.grid(),
+                departure.weekday(),
+                (departure.hour // 6) * 6,
+            )
+            hit = travel_matrix.get(key)
+            if hit is not None:
+                return hit.minutes
+        return InspectionWorkflowService._estimate_travel_minutes(fallback_distance_km)
 
     @staticmethod
     async def _portal_day_slots(
@@ -1310,11 +1455,12 @@ class InspectionWorkflowService:
             }
 
         status_value = "selection_required"
-        if claim.stato_corrente == "SV050":
+        is_sopralluogo = claim.stato_corrente == ClaimStatus.SOPRALLUOGO.value
+        if is_sopralluogo and (has_substato(claim, "fissato") or has_substato(claim, "confermato")):
             status_value = "confirmed"
         elif selected_slots:
             status_value = "pending_confirmation"
-        elif claim.stato_corrente == "SV053":
+        elif is_sopralluogo and has_substato(claim, "da_concordare"):
             status_value = "manual_coordination"
 
         candidate_cats = await InspectionWorkflowService._candidate_cat_contacts_for_location(
@@ -1325,7 +1471,7 @@ class InspectionWorkflowService:
         )
 
         availability_days: list[dict] = []
-        if claim.stato_corrente in {"SV052", "SV053"}:
+        if is_sopralluogo and (has_substato(claim, "da_fissare") or has_substato(claim, "da_concordare")):
             start_date = datetime.now(LOCAL_TIMEZONE).date()
             slot_minutes = max(60, int(cat_settings.planner.availability_slot_minutes or 120))
             for offset in range(horizon_days):
@@ -1369,7 +1515,7 @@ class InspectionWorkflowService:
             "pending_confirmation_message": (
                 "Riceverai un messaggio di conferma del sopralluogo entro le 24 ore precedenti alla data selezionata. "
                 "Fino a quel messaggio l'appuntamento non e confermato."
-                if selected_slots and claim.stato_corrente in {"SV052", "SV053"}
+                if selected_slots and is_sopralluogo and (has_substato(claim, "da_fissare") or has_substato(claim, "da_concordare"))
                 else None
             ),
             "address_confirmed": bool(location.get("confirmed_at")),
@@ -1389,8 +1535,21 @@ class InspectionWorkflowService:
         *,
         reason: Optional[str] = None,
         payload: Optional[dict] = None,
+        sopralluogo_substato: Optional[str] = None,
     ) -> None:
-        if claim.stato_corrente == to_state:
+        if claim.stato_corrente == to_state and not sopralluogo_substato:
+            return
+        # Same-state sopralluogo substato change: skip the state-machine and
+        # update the substato directly.
+        if claim.stato_corrente == to_state == ClaimStatus.SOPRALLUOGO.value and sopralluogo_substato:
+            await StateService.set_substati(
+                db,
+                claim.tenant_id,
+                claim.id,
+                [sopralluogo_substato],
+                source="system",
+                commit=False,
+            )
             return
         ok = await StateService.transition_state(
             db,
@@ -1403,6 +1562,7 @@ class InspectionWorkflowService:
             payload=payload,
             commit=False,
             event_source="system",
+            sopralluogo_substato=sopralluogo_substato,
         )
         if not ok:
             raise ValueError(f"Invalid transition {claim.stato_corrente} -> {to_state}")
@@ -1471,8 +1631,9 @@ class InspectionWorkflowService:
             await InspectionWorkflowService._transition_claim(
                 db,
                 claim,
-                "SV052",
+                ClaimStatus.SOPRALLUOGO.value,
                 reason="inspection_preferences_confirmed",
+                sopralluogo_substato="da_fissare",
             )
 
         await InspectionWorkflowService._create_claim_event(
@@ -1560,8 +1721,9 @@ class InspectionWorkflowService:
             await InspectionWorkflowService._transition_claim(
                 db,
                 claim,
-                "SV052",
+                ClaimStatus.SOPRALLUOGO.value,
                 reason="inspection_location_confirmed",
+                sopralluogo_substato="da_fissare",
             )
 
         await InspectionWorkflowService._create_claim_event(
@@ -1689,12 +1851,13 @@ class InspectionWorkflowService:
             preferred_slots=[],
         )
 
-        if claim.stato_corrente not in {"SV052", "SV053", "SV050"}:
+        if claim.stato_corrente != ClaimStatus.SOPRALLUOGO.value:
             await InspectionWorkflowService._transition_claim(
                 db,
                 claim,
-                "SV053",
+                ClaimStatus.SOPRALLUOGO.value,
                 reason="manual_inspection_appointment",
+                sopralluogo_substato="da_concordare",
             )
 
         if cat_user:
@@ -1723,9 +1886,10 @@ class InspectionWorkflowService:
         await InspectionWorkflowService._transition_claim(
             db,
             claim,
-            "SV050",
+            ClaimStatus.SOPRALLUOGO.value,
             reason="manual_inspection_appointment_confirmed",
             payload={"scheduled_at": start_at.isoformat()},
+            sopralluogo_substato="fissato",
         )
         await InspectionWorkflowService._create_claim_event(
             db,
@@ -1955,7 +2119,8 @@ class InspectionWorkflowService:
     ) -> list[ClaimPlanningContext]:
         query = select(Claim).where(
             Claim.tenant_id == tenant_id,
-            Claim.stato_corrente == "SV052",
+            Claim.stato_corrente == ClaimStatus.SOPRALLUOGO.value,
+            Claim.stato_substati.contains([{"tag": "da_fissare"}]),
             Claim.sopralluogo == True,
         )
         if claim_ids:
@@ -2085,6 +2250,74 @@ class InspectionWorkflowService:
         return fallback
 
     @staticmethod
+    def _provider_settings_for_tenant(tenant: Tenant) -> dict:
+        raw = (tenant.settings_json or {}).get("provider_settings") or {}
+        return raw if isinstance(raw, dict) else {}
+
+    @staticmethod
+    async def _prefetch_travel_matrix(
+        db: AsyncSession,
+        tenant: Tenant,
+        plan_date: date,
+        technicians: list[TechnicianContext],
+        claim_contexts: list[ClaimPlanningContext],
+    ) -> dict[tuple[str, str, int, int], TravelEstimate]:
+        provider_settings = InspectionWorkflowService._provider_settings_for_tenant(tenant)
+        service = TravelTimeService(
+            db,
+            api_key=provider_settings.get("routing_api_key"),
+            cache_ttl_days=int(provider_settings.get("routing_cache_ttl_days") or 14),
+            enabled=bool(provider_settings.get("routing_enabled")),
+        )
+        departure_default = datetime.combine(
+            plan_date, time(9, 0), tzinfo=LOCAL_TIMEZONE
+        ).astimezone(timezone.utc)
+
+        claim_coords: list[Coordinate] = []
+        for ctx in claim_contexts:
+            if ctx.latitude is not None and ctx.longitude is not None:
+                claim_coords.append(Coordinate(float(ctx.latitude), float(ctx.longitude)))
+
+        pairs: list[tuple[Coordinate, Coordinate, datetime]] = []
+        for tech in technicians:
+            if tech.latitude is None or tech.longitude is None:
+                continue
+            origin = Coordinate(float(tech.latitude), float(tech.longitude))
+            for dest in claim_coords:
+                pairs.append((origin, dest, departure_default))
+        # chained stops (claim_i -> claim_j) sono opzionali ma il cache li
+        # accumula sui run successivi; per non sforare i limiti API ci limitiamo
+        # qui a tech -> claim e lasciamo i salti tra claim alla risoluzione
+        # singola (che usa comunque cache + fallback haversine).
+
+        if not pairs:
+            return {}
+        return await service.estimate_matrix(pairs)
+
+    @staticmethod
+    async def _load_cat_stats_map(
+        db: AsyncSession,
+        tenant_id: str,
+        technicians: list[TechnicianContext],
+        claim_contexts: list[ClaimPlanningContext],
+    ) -> dict[tuple[str, int], int]:
+        buckets = {
+            bucket_for_asset_count(
+                InspectionWorkflowService._asset_count_for_claim(ctx.claim)
+            )
+            for ctx in claim_contexts
+        }
+        if not buckets or not technicians:
+            return {}
+        result: dict[tuple[str, int], int] = {}
+        for tech in technicians:
+            for bucket in buckets:
+                stat = await load_median_minutes(db, tenant_id, tech.user_id, bucket)
+                if stat is not None:
+                    result[(tech.user_id, bucket)] = stat.median_minutes
+        return result
+
+    @staticmethod
     async def _build_route_proposals(
         db: AsyncSession,
         tenant_id: str,
@@ -2148,6 +2381,20 @@ class InspectionWorkflowService:
                 "fallback_claim_ids": fallback_claim_ids,
             }
 
+        travel_matrix = await InspectionWorkflowService._prefetch_travel_matrix(
+            db,
+            tenant,
+            plan_date,
+            technicians,
+            claim_contexts,
+        )
+        cat_stats_map = await InspectionWorkflowService._load_cat_stats_map(
+            db,
+            tenant_id,
+            technicians,
+            claim_contexts,
+        )
+
         fallback_claim_ids: list[str] = []
         for claim_context in claim_contexts:
             candidates = InspectionWorkflowService._candidate_technicians_for_claim(
@@ -2161,6 +2408,8 @@ class InspectionWorkflowService:
                     claim_context,
                     technician,
                     cat_settings.planner.max_outside_zone_kilometers,
+                    travel_matrix=travel_matrix,
+                    cat_stats_map=cat_stats_map,
                 )
                 if choice is None:
                     continue
@@ -2362,8 +2611,9 @@ class InspectionWorkflowService:
             await InspectionWorkflowService._transition_claim(
                 db,
                 claim,
-                "SV053",
+                ClaimStatus.SOPRALLUOGO.value,
                 reason="inspection_auto_planning_failed",
+                sopralluogo_substato="da_concordare",
             )
             await InspectionWorkflowService._create_claim_event(
                 db,
@@ -2640,9 +2890,10 @@ class InspectionWorkflowService:
             await InspectionWorkflowService._transition_claim(
                 db,
                 claim,
-                "SV050",
+                ClaimStatus.SOPRALLUOGO.value,
                 reason="inspection_route_accepted",
                 payload={"scheduled_at": scheduled_at.isoformat() if scheduled_at else None},
+                sopralluogo_substato="fissato",
             )
             await InspectionWorkflowService._create_claim_event(
                 db,

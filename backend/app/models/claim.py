@@ -100,7 +100,23 @@ class Claim(Base):
     
     # Metadata JSON per estensioni future
     metadata_json = Column(JSON, nullable=True)
-    
+
+    # --- Riferimenti ad anagrafica unificata (Actor) --------------------
+    # Vivono accanto ai campi piatti soprastanti (deprecated, da rimuovere
+    # quando tutti i client useranno il nuovo flusso). claim_service
+    # popola entrambi durante la transizione.
+    contraente_id = Column(String, ForeignKey("actors.id"), nullable=True, index=True)
+    assicurato_id = Column(String, ForeignKey("actors.id"), nullable=True, index=True)
+    danneggiato_id = Column(String, ForeignKey("actors.id"), nullable=True, index=True)
+
+    agency_id = Column(String, ForeignKey("rubrica_agenzie.id"), nullable=True, index=True)
+    compagnia_id = Column(String, ForeignKey("rubrica_compagnie.id"), nullable=True, index=True)
+
+    contraente_address_snapshot = Column(JSON, nullable=True)
+    assicurato_address_snapshot = Column(JSON, nullable=True)
+    danneggiato_address_snapshot = Column(JSON, nullable=True)
+    iban_snapshot = Column(JSON, nullable=True)
+
     # Indici compositi per query comuni
     __table_args__ = (
         Index("idx_claims_tenant_stato", "tenant_id", "stato_corrente"),

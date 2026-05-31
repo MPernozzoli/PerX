@@ -60,6 +60,8 @@ LEGACY_SV_TO_SLUG: dict[str, tuple[str, str | None]] = {
     "SV053": ("sopralluogo", "da_concordare"),
     "SV090": ("chiusa", None),
     "SV091": ("da_revisionare", None),
+    "SV042": ("richiesta_autorizzazione", None),
+    "SV043": ("supervisione_non_concordata", None),
 }
 
 

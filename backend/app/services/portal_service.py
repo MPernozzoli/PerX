@@ -12,6 +12,7 @@ import uuid
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.claim_status import ClaimStatus
 from app.core.config import settings
 from app.core.portal_security import (
     PortalSessionContext,
@@ -37,6 +38,7 @@ from app.models.portal import (
     PortalConversation,
     PortalConversationMessage,
     PortalDocumentCollectionSubmission,
+    PortalPushSubscription,
     PortalSignatureRequest,
 )
 from app.models.tenant import TenantPortalDomain
@@ -1001,7 +1003,7 @@ class PortalService:
         db.add(challenge)
         await db.flush()
 
-        # TODO: integrazione SMS provider (perx_wa_bridge / Twilio) per channel=="sms".
+        # TODO: integrazione SMS provider (Twilio) per channel=="sms".
         # Per ora, se channel=="email" inviamo via Resend; per "sms" lasciamo solo il preview.
         if channel == "email" and access.email:
             await PortalService._send_portal_otp_email(access.email, otp_code, claim)
@@ -1489,7 +1491,10 @@ class PortalService:
         requirements: list[dict] = []
         inspection_preferences = InspectionWorkflowService._preferences_metadata(claim)
         inspection_selected_slots = InspectionWorkflowService._selected_slot_payload(inspection_preferences)
-        if claim.stato_corrente in {"SV002", "SV022", "SV023"}:
+        if claim.stato_corrente in {
+            ClaimStatus.IN_ATTESA_DOCUMENTALE.value,
+            ClaimStatus.IN_ATTESA_TERZI.value,
+        }:
             requirements.append(
                 {
                     "key": "documents",
@@ -1516,7 +1521,10 @@ class PortalService:
                     "description": "Per proseguire con la perizia e arrivare alla liquidazione servirà l'IBAN intestato al contraente di polizza.",
                 }
             )
-        if claim.stato_corrente in {"SV052", "SV053"}:
+        if claim.stato_corrente == ClaimStatus.SOPRALLUOGO.value and not any(
+            s.get("tag") in ("fissato", "confermato")
+            for s in (claim.stato_substati or [])
+        ):
             requirements.append(
                 {
                     "key": "inspection_scheduling",
@@ -1529,7 +1537,11 @@ class PortalService:
                     ),
                 }
             )
-        if claim.stato_corrente in {"SV020", "SV030", "SV031"}:
+        if claim.stato_corrente in {
+            ClaimStatus.ATTO_DA_INVIARE.value,
+            ClaimStatus.ESITO_COMUNICATO.value,
+            ClaimStatus.ATTO_INVIATO.value,
+        }:
             requirements.append(
                 {
                     "key": "act_signature",
@@ -1591,7 +1603,7 @@ class PortalService:
             "chat_enabled": True,
             "document_upload_enabled": True,
             "act_signature_enabled": True,
-            "inspection_scheduling_enabled": claim.stato_corrente in {"SV052", "SV053", "SV050"},
+            "inspection_scheduling_enabled": claim.stato_corrente == ClaimStatus.SOPRALLUOGO.value,
             "requested_amount": PortalService._amount_to_float(claim.richiesta),
             "liquidated_amount": PortalService._amount_to_float(claim.liquidato),
             "estimated_damage_amount": PortalService._amount_to_float(claim.stima_danno),
@@ -1991,13 +2003,16 @@ class PortalService:
         )
         await db.flush()
 
-        if claim and claim.stato_corrente in {"SV002", "SV022", "SV023"}:
+        if claim and claim.stato_corrente in {
+            ClaimStatus.IN_ATTESA_DOCUMENTALE.value,
+            ClaimStatus.IN_ATTESA_TERZI.value,
+        }:
             await StateService.transition_state(
                 db,
                 session.tenant_id,
                 claim.id,
                 claim.stato_corrente,
-                "SV010",
+                ClaimStatus.DA_GESTIRE_DOCUMENTALE.value,
                 None,
                 "Portal document collection submitted",
                 {
@@ -2325,17 +2340,24 @@ class PortalService:
         claim.updated_at = datetime.now(timezone.utc)
 
         status = str(payload.get("status") or "")
-        if status in {"signed", "signed_by_insured"} and claim.stato_corrente in {"SV030", "SV031"}:
+        if status in {"signed", "signed_by_insured"} and claim.stato_corrente in {
+            ClaimStatus.ESITO_COMUNICATO.value,
+            ClaimStatus.ATTO_INVIATO.value,
+        }:
             await StateService.transition_state(
                 db,
                 claim.tenant_id,
                 claim.id,
                 claim.stato_corrente,
-                "SV032",
+                ClaimStatus.ATTO_RICEVUTO.value,
                 None,
                 "External act signature confirmed",
                 {"provider_reference": provider_reference, "request_id": request_id},
                 event_source="portal_webhook",
+            )
+            await StateService.add_substato(
+                db, claim.tenant_id, claim.id, "sottoscritto",
+                source="system", commit=False,
             )
         else:
             await db.commit()
@@ -2578,19 +2600,322 @@ class PortalService:
         )
         await db.flush()
 
-        if claim and claim.stato_corrente in {"SV030", "SV031"}:
+        if claim and claim.stato_corrente in {
+            ClaimStatus.ESITO_COMUNICATO.value,
+            ClaimStatus.ATTO_INVIATO.value,
+        }:
             await StateService.transition_state(
                 db,
                 session.tenant_id,
                 claim.id,
                 claim.stato_corrente,
-                "SV032",
+                ClaimStatus.ATTO_RICEVUTO.value,
                 None,
                 "Portal act signature confirmed",
                 {"signature_request_id": signature_request.id},
+            )
+            await StateService.add_substato(
+                db, session.tenant_id, claim.id, "sottoscritto",
+                source="system", commit=False,
             )
         else:
             await db.commit()
 
         await db.refresh(signature_request)
         return signature_request
+
+    @staticmethod
+    async def register_push_subscription(
+        db: AsyncSession,
+        session: PortalSessionContext,
+        *,
+        endpoint: str,
+        p256dh: str,
+        auth: str,
+        user_agent: str | None,
+    ) -> PortalPushSubscription:
+        result = await db.execute(
+            select(PortalPushSubscription).where(
+                PortalPushSubscription.portal_access_id == session.portal_access_id,
+                PortalPushSubscription.endpoint == endpoint,
+            )
+        )
+        subscription = result.scalar_one_or_none()
+        if subscription:
+            subscription.p256dh = p256dh
+            subscription.auth = auth
+            subscription.user_agent = user_agent
+            subscription.status = "active"
+            subscription.revoked_at = None
+        else:
+            subscription = PortalPushSubscription(
+                id=str(uuid.uuid4()),
+                tenant_id=session.tenant_id,
+                claim_id=session.claim_id,
+                portal_access_id=session.portal_access_id,
+                endpoint=endpoint,
+                p256dh=p256dh,
+                auth=auth,
+                user_agent=user_agent,
+                status="active",
+            )
+            db.add(subscription)
+        await db.commit()
+        await db.refresh(subscription)
+        return subscription
+
+    @staticmethod
+    async def revoke_push_subscription(
+        db: AsyncSession,
+        session: PortalSessionContext,
+        *,
+        endpoint: str,
+    ) -> None:
+        result = await db.execute(
+            select(PortalPushSubscription).where(
+                PortalPushSubscription.portal_access_id == session.portal_access_id,
+                PortalPushSubscription.endpoint == endpoint,
+            )
+        )
+        subscription = result.scalar_one_or_none()
+        if subscription:
+            subscription.status = "revoked"
+            subscription.revoked_at = datetime.now(timezone.utc)
+            await db.commit()
+
+    @staticmethod
+    async def send_act_to_insured(
+        db: AsyncSession,
+        *,
+        tenant_id: str,
+        claim_id: str,
+        document_id: str,
+        channels: list[str],
+        wa_account_id: str | None = None,
+        actor_user_id: str | None = None,
+    ) -> dict:
+        """
+        Orchestratore "Invia atto":
+        - Push: notifica tutte le subscription attive del claim.
+        - Email: invia mail con allegato PDF + CTA "Firma online" a tutti gli access con email valida.
+        - WhatsApp: messaggio con link al portale ai numeri di telefono noti.
+        Sempre email + push (audit trail); WhatsApp se selezionato o se manca email.
+        """
+        from app.models.document import Document as DocumentModel
+        from app.services.web_push_service import WebPushService
+        import base64
+
+        claim = await PortalService.get_claim_for_tenant(db, tenant_id, claim_id)
+        if not claim:
+            raise ValueError("Claim non trovato")
+
+        doc_result = await db.execute(
+            select(DocumentModel).where(
+                DocumentModel.id == document_id,
+                DocumentModel.tenant_id == tenant_id,
+                DocumentModel.claim_id == claim_id,
+            )
+        )
+        document = doc_result.scalar_one_or_none()
+        if not document:
+            raise ValueError("Documento atto non trovato")
+
+        # Lista accessi attivi (assicurato/contraente/danneggiato)
+        access_result = await db.execute(
+            select(PortalClaimAccess).where(
+                PortalClaimAccess.tenant_id == tenant_id,
+                PortalClaimAccess.claim_id == claim_id,
+                PortalClaimAccess.status == "active",
+            )
+        )
+        accesses = list(access_result.scalars().all())
+
+        claim_ref = claim.external_ref or claim.numero_sinistro or claim_id
+        portal_app_url = settings.PORTAL_APP_URL.rstrip("/")
+        deeplink = f"{portal_app_url}/p/{claim_ref}?focus=atto"
+
+        delivery: dict[str, list[dict]] = {"push": [], "email": [], "whatsapp": []}
+
+        # --- PUSH (sempre se ci sono subscription attive) ---
+        if "push" in channels:
+            subs = await PortalService.list_active_push_subscriptions_for_claim(
+                db, tenant_id, claim_id
+            )
+            for sub in subs:
+                result = WebPushService.send(
+                    endpoint=sub.endpoint,
+                    p256dh=sub.p256dh,
+                    auth=sub.auth,
+                    title=f"Atto pronto per la firma — {claim_ref}",
+                    body="L'atto è disponibile sul portale. Tocca per firmarlo.",
+                    url=deeplink,
+                    tag=f"atto-{claim_id}",
+                    data={"claim_id": claim_id, "kind": "atto_pronto"},
+                )
+                if result.gone:
+                    sub.status = "revoked"
+                    sub.revoked_at = datetime.now(timezone.utc)
+                else:
+                    sub.last_used_at = datetime.now(timezone.utc)
+                delivery["push"].append(
+                    {
+                        "subscription_id": sub.id,
+                        "endpoint_prefix": sub.endpoint[:64],
+                        "success": result.success,
+                        "status_code": result.status_code,
+                        "error": result.error,
+                    }
+                )
+
+        # --- EMAIL con allegato PDF (sempre se c'è email valida) ---
+        if "email" in channels and settings.RESEND_API_KEY and settings.RESEND_DEFAULT_FROM_EMAIL:
+            pdf_bytes: bytes | None = None
+            try:
+                if document.storage_provider == "local" and document.storage_path:
+                    pdf_bytes = Path(document.storage_path).read_bytes()
+                elif document.storage_provider == "supabase" and SupabaseStorageService.is_configured():
+                    import httpx as _httpx
+                    signed_url = await SupabaseStorageService.create_signed_url(
+                        document.storage_path,
+                        expires_in_seconds=300,
+                    )
+                    async with _httpx.AsyncClient(timeout=15.0) as _client:
+                        _resp = await _client.get(signed_url)
+                    if _resp.status_code == 200:
+                        pdf_bytes = _resp.content
+            except Exception:
+                pdf_bytes = None
+
+            attachments = None
+            if pdf_bytes:
+                attachments = [
+                    {
+                        "filename": document.file_name or f"atto_{claim_ref}.pdf",
+                        "data": base64.b64encode(pdf_bytes).decode("ascii"),
+                        "mimeType": document.mime_type or "application/pdf",
+                    }
+                ]
+
+            html = (
+                f"<p>Gentile assicurato,</p>"
+                f"<p>l'atto di liquidazione per il sinistro <strong>{claim_ref}</strong> "
+                f"è pronto. Puoi firmarlo online dal portale dedicato:</p>"
+                f"<p style=\"margin:24px 0\">"
+                f"<a href=\"{deeplink}\" "
+                f"style=\"background:#111;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none\">"
+                f"Firma online</a></p>"
+                f"<p>In allegato trovi anche la copia PDF per i tuoi archivi.</p>"
+                f"<p style=\"font-size:13px;color:#555\">"
+                f"Link diretto: <a href=\"{deeplink}\">{deeplink}</a></p>"
+            )
+
+            for access in accesses:
+                normalized_email = normalize_email(access.email)
+                if not normalized_email or "local.invalid" in normalized_email:
+                    continue
+                try:
+                    res = await ResendEmailService.send(
+                        ResendEmailMessage(
+                            from_address=settings.RESEND_DEFAULT_FROM_EMAIL,
+                            to=[normalized_email],
+                            subject=f"Atto sinistro {claim_ref} — pronto per la firma",
+                            body=html,
+                            is_html=True,
+                            attachments=attachments,
+                        )
+                    )
+                    delivery["email"].append(
+                        {
+                            "access_id": access.id,
+                            "email": normalized_email,
+                            "success": res.success,
+                            "message_id": res.message_id,
+                            "error": res.error,
+                        }
+                    )
+                except Exception as exc:
+                    delivery["email"].append(
+                        {
+                            "access_id": access.id,
+                            "email": normalized_email,
+                            "success": False,
+                            "error": str(exc),
+                        }
+                    )
+
+        # --- WHATSAPP ---
+        # Il bridge OpenWA è stato spostato sull'Hub locale (PerXHub) e parla
+        # con Supabase tramite la tabella `wa_messages`. Il backend cloud non
+        # invia più WhatsApp direttamente: l'invio dal portale dovrà essere
+        # rimplementato inserendo una riga `pending` su `wa_messages` quando il
+        # flusso outbox sarà cablato. Per ora la consegna WhatsApp da cloud è
+        # disabilitata; push + email continuano a funzionare.
+        if "whatsapp" in channels:
+            delivery["whatsapp"].append({
+                "success": False,
+                "error": "WhatsApp delivery is now handled by the local Hub; cloud-initiated WA send is not implemented yet.",
+            })
+
+        # --- Aggiorna portal_act_flow + evento ---
+        now = datetime.now(timezone.utc)
+        existing_flow = (claim.metadata_json or {}).get("portal_act_flow") or {}
+        next_flow = {
+            **existing_flow,
+            "status": "pending_external_signature",
+            "act_document_id": document.id,
+            "signing_url": deeplink,
+            "sent_at": now.isoformat(),
+            "channels": channels,
+            "delivery": {
+                key: [item.get("success") for item in items]
+                for key, items in delivery.items()
+            },
+        }
+        claim.metadata_json = PortalService._merge_metadata(
+            claim.metadata_json, portal_act_flow=next_flow
+        )
+        if claim.data_invio_atto is None:
+            claim.data_invio_atto = now.date()
+        claim.updated_at = now
+
+        await PortalService._create_claim_event(
+            db,
+            tenant_id,
+            claim_id,
+            "atto_inviato",
+            "manual",
+            {
+                "document_id": document.id,
+                "channels": channels,
+                "delivery_summary": {
+                    "push_success": sum(1 for item in delivery["push"] if item.get("success")),
+                    "email_success": sum(1 for item in delivery["email"] if item.get("success")),
+                    "whatsapp_success": sum(1 for item in delivery["whatsapp"] if item.get("success")),
+                },
+                "actor_user_id": actor_user_id,
+            },
+        )
+        await db.commit()
+        return {
+            "status": "sent",
+            "claim_id": claim_id,
+            "document_id": document.id,
+            "channels": channels,
+            "delivery": delivery,
+            "act_flow": PortalService._build_act_flow(claim),
+        }
+
+    @staticmethod
+    async def list_active_push_subscriptions_for_claim(
+        db: AsyncSession,
+        tenant_id: str,
+        claim_id: str,
+    ) -> list[PortalPushSubscription]:
+        result = await db.execute(
+            select(PortalPushSubscription).where(
+                PortalPushSubscription.tenant_id == tenant_id,
+                PortalPushSubscription.claim_id == claim_id,
+                PortalPushSubscription.status == "active",
+            )
+        )
+        return list(result.scalars().all())

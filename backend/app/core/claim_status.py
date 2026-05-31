@@ -33,6 +33,9 @@ class ClaimStatus(str, Enum):
     DA_REVISIONARE = "da_revisionare"
     DA_CHIUDERE_A_SISTEMA = "da_chiudere_a_sistema"
     CHIUSA = "chiusa"
+    # Stati ausiliari fuori dal flusso principale (rami di approvazione)
+    RICHIESTA_AUTORIZZAZIONE = "richiesta_autorizzazione"
+    SUPERVISIONE_NON_CONCORDATA = "supervisione_non_concordata"
 
 
 SubstatoSource = Literal["user", "ai", "system"]
@@ -161,6 +164,14 @@ VALID_TRANSITIONS: dict[str, set[str]] = {
         ClaimStatus.CHIUSA.value,
     },
     ClaimStatus.CHIUSA.value: set(),
+    ClaimStatus.RICHIESTA_AUTORIZZAZIONE.value: {
+        ClaimStatus.IN_GESTIONE.value,
+        ClaimStatus.ATTO_DA_INVIARE.value,
+    },
+    ClaimStatus.SUPERVISIONE_NON_CONCORDATA.value: {
+        ClaimStatus.IN_GESTIONE.value,
+        ClaimStatus.ATTO_DA_INVIARE.value,
+    },
 }
 
 
@@ -198,6 +209,8 @@ LEGACY_SV_TO_SLUG: dict[str, tuple[str, str | None]] = {
     "SV053": (ClaimStatus.SOPRALLUOGO.value, "da_concordare"),
     "SV090": (ClaimStatus.CHIUSA.value, None),
     "SV091": (ClaimStatus.DA_REVISIONARE.value, None),
+    "SV042": (ClaimStatus.RICHIESTA_AUTORIZZAZIONE.value, None),
+    "SV043": (ClaimStatus.SUPERVISIONE_NON_CONCORDATA.value, None),
 }
 
 

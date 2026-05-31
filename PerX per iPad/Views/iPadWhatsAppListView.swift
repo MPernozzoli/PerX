@@ -331,19 +331,6 @@ struct WhatsAppChatDetailView: View {
     }
 }
 
-// Estensione per init locale
-extension WhatsAppMessageDTO {
-    init(id: String, chatId: String, from: String, body: String, timestamp: Date, direction: String, mediaType: String?) {
-        self.id = id
-        self.chatId = chatId
-        self.from = from
-        self.body = body
-        self.timestamp = timestamp
-        self.direction = direction
-        self.mediaType = mediaType
-    }
-}
-
 // MARK: - WhatsApp Message Bubble
 
 struct WhatsAppMessageBubble: View {

@@ -21,6 +21,7 @@ struct AttoView: View {
     @State private var showGenerateConfirmation = false
     @State private var generateResult: AttoGeneratorService.GenerationResult?
     @State private var showResultAlert = false
+    @State private var showSendSheet = false
     
     private let generatorService = AttoGeneratorService.shared
     
@@ -72,6 +73,17 @@ struct AttoView: View {
                 } else {
                     Text(result.errorMessage ?? "Errore durante la generazione")
                 }
+            }
+        }
+        .sheet(isPresented: $showSendSheet) {
+            if let data = pdfData {
+                AttoSendSheet(
+                    claimId: sinistro.id,
+                    claimRef: sinistro.riferimento ?? sinistro.id,
+                    pdfData: data,
+                    fileName: "atto_\(sinistro.riferimento ?? "sinistro").pdf",
+                    suggestedWhatsAppAccountId: nil
+                )
             }
         }
     }
@@ -141,6 +153,16 @@ struct AttoView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(currentTemplate == nil)
+
+                Button {
+                    showSendSheet = true
+                } label: {
+                    Label("Invia atto", systemImage: "paperplane.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.green)
+                .disabled(pdfData == nil)
+                .help(pdfData == nil ? "Genera prima il PDF dell'atto" : "Invia all'assicurato")
             }
         }
         .padding()

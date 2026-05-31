@@ -132,6 +132,36 @@ final class BackendAPIClient {
         return try decoder.decode(T.self, from: responseData)
     }
 
+    func uploadMultipart<T: Decodable>(
+        _ path: String,
+        method: String = "POST",
+        fileData: Data,
+        fileName: String,
+        mimeType: String,
+        fields: [String: String] = [:]
+    ) async throws -> T {
+        var request = try makeRequest(path: path, method: method, queryItems: [])
+        let boundary = "Boundary-\(UUID().uuidString)"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+        var body = Data()
+        for (name, value) in fields {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(value)\r\n".data(using: .utf8)!)
+        }
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(fileName)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
+        body.append(fileData)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        request.httpBody = body
+
+        let (responseData, response) = try await session.data(for: request)
+        try validate(response: response, data: responseData)
+        return try decoder.decode(T.self, from: responseData)
+    }
+
     private func makeRequest(path: String, method: String, queryItems: [URLQueryItem]) throws -> URLRequest {
         guard !resolvedBaseURLString.isEmpty else {
             throw BackendAPIError.notConfigured

@@ -35,10 +35,7 @@ final class GoogleAuthServiceiOS: ObservableObject {
     }
 
     func checkAuthenticationState() async {
-        guard let baseURL = normalizedBaseURL() else {
-            isAuthenticated = false
-            return
-        }
+        let baseURL = normalizedBaseURL()
 
         if let token = loadFromKeychain(forKey: "access_token"),
            await fetchUserInfo(accessToken: token, baseURL: baseURL) {

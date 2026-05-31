@@ -168,7 +168,8 @@ struct CloudClaimResponse: Codable {
     let external_ref: String?
     let numero_sinistro: String?
     let compagnia: String?
-    let stato_corrente: String
+    let stato_corrente: String           // slug, vedi ClaimStatus backend
+    let stato_substati: [CloudSubstato]? // [{tag, source, added_at}], nullable per retro-compat
     let garanzia: String?
     let agenzia: String?
     let nome_assicurato: String?
@@ -181,6 +182,18 @@ struct CloudClaimResponse: Codable {
     let created_at: Date
     let updated_at: Date
     let version: Int
+
+    // --- Riferimenti anagrafica unificata (Optional per retro-compat con
+    //     backend o sinistri pre-migrazione). Vedi ActorDTOs.swift.
+    let contraente_id: String?
+    let assicurato_id: String?
+    let danneggiato_id: String?
+    let agency_id: String?
+    let compagnia_id: String?
+    let contraente_address_snapshot: CloudActorAddressSnapshot?
+    let assicurato_address_snapshot: CloudActorAddressSnapshot?
+    let danneggiato_address_snapshot: CloudActorAddressSnapshot?
+    let iban_snapshot: CloudActorIbanSnapshot?
 }
 
 // MARK: - Cloud Content DTOs

@@ -1,5 +1,5 @@
 """
-Schemas for emails, attachments and WhatsApp
+Schemas for emails and attachments
 """
 from datetime import datetime
 from typing import Optional
@@ -120,74 +120,3 @@ class AttachmentListResponse(BaseModel):
     items: list[AttachmentResponse]
     total: int
 
-
-class WhatsAppThreadCreate(BaseModel):
-    claim_id: Optional[str] = None
-    account_id: Optional[str] = None
-    external_thread_ref: Optional[str] = None
-    contact_name: Optional[str] = None
-    contact_phone: Optional[str] = None
-    status: str = "open"
-    metadata_json: Optional[dict] = None
-
-
-class WhatsAppMessageCreate(BaseModel):
-    thread_id: str
-    direction: str
-    message_type: str = "text"
-    provider_message_id: Optional[str] = None
-    sender_label: Optional[str] = None
-    body_text: Optional[str] = None
-    media_document_id: Optional[str] = None
-    sent_at: Optional[datetime] = None
-    status: str = "sent"
-    metadata_json: Optional[dict] = None
-
-
-class WhatsAppThreadResponse(BaseModel):
-    id: str
-    tenant_id: str
-    claim_id: Optional[str] = None
-    account_id: Optional[str] = None
-    external_thread_ref: Optional[str] = None
-    contact_name: Optional[str] = None
-    contact_phone: Optional[str] = None
-    status: str
-    last_message_at: Optional[datetime] = None
-    metadata_json: Optional[dict] = None
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
-class WhatsAppMessageResponse(BaseModel):
-    id: str
-    tenant_id: str
-    thread_id: str
-    claim_id: Optional[str] = None
-    direction: str
-    message_type: str
-    provider_message_id: Optional[str] = None
-    sender_user_id: Optional[str] = None
-    sender_label: Optional[str] = None
-    body_text: Optional[str] = None
-    media_document_id: Optional[str] = None
-    sent_at: datetime
-    delivered_at: Optional[datetime] = None
-    read_at: Optional[datetime] = None
-    status: str
-    metadata_json: Optional[dict] = None
-
-    class Config:
-        from_attributes = True
-
-
-class WhatsAppThreadListResponse(BaseModel):
-    items: list[WhatsAppThreadResponse]
-    total: int
-
-
-class WhatsAppMessageListResponse(BaseModel):
-    items: list[WhatsAppMessageResponse]
-    total: int

@@ -24,7 +24,7 @@ Priority formula:
   +0.35  if richiesta > 5 000 €
   +0.25  if liquidato > 5 000 €
   +0.20  if sopralluogo
-  +0.15  if stato_corrente == SV009 (in attesa assegnazione)
+  +0.15  if stato_corrente == in_attesa_assegnazione
   +age_bonus  min((giorni_da_incarico / 10), 0.5)
   ai_contribution  (float added by photo analysis, 0.0–0.5)
 """
@@ -34,6 +34,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
+from app.core.claim_status import ClaimStatus
 from app.models.claim import Claim
 
 
@@ -102,7 +103,7 @@ def compute_priority_score(
     if claim.sopralluogo:
         score += 0.20
 
-    if claim.stato_corrente == "SV009":
+    if claim.stato_corrente == ClaimStatus.IN_ATTESA_ASSEGNAZIONE.value:
         score += 0.15
 
     if claim.data_incarico:

@@ -25,11 +25,7 @@ extension CloudProfileDTO {
 
 extension SessionCoordinator {
     var currentExperience: iPadUserExperience {
-        currentCloudProfile?.isCATUser == true ? .cat : .standard
-    }
-
-    var isCATUser: Bool {
-        currentExperience == .cat
+        isCATUser ? .cat : .standard
     }
 }
 

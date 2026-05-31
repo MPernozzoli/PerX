@@ -23,5 +23,4 @@ class DocumentVersion(Base):
 
     __table_args__ = (
         Index("ux_document_versions_doc_version", "document_id", "version_no", unique=True),
-        Index("ix_document_versions_tenant_id", "tenant_id"),
     )

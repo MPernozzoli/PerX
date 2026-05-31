@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     PORTAL_DEBUG_PREVIEW_LINKS: bool = True
     PORTAL_DEV_CLAIM_REFERENCE_ONLY_AUTH: bool = True
     PORTAL_SIGNATURE_WEBHOOK_SECRET: Optional[str] = None
+    PORTAL_VAPID_PUBLIC_KEY: Optional[str] = None
+    PORTAL_VAPID_PRIVATE_KEY: Optional[str] = None
+    PORTAL_VAPID_SUBJECT: str = "mailto:info@perx.it"
     ROUTING_RESOLVE_SECRET: Optional[str] = None
 
     # Platform admin / multi-tenant bootstrap
@@ -80,8 +83,6 @@ class Settings(BaseSettings):
     MAIL_INGESTION_ENABLED: bool = True
     MAIL_POLL_INTERVAL_SECONDS: int = 300  # 5 minutes
     LOCAL_AI_WORKER_SHARED_SECRET: Optional[str] = None
-    PERX_WA_BRIDGE_URL: str = "http://127.0.0.1:5002"
-    WA_BRIDGE_INTERNAL_TOKEN: Optional[str] = None
 
     # Resend outbound email
     RESEND_API_KEY: Optional[str] = None

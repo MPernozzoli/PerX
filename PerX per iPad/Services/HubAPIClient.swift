@@ -34,7 +34,7 @@ class HubAPIClient: ObservableObject {
         }
     }
 
-    private var _cloudAPIBaseURL: String = Self.fixedCloudAPIBaseURL
+    private var _cloudAPIBaseURL: String = HubAPIClient.fixedCloudAPIBaseURL
     var cloudAPIBaseURL: String {
         get { Self.fixedCloudAPIBaseURL }
         set {

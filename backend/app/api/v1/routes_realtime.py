@@ -28,14 +28,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # All valid topic names
-ALL_TOPICS = {"chat", "claims", "tasks", "whatsapp", "folders", "presence"}
+ALL_TOPICS = {"chat", "claims", "tasks", "folders", "presence"}
 
 # Topic → event_type mapping for filtering
 TOPIC_EVENT_TYPES: dict[str, set[str]] = {
     "chat": {"chat_message"},
     "claims": {"claim_updated"},
     "tasks": {"task_updated"},
-    "whatsapp": {"wa_message"},
     "folders": {"folder_ready"},
     "presence": {"presence_update"},
 }
