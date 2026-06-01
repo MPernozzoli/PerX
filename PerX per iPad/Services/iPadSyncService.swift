@@ -19,7 +19,6 @@ final class iPadSyncService: ObservableObject {
     enum DataSource: String {
         case none = "Non connesso"
         case cloudAPI = "Cloud API"
-        case hub = "Hub"
     }
 
     // MARK: - Dependencies
@@ -66,20 +65,9 @@ final class iPadSyncService: ObservableObject {
         }
 
         do {
-            if hubClient.isCloudConfigured {
-                try await fetchSinistriFromCloudAPI()
-                dataSource = .cloudAPI
-                print("[iPadSync] ✅ Cloud API: \(sinistri.count) sinistri")
-                return
-            }
-        } catch {
-            print("[iPadSync] ⚠️ Cloud API fallita, provo Hub: \(error)")
-        }
-
-        do {
-            try await fetchSinistriFromHub()
-            dataSource = .hub
-            print("[iPadSync] ✅ Hub: \(sinistri.count) sinistri")
+            try await fetchSinistriFromCloudAPI()
+            dataSource = .cloudAPI
+            print("[iPadSync] ✅ Cloud API: \(sinistri.count) sinistri")
         } catch {
             lastError = error.localizedDescription
             dataSource = .none
@@ -94,58 +82,34 @@ final class iPadSyncService: ObservableObject {
         sinistri = dtos.map { SinistroMinimal(from: $0) }
     }
 
-    private func fetchSinistriFromHub() async throws {
-        let dtos = try await hubClient.getSinistri()
-        sinistri = dtos.map { SinistroMinimal(from: $0) }
-    }
-
     // MARK: - Sinistro Full
 
     func fetchSinistroFull(riferimento: String) async throws -> SinistroFull? {
-        if hubClient.isCloudConfigured {
-            if let dto = try? await hubClient.getSinistroFromCloud(riferimento: riferimento) {
-                return SinistroFull(from: dto)
-            }
-        }
-        let dto = try await hubClient.getSinistro(riferimento: riferimento)
+        let dto = try await hubClient.getSinistroFromCloud(riferimento: riferimento)
         return SinistroFull(from: dto)
     }
 
     // MARK: - Diario
 
     func fetchDiarioEntries(riferimento: String) async throws -> [DiarioEntryDTO] {
-        if hubClient.isCloudConfigured {
-            if let entries = try? await hubClient.getDiarioEntriesFromCloud(riferimento: riferimento) {
-                return entries
-            }
-        }
-        let hubEntries = try await hubClient.getDiarioEntries(riferimento: riferimento)
-        return hubEntries.map { DiarioEntryDTO(from: $0) }
+        try await hubClient.getDiarioEntriesFromCloud(riferimento: riferimento)
     }
 
     func addDiarioEntry(riferimento: String, testo: String, tipo: String = "nota") async throws -> DiarioEntryDTO {
         let request = CreateDiarioEntryRequest(tipo: tipo, titolo: nil, testo: testo)
-        if hubClient.isCloudConfigured {
-            if let entry = try? await hubClient.addDiarioEntryToCloud(riferimento: riferimento, entry: request) {
-                return entry
-            }
-        }
-        let hubEntry = try await hubClient.addDiarioEntry(riferimento: riferimento, entry: request)
-        return DiarioEntryDTO(from: hubEntry)
+        return try await hubClient.addDiarioEntryToCloud(riferimento: riferimento, entry: request)
     }
 
     // MARK: - Email processate
 
     func fetchProcessedEmails(riferimento: String) async throws -> [ProcessedEmailDTO] {
-        guard hubClient.isCloudConfigured else { return [] }
-        return try await hubClient.getProcessedEmailsFromCloud(riferimento: riferimento)
+        try await hubClient.getProcessedEmailsFromCloud(riferimento: riferimento)
     }
 
-    // MARK: - WhatsApp (cloud only)
+    // MARK: - WhatsApp
 
     func fetchWhatsAppMessages(riferimento: String) async throws -> [WhatsAppMessageDTO] {
-        guard hubClient.isCloudConfigured else { return [] }
-        return try await hubClient.getWhatsAppMessagesFromCloud(riferimento: riferimento)
+        try await hubClient.getWhatsAppMessagesFromCloud(riferimento: riferimento)
     }
 
     func handleRemoteNotification() async {

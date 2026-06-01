@@ -12,13 +12,6 @@ struct SettingsView: View {
     @StateObject private var hubClient = HubAPIClient.shared
     @StateObject private var accountManager = AccountManager.shared
     @State private var showingLogoutConfirm = false
-    @State private var hubURL = HubAPIClient.shared.hubBaseURL
-    @State private var cloudAPIEmail = HubAPIClient.shared.cloudAPIEmail
-    @State private var cloudAPIPassword = ""
-    @State private var isCheckingHub = false
-    @State private var hubCheckResult: String?
-    @State private var isCheckingCloud = false
-    @State private var cloudCheckResult: String?
     @State private var showingSetPasscode = false
     @State private var showingRemovePasscode = false
     
@@ -68,99 +61,6 @@ struct SettingsView: View {
                         showingLogoutConfirm = true
                     } label: {
                         Label("Disconnetti", systemImage: "rectangle.portrait.and.arrow.right")
-                    }
-                }
-                
-                // Hub Configuration
-                Section("Hub Server") {
-                    LabeledContent("Endpoint") {
-                        Text(hubURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Non configurato" : hubURL)
-                            .foregroundColor(.secondary)
-                            .textSelection(.enabled)
-                    }
-                    
-                    HStack {
-                        Circle()
-                            .fill(hubClient.isConnected ? Color.green : Color.red)
-                            .frame(width: 8, height: 8)
-                        
-                        Text(hubClient.isConnected ? "Connesso" : "Non connesso")
-                        
-                        Spacer()
-                        
-                        Button {
-                            Task { await checkHubConnection() }
-                        } label: {
-                            if isCheckingHub {
-                                ProgressView()
-                                    .scaleEffect(0.8)
-                            } else {
-                                Text("Testa")
-                            }
-                        }
-                        .disabled(hubURL.isEmpty || isCheckingHub)
-                    }
-                    
-                    if let result = hubCheckResult {
-                        Text(result)
-                            .font(.caption)
-                            .foregroundColor(hubClient.isConnected ? .green : .red)
-                    }
-                }
-
-                Section("Cloud API") {
-                    LabeledContent("Endpoint") {
-                        Text(HubAPIClient.fixedCloudAPIBaseURL)
-                            .foregroundColor(.secondary)
-                            .textSelection(.enabled)
-                    }
-
-                    TextField("Email backend", text: $cloudAPIEmail)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .onChange(of: cloudAPIEmail) { newValue in
-                            hubClient.cloudAPIEmail = newValue.lowercased()
-                        }
-
-                    SecureField("Password backend", text: $cloudAPIPassword)
-
-                    HStack {
-                        Button("Salva credenziali") {
-                            hubClient.saveCloudPassword(cloudAPIPassword)
-                            let normalizedEmail = cloudAPIEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                            if !normalizedEmail.isEmpty {
-                                accountManager.savePassword(cloudAPIPassword, for: normalizedEmail)
-                                if session.currentUserEmail == normalizedEmail {
-                                    accountManager.saveAccount(
-                                        email: normalizedEmail,
-                                        displayName: session.currentUserName ?? normalizedEmail,
-                                        password: cloudAPIPassword
-                                    )
-                                }
-                            }
-                            cloudCheckResult = "Credenziali backend salvate"
-                        }
-                        .disabled(cloudAPIPassword.isEmpty)
-
-                        Spacer()
-
-                        Button {
-                            Task { await checkCloudConnection() }
-                        } label: {
-                            if isCheckingCloud {
-                                ProgressView()
-                                    .scaleEffect(0.8)
-                            } else {
-                                Text("Testa login")
-                            }
-                        }
-                        .disabled(cloudAPIEmail.isEmpty || cloudAPIPassword.isEmpty || isCheckingCloud)
-                    }
-
-                    if let result = cloudCheckResult {
-                        Text(result)
-                            .font(.caption)
-                            .foregroundColor(result.hasPrefix("✓") ? .green : .secondary)
                     }
                 }
                 
@@ -245,18 +145,6 @@ struct SettingsView: View {
                     LabeledContent("Piattaforma", value: "iPad")
                 }
                 
-                // Note
-                Section {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Label("Architettura Hub-first", systemImage: "server.rack")
-                            .font(.headline)
-                        
-                        Text("Questa versione iPad comunica con l'Hub centrale per email, WhatsApp e dati sinistri. L'Hub orchestra tutte le operazioni.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    .padding(.vertical, 4)
-                }
             }
             .navigationTitle("Impostazioni")
             .confirmationDialog("Vuoi disconnetterti?", isPresented: $showingLogoutConfirm, titleVisibility: .visible) {
@@ -270,36 +158,6 @@ struct SettingsView: View {
                 Text("Tutti i dati locali verranno rimossi. Le cartelle scaricate non ancora scadute verranno eliminate.")
             }
         }
-    }
-    
-    private func checkHubConnection() async {
-        isCheckingHub = true
-        hubCheckResult = nil
-        
-        do {
-            let health = try await hubClient.checkHealth()
-            hubCheckResult = "✓ \(health.status) - v\(health.version)"
-        } catch {
-            hubCheckResult = "✗ \(error.localizedDescription)"
-        }
-        
-        isCheckingHub = false
-    }
-
-    private func checkCloudConnection() async {
-        isCheckingCloud = true
-        cloudCheckResult = nil
-        hubClient.cloudAPIEmail = cloudAPIEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        hubClient.saveCloudPassword(cloudAPIPassword)
-
-        do {
-            _ = try await hubClient.cloudLogin(forceRefresh: true)
-            cloudCheckResult = "✓ Login backend riuscito"
-        } catch {
-            cloudCheckResult = "Backend non raggiungibile: \(error.localizedDescription)"
-        }
-
-        isCheckingCloud = false
     }
     
     @ViewBuilder

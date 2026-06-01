@@ -15,24 +15,15 @@ import Security
 class HubAPIClient: ObservableObject {
     static let shared = HubAPIClient()
     static let fixedCloudAPIBaseURL = "https://api.perx.it"
-    
+    static let hubCompatBasePath = "/api/v1/hub"
+
     @Published private(set) var isConnected = false
     @Published private(set) var lastError: String?
-    
+
     private let session: URLSession
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private let keychainService = "com.perx.ipad.cloudapi"
-    
-    // Hub URL - da configurare nelle impostazioni
-    private var _hubBaseURL: String = ""
-    var hubBaseURL: String {
-        get { _hubBaseURL }
-        set { 
-            _hubBaseURL = newValue
-            UserDefaults.standard.set(newValue, forKey: "hubBaseURL")
-        }
-    }
 
     private var _cloudAPIBaseURL: String = HubAPIClient.fixedCloudAPIBaseURL
     var cloudAPIBaseURL: String {
@@ -61,26 +52,26 @@ class HubAPIClient: ObservableObject {
         encoder.dateEncodingStrategy = .iso8601
         decoder.dateDecodingStrategy = .iso8601
         
-        // Carica URL salvato
-        _hubBaseURL = UserDefaults.standard.string(forKey: "hubBaseURL") ?? ""
         _cloudAPIBaseURL = Self.fixedCloudAPIBaseURL
         UserDefaults.standard.set(Self.fixedCloudAPIBaseURL, forKey: "cloudAPIBaseURL")
+        UserDefaults.standard.removeObject(forKey: "hubBaseURL")
         _cloudAPIEmail = UserDefaults.standard.string(forKey: "cloudAPIEmail") ?? ""
     }
-    
+
     // MARK: - Configuration
-    
+
+    /// Base URL per gli endpoint legacy "hub-compat" esposti dal backend cloud.
+    /// Punta sempre a `https://api.perx.it/api/v1/hub`.
     private var baseURL: URL? {
-        guard !hubBaseURL.isEmpty else { return nil }
-        return URL(string: hubBaseURL)
+        URL(string: Self.fixedCloudAPIBaseURL + Self.hubCompatBasePath)
     }
-    
+
     private func url(path: String) throws -> URL {
         guard let base = baseURL else {
             throw HubAPIError.notConfigured
         }
-        let baseString = base.absoluteString.hasSuffix("/") ? base.absoluteString : base.absoluteString + "/"
-        guard let url = URL(string: baseString + path) else {
+        let trimmed = path.hasPrefix("/") ? String(path.dropFirst()) : path
+        guard let url = URL(string: base.absoluteString + "/" + trimmed) else {
             throw HubAPIError.invalidURL
         }
         return url

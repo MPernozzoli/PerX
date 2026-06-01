@@ -118,7 +118,7 @@ struct AccountSelectorView: View {
                 .font(.title)
                 .foregroundColor(.white)
             
-            Text("Configura backend, email e password\nper iniziare a usare PerX")
+            Text("Accedi con la tua email e password\nper iniziare a usare PerX")
                 .font(.body)
                 .foregroundColor(.white.opacity(0.7))
                 .multilineTextAlignment(.center)
@@ -375,16 +375,6 @@ struct NewAccountLoginView: View {
                         .multilineTextAlignment(.center)
 
                     VStack(spacing: 14) {
-                        LabeledContent("Backend") {
-                            Text(HubAPIClient.fixedCloudAPIBaseURL)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .textSelection(.enabled)
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                        .background(Color.white, in: RoundedRectangle(cornerRadius: 8))
-
                         TextField("Email", text: $email)
                             .textContentType(.username)
                             .textInputAutocapitalization(.never)
@@ -424,12 +414,6 @@ struct NewAccountLoginView: View {
                         password.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     )
 
-                    Text("L'app usa sempre il backend ufficiale `https://api.perx.it`.")
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.55))
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: 420)
-                    
                     if let error = errorMessage {
                         Text(error)
                             .font(.caption)
