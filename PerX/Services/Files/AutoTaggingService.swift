@@ -1342,73 +1342,145 @@ class AutoTaggingService: ObservableObject {
         return results
     }
     
-    // MARK: - Analisi Batch (Cloud)
-    
+    // MARK: - Analisi Batch (server-rendered prompt + routing)
+    //
+    // Il body del prompt è ora gestito dal backend: chiamiamo
+    // AIPromptRegistry.renderPrompt con le 4 variabili e riceviamo il testo
+    // gia pronto + version_id da loggare nel run.
+    // L'esecuzione passa da AIRouter, che applica la policy (phase, trigger)
+    // e gestisce il fallback automatico locale→cloud su errore o output
+    // malformato (validate JSON con array `results`).
+    //
+    // Se il backend non risponde (offline + cache vuota) cadiamo sul prompt
+    // inline `buildBatchAnalysisPrompt` (versione locale) per non perdere la
+    // funzionalita in scenari offline.
+    //
+    // TODO slice background: il `trigger` qui e hardcoded a `.userInitiated`.
+    // Quando wireremo la scansione automatica foto da mail/WA propagheremo
+    // `.background` lungo la catena `AutoCheckService.scanNewFilesForTags`
+    // -> `runAutoTagging` -> `analyzePhotosWithAI` -> qui.
     private func analyzeBatchPhotos(_ urls: [URL], sinistro: Sinistro, existingResults: [PhotoAnalysisResult], context: DocumentiContext? = nil) async -> [PhotoAnalysisResult] {
         let fileNames = urls.map { $0.lastPathComponent }.joined(separator: ", ")
         print("[AutoTagging] 📦 Analisi batch di \(urls.count) foto: \(fileNames)")
-        
-        let prompt = buildBatchAnalysisPrompt(for: urls, sinistro: sinistro, context: context)
-        
-        // Prepara i path delle immagini
-        let imagePaths = urls.map { $0.path }
-        
-        // System prompt specifico per il tagging (non analisi approfondita)
+
+        let imagePaths = urls.map { $0 }
         let systemPrompt = "Sei un sistema di classificazione automatica per foto di perizie assicurative. Il tuo UNICO compito è CLASSIFICARE le foto assegnando tag, tipo, bene e componente. NON estrarre dettagli tecnici, NON fare analisi approfondite, NON descrivere in dettaglio. Rispondi SEMPRE in formato JSON con la struttura richiesta."
-        
-        let task = AITask(
-            type: .documentAnalysis,
-            priority: .secondary,
-            preferredProvider: .cloudOpenAI,  // Batch solo su cloud
-            fallbackProviders: [],
-            allowFallback: false,
-            parameters: [
-                "prompt": AnyCodable(prompt),
-                "systemPrompt": AnyCodable(systemPrompt),
-                "images": AnyCodable(imagePaths),
+        let variables = buildBatchTaggingVariables(for: urls, context: context)
+
+        // 1) Server-render del prompt (preferito). Se fallisce, fallback inline.
+        var renderedPrompt: String
+        var versionID: String
+        do {
+            let rendered = try await AIPromptRegistry.shared.renderPrompt(
+                phase: AISinistroPhase.tagging,
+                variables: variables
+            )
+            renderedPrompt = rendered.body_rendered
+            versionID = rendered.version_id ?? "unknown"
+            print("[AutoTagging] 🎯 Prompt server-rendered version=\(versionID)")
+        } catch {
+            print("[AutoTagging] ⚠️ renderPrompt fallito (\(error)), fallback locale inline")
+            renderedPrompt = buildBatchAnalysisPrompt(for: urls, sinistro: sinistro, context: context)
+            versionID = "local-inline-fallback"
+        }
+
+        // 2) Routing via policy (phase, trigger) + auto-fallback su errore/malformato.
+        let outcome = await AIRouter.shared.run(
+            phase: AISinistroPhase.tagging,
+            trigger: .userInitiated,
+            sinistroRef: sinistro.riferimento,
+            renderedPrompt: renderedPrompt,
+            promptVersionID: versionID,
+            images: imagePaths,
+            systemPrompt: systemPrompt,
+            additionalParameters: [
                 "stream": AnyCodable(false),
                 "response_format": AnyCodable(["type": "json_object"]),
                 "max_tokens": AnyCodable(4000)
             ],
-            requiresKnowledge: false
+            taskType: .documentAnalysis,
+            priority: .secondary,
+            validate: isValidBatchTaggingResponse
         )
-        
-        print("[AutoTagging] ⏳ Invio richiesta batch a OpenAI...")
-        let result: Result<AIResult, AIError> = await withCheckedContinuation { cont in
-            Task { @MainActor in
-                var resumed = false
-                AIManager.shared.enqueue(task) { aiResult in
-                    if resumed { return }
-                    resumed = true
-                    if aiResult.success {
-                        print("[AutoTagging] ✅ Risposta batch ricevuta da OpenAI")
-                        cont.resume(returning: .success(aiResult))
-                    } else {
-                        print("[AutoTagging] ❌ Errore batch da OpenAI: \(aiResult.error?.localizedDescription ?? "sconosciuto")")
-                        cont.resume(returning: .failure(aiResult.error ?? .processingError("Errore analisi batch")))
-                    }
-                }
-            }
-        }
-        
-        switch result {
-        case .success(let aiResult):
-            print("[AutoTagging] 🔍 Parsing risultati batch...")
-            let parsed = parseBatchAnalysisResult(aiResult, for: urls, existingResults: existingResults)
+
+        if let output = outcome.output, outcome.status != .error {
+            print("[AutoTagging] ✅ Batch ok (provider=\(outcome.providerUsed?.rawValue ?? "?"), \(outcome.latencyMs)ms)")
+            let pseudoResult = AIResult(
+                taskID: UUID(),
+                success: true,
+                provider: outcome.providerUsed ?? .cloudOpenAI,
+                result: AnyCodable(output),
+                processingTime: TimeInterval(outcome.latencyMs) / 1000.0
+            )
+            let parsed = parseBatchAnalysisResult(pseudoResult, for: urls, existingResults: existingResults)
             print("[AutoTagging] ✅ Batch parsing completato: \(parsed.count) foto")
             return parsed
-        case .failure(let error):
-            print("[AutoTagging] ❌ Errore analisi batch: \(error)")
-            print("[AutoTagging] 🔄 Fallback: analisi singola foto...")
-            // Fallback: analizza singolarmente
-            var fallbackResults: [PhotoAnalysisResult] = []
-            for url in urls {
-                if let result = await analyzeSinglePhoto(url, sinistro: sinistro, existingResults: existingResults + fallbackResults, context: context) {
-                    fallbackResults.append(result)
-                }
-            }
-            return fallbackResults
         }
+
+        print("[AutoTagging] ❌ Batch fallito (\(outcome.errorMessage ?? "?")), fallback single-photo")
+        var fallbackResults: [PhotoAnalysisResult] = []
+        for url in urls {
+            if let result = await analyzeSinglePhoto(url, sinistro: sinistro, existingResults: existingResults + fallbackResults, context: context) {
+                fallbackResults.append(result)
+            }
+        }
+        return fallbackResults
+    }
+
+    /// Costruisce le 4 variabili che il template `sinistri.tagging` si aspetta.
+    /// Estratto da `buildBatchAnalysisPrompt` (che rimane come fallback offline).
+    private func buildBatchTaggingVariables(for urls: [URL], context: DocumentiContext?) -> [String: String] {
+        let tagList = FileTagManager.FileTag.availableTags
+            .filter { $0.category == .foto || ["fattura", "preventivo"].contains($0.id) }
+            .map { "\($0.id): \($0.name)" }
+            .joined(separator: ", ")
+
+        let fileList = urls.enumerated()
+            .map { "- Foto \($0.offset + 1): \($0.element.lastPathComponent)" }
+            .joined(separator: "\n")
+
+        var contextSection = ""
+        if let ctx = context, !ctx.beniAttesi.isEmpty {
+            let beniList = ctx.beniAttesi.map { bene -> String in
+                var line = "• \(bene.nome)"
+                if !bene.componenti.isEmpty {
+                    line += " (componenti: \(bene.componenti.joined(separator: ", ")))"
+                }
+                return line
+            }.joined(separator: "\n")
+            contextSection = """
+
+            CONTESTO DAI DOCUMENTI (beni POSSIBILI, non vincolanti):
+            I seguenti beni sono stati menzionati nei documenti del sinistro. Usali come SUGGERIMENTO per identificare le foto, ma NON limitarti solo a questi se vedi altri beni:
+            \(beniList)
+
+            """
+        }
+
+        return [
+            "n_foto": "\(urls.count)",
+            "file_list": fileList,
+            "context_section": contextSection,
+            "tag_list": tagList,
+        ]
+    }
+
+    /// Validate per AIRouter: l'output deve essere JSON con array `results`.
+    /// Un locale che sbaglia formato cade automaticamente sul cloud successivo.
+    private func isValidBatchTaggingResponse(_ text: String) -> Bool {
+        var cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if cleaned.hasPrefix("```json") { cleaned = String(cleaned.dropFirst(7)) }
+        else if cleaned.hasPrefix("```") { cleaned = String(cleaned.dropFirst(3)) }
+        if let end = cleaned.range(of: "```", options: .backwards) {
+            cleaned = String(cleaned[..<end.lowerBound])
+        }
+        cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let data = cleaned.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let arr = obj["results"] as? [Any], !arr.isEmpty else {
+            return false
+        }
+        return true
     }
     
     private func buildBatchAnalysisPrompt(for urls: [URL], sinistro: Sinistro, context: DocumentiContext? = nil) -> String {

@@ -15,12 +15,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import get_password_hash
-from app.core.security import get_current_active_user
+from app.core.security import get_current_active_user, get_current_platform_admin
 from app.models.role import Role, user_roles
 from app.models.tenant import Tenant, TenantPortalDomain
 from app.models.user import User
 from app.schemas.tenant_settings import (
-    TenantAIKeysResponse,
     TenantAISettingsPayload,
     TenantMailSettingsPayload,
     TenantSettingsResponse,
@@ -135,6 +134,15 @@ def _default_provider_settings() -> dict:
     }
 
 
+def _default_video_inspection_settings() -> dict:
+    return {
+        "enabled": True,
+        "assignment_run_hour": 9,
+        "first_slot_time": "10:00",
+        "slot_minutes": 30,
+    }
+
+
 def _default_ai_settings() -> dict:
     return {
         "openai_api_key": "",
@@ -171,6 +179,14 @@ def _normalized_settings(tenant: Tenant, include_provider_secrets: bool) -> dict
     if not isinstance(ai_settings, dict):
         ai_settings = _default_ai_settings()
 
+    video_inspection_settings = settings.get("video_inspection_settings", _default_video_inspection_settings())
+    if not isinstance(video_inspection_settings, dict):
+        video_inspection_settings = _default_video_inspection_settings()
+
+    branding = settings.get("branding")
+    if not isinstance(branding, dict):
+        branding = None
+
     return {
         "tenant_name": tenant.name,
         "tenant_slug": tenant.slug,
@@ -182,8 +198,10 @@ def _normalized_settings(tenant: Tenant, include_provider_secrets: bool) -> dict
         "claim_garanzie": garanzie,
         "default_claim_garanzia": default_garanzia,
         "cat_settings": cat_settings,
+        "video_inspection_settings": video_inspection_settings,
         "provider_settings": provider_settings if include_provider_secrets else None,
         "ai_settings": ai_settings if include_provider_secrets else None,
+        "branding": branding,
     }
 
 
@@ -205,6 +223,18 @@ def _normalize_portal_domains(values: list[str]) -> list[str]:
         if domain and domain not in normalized:
             normalized.append(domain)
     return normalized
+
+
+def _normalize_tenant_slug(value: str) -> str:
+    return value.strip().lower().replace(" ", "-")
+
+
+async def _ensure_unique_tenant_slug(db: AsyncSession, slug: str, tenant_id: str) -> None:
+    result = await db.execute(
+        select(Tenant.id).where(Tenant.slug == slug, Tenant.id != tenant_id)
+    )
+    if result.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="Tenant slug already exists")
 
 
 async def _is_tenant_admin(db: AsyncSession, user: User) -> bool:
@@ -362,29 +392,6 @@ async def _resolve_target_tenant(
     return tenant
 
 
-async def _resolve_readable_tenant(
-    db: AsyncSession,
-    current_user: User,
-    tenant_id: str | None,
-) -> Tenant:
-    target_tenant_id = current_user.tenant_id
-
-    if tenant_id:
-        if current_user.is_platform_admin:
-            target_tenant_id = tenant_id
-        elif tenant_id != current_user.tenant_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Tenant access denied"
-            )
-
-    result = await db.execute(select(Tenant).where(Tenant.id == target_tenant_id))
-    tenant = result.scalar_one_or_none()
-    if tenant is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
-    return tenant
-
-
 @router.get("/me/settings", response_model=TenantSettingsResponse)
 async def get_my_tenant_settings(
     tenant_id: str | None = Query(None),
@@ -392,28 +399,8 @@ async def get_my_tenant_settings(
     current_user: User = Depends(get_current_active_user)
 ):
     tenant = await _resolve_target_tenant(db, current_user, tenant_id)
-    settings = _normalized_settings(tenant, include_provider_secrets=current_user.is_platform_admin)
+    settings = _normalized_settings(tenant, include_provider_secrets=False)
     return TenantSettingsResponse(tenant_id=tenant.id, **settings)
-
-
-@router.get("/me/ai-keys", response_model=TenantAIKeysResponse)
-async def get_my_tenant_ai_keys(
-    tenant_id: str | None = Query(None),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
-):
-    """Returns AI API keys for the authenticated user's tenant. All tenant members can read."""
-    tenant = await _resolve_readable_tenant(db, current_user, tenant_id)
-    settings = tenant.settings_json or {}
-    ai = settings.get("ai_settings", _default_ai_settings())
-    if not isinstance(ai, dict):
-        ai = _default_ai_settings()
-    return TenantAIKeysResponse(
-        openai_api_key=ai.get("openai_api_key", ""),
-        openai_model=ai.get("openai_model", "gpt-4o"),
-        anthropic_api_key=ai.get("anthropic_api_key", ""),
-        anthropic_model=ai.get("anthropic_model", "claude-opus-4-7"),
-    )
 
 
 @router.put("/me/settings", response_model=TenantSettingsResponse)
@@ -425,15 +412,29 @@ async def update_my_tenant_settings(
 ):
     tenant = await _resolve_target_tenant(db, current_user, tenant_id)
 
-    if payload.provider_settings is not None and not current_user.is_platform_admin:
+    if payload.provider_settings is not None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Provider settings can only be managed by platform admin",
+            detail="Provider settings are only available on the platform admin API",
+        )
+    if payload.ai_settings is not None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="AI settings are only available on the platform admin API",
         )
 
-    tenant.name = payload.tenant_name
-    tenant.slug = payload.tenant_slug
-    portal_domains = _normalize_portal_domains(payload.portal_domains)
+    tenant.name = payload.tenant_name.strip()
+    if current_user.is_platform_admin:
+        slug = _normalize_tenant_slug(payload.tenant_slug)
+        if not slug:
+            raise HTTPException(status_code=400, detail="Tenant slug non valido")
+        await _ensure_unique_tenant_slug(db, slug, tenant.id)
+        tenant.slug = slug
+        portal_domains = _normalize_portal_domains(payload.portal_domains)
+    else:
+        portal_domains = _normalize_portal_domains(
+            list((tenant.settings_json or {}).get("portal_domains", []))
+        )
 
     updated_settings = {
         **dict(tenant.settings_json or {}),
@@ -445,11 +446,15 @@ async def update_my_tenant_settings(
         "claim_garanzie": payload.claim_garanzie or ["Fenomeno Elettrico"],
         "default_claim_garanzia": payload.default_claim_garanzia or "Fenomeno Elettrico",
         "cat_settings": payload.cat_settings.model_dump(),
+        "video_inspection_settings": payload.video_inspection_settings.model_dump(),
     }
-    if current_user.is_platform_admin and payload.provider_settings is not None:
-        updated_settings["provider_settings"] = payload.provider_settings.model_dump()
-    if current_user.is_platform_admin and payload.ai_settings is not None:
-        updated_settings["ai_settings"] = payload.ai_settings.model_dump()
+    if payload.branding is not None:
+        if not current_user.is_platform_admin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Branding can only be managed by platform admin",
+            )
+        updated_settings["branding"] = payload.branding.model_dump(exclude_none=True)
 
     tenant.settings_json = updated_settings
     await db.execute(delete(TenantPortalDomain).where(TenantPortalDomain.tenant_id == tenant.id))
@@ -466,7 +471,7 @@ async def update_my_tenant_settings(
     await db.commit()
     await db.refresh(tenant)
 
-    settings = _normalized_settings(tenant, include_provider_secrets=current_user.is_platform_admin)
+    settings = _normalized_settings(tenant, include_provider_secrets=False)
     return TenantSettingsResponse(tenant_id=tenant.id, **settings)
 
 

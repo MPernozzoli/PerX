@@ -6,10 +6,11 @@ import { usePathname } from "next/navigation";
 const CLAIM_NAV_ITEMS = [
   { href: "/claim", label: "Panoramica" },
   { href: "/claim/documentazione", label: "Documentazione" },
-  { href: "/claim/sopralluogo", label: "Sopralluogo" },
+  { href: "/claim/sopralluogo", label: "Perizia" },
   { href: "/claim/iban", label: "IBAN" },
   { href: "/claim/atto", label: "Atto" },
-  { href: "/claim/chat", label: "Messaggi" }
+  { href: "/claim/chat", label: "Messaggi" },
+  { href: "/claim/impostazioni", label: "Impostazioni" }
 ];
 
 export function ClaimSectionNav() {

@@ -88,6 +88,33 @@ Il sistema salva le preferenze nel metadata workflow del sinistro, registra even
   - `POST /api/v1/portal/claim/signature-requests`
   - `POST /api/v1/portal/claim/signature-requests/{id}/confirm`
 
+### 5. Videoperizia
+
+La videoperizia usa la stessa sezione portale del sopralluogo, ma e una modalita alternativa:
+sopralluogo, videoperizia e documentale non vengono presentati insieme.
+
+- Stato di ingresso: `videoperizia`, inizialmente con substato `da_fissare`.
+- La UI mostra finestre da 30 minuti e le indicazioni operative per preparare la chiamata.
+- Il primo slot della giornata e configurabile dal tenant admin; il default e `10:00`.
+- Se la pratica ha gia un perito incaricato, il portale mostra esclusivamente le sue finestre
+  di calendario libere e l'incarico viene mantenuto.
+- Se la pratica non ha un perito incaricato, alle `09:00` del giorno scelto il backend verifica
+  i periti a calendario abilitati alla videoperizia, compatibili con compagnia e polizza, e
+  assegna quello con minor carico attivo.
+- L'assegnazione crea l'evento calendario, registra l'evento timeline e invia
+  all'assicurato una notifica e-mail con nome del perito e orario.
+- La videochiamata integrata nel portale resta fuori da questa prima implementazione.
+
+L'abilitazione del singolo perito vive in `users.settings_json.video_inspection`:
+
+```json
+{
+  "enabled": true,
+  "companies": ["Compagnia Demo"],
+  "excluded_policy_numbers": ["POL-123"]
+}
+```
+
 ## Tabelle introdotte
 
 - `portal_claim_accesses`

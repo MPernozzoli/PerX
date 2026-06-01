@@ -17,9 +17,11 @@ struct AnagraficaAttoriSectionView: View {
     @ObservedObject var sinistro: Sinistro
     @Environment(\.managedObjectContext) private var viewContext
 
-    @State private var contraente: CloudActorResponse?
-    @State private var assicurato: CloudActorResponse?
-    @State private var danneggiato: CloudActorResponse?
+    @State private var contraente: CloudActorSummary?
+    @State private var assicurato: CloudActorSummary?
+    @State private var danneggiato: CloudActorSummary?
+    @State private var agenzia: CloudAgenziaResponse?
+    @State private var compagnia: CloudCompagniaResponse?
 
     @State private var isLoading = false
     @State private var isSaving = false
@@ -37,9 +39,16 @@ struct AnagraficaAttoriSectionView: View {
                 }
 
                 VStack(spacing: 12) {
-                    ActorPickerView(title: "Contraente", selection: $contraente, suggestedType: .person)
-                    ActorPickerView(title: "Assicurato", selection: $assicurato, suggestedType: .person)
-                    ActorPickerView(title: "Danneggiato", selection: $danneggiato, suggestedType: .person)
+                    ActorPickerView(title: "Contraente", selection: $contraente, suggestedType: .person, claimContextId: sinistro.riferimento)
+                    ActorPickerView(title: "Assicurato", selection: $assicurato, suggestedType: .person, claimContextId: sinistro.riferimento)
+                    ActorPickerView(title: "Danneggiato", selection: $danneggiato, suggestedType: .person, claimContextId: sinistro.riferimento)
+
+                    Divider().padding(.vertical, 4)
+
+                    HStack(alignment: .top, spacing: 12) {
+                        CompagniaPickerView(title: "Compagnia", selection: $compagnia)
+                        AgenziaPickerView(title: "Agenzia", selection: $agenzia)
+                    }
                 }
 
                 if hasChanges {
@@ -91,15 +100,13 @@ struct AnagraficaAttoriSectionView: View {
     private var hasChanges: Bool {
         sinistro.contraenteCloudId != contraente?.id ||
         sinistro.assicuratoCloudId != assicurato?.id ||
-        sinistro.danneggiatoCloudId != danneggiato?.id
+        sinistro.danneggiatoCloudId != danneggiato?.id ||
+        sinistro.agencyCloudId != agenzia?.id ||
+        sinistro.compagniaCloudId != compagnia?.id
     }
 
     private func reloadFromLocal() {
-        Task {
-            contraente = try? await loadActor(id: sinistro.contraenteCloudId)
-            assicurato = try? await loadActor(id: sinistro.assicuratoCloudId)
-            danneggiato = try? await loadActor(id: sinistro.danneggiatoCloudId)
-        }
+        Task { await initialLoad() }
     }
 
     private func initialLoad() async {
@@ -109,33 +116,48 @@ struct AnagraficaAttoriSectionView: View {
         async let c = loadActor(id: sinistro.contraenteCloudId)
         async let a = loadActor(id: sinistro.assicuratoCloudId)
         async let d = loadActor(id: sinistro.danneggiatoCloudId)
+        async let ag = loadAgenzia(id: sinistro.agencyCloudId)
+        async let co = loadCompagnia(id: sinistro.compagniaCloudId)
         contraente = try? await c
         assicurato = try? await a
         danneggiato = try? await d
+        agenzia = try? await ag
+        compagnia = try? await co
     }
 
-    private func loadActor(id: String?) async throws -> CloudActorResponse? {
+    private func loadAgenzia(id: String?) async throws -> CloudAgenziaResponse? {
+        guard let id, !id.isEmpty else { return nil }
+        // L'endpoint /rubrica/agenzie/{id} non esiste; cerchiamo per nome
+        // tramite list e filtriamo l'id. Quantità ridotta in rubrica → ok.
+        let resp = try await HubAPIAdapterClient.shared.listAgenzieFromBackend(limit: 500)
+        return resp.items.first { $0.id == id }
+    }
+
+    private func loadCompagnia(id: String?) async throws -> CloudCompagniaResponse? {
+        guard let id, !id.isEmpty else { return nil }
+        let resp = try await HubAPIAdapterClient.shared.listCompagnie(limit: 500)
+        return resp.items.first { $0.id == id }
+    }
+
+    private func loadActor(id: String?) async throws -> CloudActorSummary? {
         guard let id, !id.isEmpty else { return nil }
         let detail = try await repo.detail(id: id)
-        // Mappa il subset del CloudActorDetail in CloudActorResponse per il picker.
-        return CloudActorResponse(
+        // Mostriamo solo display + identifier mascherato (la section non ha
+        // bisogno di email/telefono/indirizzi).
+        let displayName: String
+        switch detail.actor_type {
+        case .person:
+            let n = [detail.nome, detail.cognome].compactMap { $0 }.joined(separator: " ").trimmingCharacters(in: .whitespaces)
+            displayName = n.isEmpty ? (detail.denominazione ?? "—") : n
+        case .company, .condo:
+            displayName = detail.denominazione ?? "—"
+        }
+        return CloudActorSummary(
             id: detail.id,
-            tenant_id: detail.tenant_id,
             actor_type: detail.actor_type,
-            nome: detail.nome,
-            cognome: detail.cognome,
-            data_nascita: detail.data_nascita,
-            luogo_nascita: detail.luogo_nascita,
-            sesso: detail.sesso,
-            denominazione: detail.denominazione,
-            codice_fiscale: detail.codice_fiscale,
-            partita_iva: detail.partita_iva,
-            email: detail.email,
-            telefono: detail.telefono,
-            pec: detail.pec,
-            note: detail.note,
-            created_at: detail.created_at,
-            updated_at: detail.updated_at
+            display_name: displayName,
+            codice_fiscale_masked: detail.codice_fiscale.map(_maskIdentifier),
+            partita_iva_masked: detail.partita_iva.map(_maskIdentifier)
         )
     }
 
@@ -153,7 +175,9 @@ struct AnagraficaAttoriSectionView: View {
                 riferimento: riferimento,
                 contraenteId: contraente?.id,
                 assicuratoId: assicurato?.id,
-                danneggiatoId: danneggiato?.id
+                danneggiatoId: danneggiato?.id,
+                agencyId: agenzia?.id,
+                compagniaId: compagnia?.id
             )
             // applyActorCloudRefs è già stato chiamato dall'adapter; la
             // @ObservedObject sinistro pubblicherà le modifiche.
@@ -161,4 +185,15 @@ struct AnagraficaAttoriSectionView: View {
             self.error = (error as NSError).localizedDescription
         }
     }
+}
+
+// MARK: - Helpers
+
+private func _maskIdentifier(_ value: String) -> String {
+    let trimmed = value.trimmingCharacters(in: .whitespaces)
+    if trimmed.count <= 6 { return String(repeating: "*", count: trimmed.count) }
+    let prefix = trimmed.prefix(3)
+    let suffix = trimmed.suffix(3)
+    let stars = String(repeating: "*", count: trimmed.count - 6)
+    return "\(prefix)\(stars)\(suffix)"
 }

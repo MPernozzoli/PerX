@@ -177,213 +177,22 @@ class GenericExcelReader {
     """#
     
     private func runPythonScript(for url: URL) async throws -> ImportService.ImportData {
-        // Trova il percorso diretto a Python (evita /usr/bin/env che usa xcrun)
-        let pythonPaths = [
-            "/usr/local/bin/python3",
-            "/opt/homebrew/bin/python3",
-            "/usr/bin/python3",
-            "\(NSHomeDirectory())/.local/bin/python3"
-        ]
-        
-        var pythonPath: String?
-        for path in pythonPaths {
-            if FileManager.default.fileExists(atPath: path) {
-                pythonPath = path
-                print("[GenericExcelReader] ✅ Python trovato: \(path)")
-                break
-            }
-        }
-        
-        // Se non trovato, prova con 'which' (ma non usare /usr/bin/env)
-        if pythonPath == nil {
-            let whichProcess = Process()
-            whichProcess.executableURL = URL(fileURLWithPath: "/bin/zsh")
-            whichProcess.arguments = ["-c", "command -v python3"]
-            
-            let pipe = Pipe()
-            whichProcess.standardOutput = pipe
-            whichProcess.standardError = Pipe()
-            
-            do {
-                try whichProcess.run()
-                whichProcess.waitUntilExit()
-                
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                if let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                   !output.isEmpty,
-                   FileManager.default.fileExists(atPath: output) {
-                    pythonPath = output
-                    print("[GenericExcelReader] ✅ Python trovato tramite PATH: \(output)")
-                }
-            } catch {
-                print("[GenericExcelReader] ⚠️ Errore ricerca Python: \(error)")
-            }
-        }
-        
-        guard let python = pythonPath else {
-            throw ImportError.invalidData("Python 3 non trovato. Verifica che sia installato.")
-        }
-        
         let tempDir = FileManager.default.temporaryDirectory
-        let scriptURL = tempDir.appendingPathComponent("generic_read_excel.py")
+        let scriptURL = tempDir.appendingPathComponent("\(UUID().uuidString)-generic-read-excel.py")
         try pythonScript.write(to: scriptURL, atomically: true, encoding: .utf8)
-        
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
-        
-        // Crea uno script wrapper che disabilita xcrun
-        let wrapperScript = """
-        #!/bin/bash
-        # Wrapper per disabilitare xcrun
-        export DEVELOPER_DIR=""
-        export XCODE_DEVELOPER_DIR_PATH=""
-        unset DEVELOPER_DIR
-        unset XCODE_DEVELOPER_DIR_PATH
-        exec "\(python)" "\(scriptURL.path)" "\(url.path)"
-        """
-        
-        let wrapperURL = tempDir.appendingPathComponent("python_wrapper.sh")
-        try wrapperScript.write(to: wrapperURL, atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: wrapperURL.path)
-        
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/bash")
-        process.arguments = [wrapperURL.path]
-        
-        // Crea un ambiente minimo senza variabili che potrebbero far usare xcrun
-        var env: [String: String] = [:]
-        
-        // Aggiungi solo le variabili essenziali
-        env["PATH"] = "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-        env["PYTHONIOENCODING"] = "utf-8"
-        env["LANG"] = "en_US.UTF-8"
-        env["HOME"] = NSHomeDirectory()
-        
-        // Disabilita xcrun esplicitamente
-        env["DEVELOPER_DIR"] = ""
-        env["XCODE_DEVELOPER_DIR_PATH"] = ""
-        
-        // Aggiungi PYTHONPATH solo se esiste
-        let pythonSitePackagesPaths = [
-            "/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/site-packages",
-            "/opt/homebrew/lib/python3.11/site-packages",
-            "/usr/local/lib/python3.11/site-packages"
-        ]
-        let existingPythonPaths = pythonSitePackagesPaths.filter { FileManager.default.fileExists(atPath: $0) }
-        if !existingPythonPaths.isEmpty {
-            env["PYTHONPATH"] = existingPythonPaths.joined(separator: ":")
-        }
-        
-        process.environment = env
-        
-        let outputPipe = Pipe()
-        let errorPipe = Pipe()
-        process.standardOutput = outputPipe
-        process.standardError = errorPipe
-        
-        var outputData = Data()
-        var errorData = Data()
-        let outputQueue = DispatchQueue(label: "excel-reader-output-queue")
+        defer { try? FileManager.default.removeItem(at: scriptURL) }
 
-        // Async read handlers
-        outputPipe.fileHandleForReading.readabilityHandler = { handle in
-            let data = handle.availableData
-            outputQueue.async {
-                outputData.append(data)
-            }
+        let result = try await PerXLocalAgent.shared.runPythonScript(
+            scriptPath: scriptURL.path,
+            arguments: [url.path],
+            environment: [:],
+            standardInput: nil,
+            timeout: 30
+        )
+        guard result.exitCode == 0 else {
+            throw ImportError.invalidData(result.combinedOutput)
         }
-        errorPipe.fileHandleForReading.readabilityHandler = { handle in
-            let data = handle.availableData
-            if let str = String(data: data, encoding: .utf8) {
-                print(str, terminator: "")
-            }
-            outputQueue.async {
-                errorData.append(data)
-            }
-        }
-
-        print("[GenericExcelReader] 📄 File Excel: \(url.lastPathComponent)")
-        print("[GenericExcelReader] 📄 Path completo: \(url.path)")
-        print("[GenericExcelReader] 🐍 Script Python: \(scriptURL.path)")
-        print("[GenericExcelReader] 🐍 Python executable: \(python)")
-        print("[GenericExcelReader] 🔧 Comando: \(python) \(scriptURL.path) \(url.path)")
-        
-        do {
-            try process.run()
-            print("[GenericExcelReader] ✅ Processo Python avviato con successo. PID: \(process.processIdentifier)")
-        } catch {
-            print("[GenericExcelReader] ❌ Errore avvio processo Python: \(error.localizedDescription)")
-            
-            // Se l'errore indica Python mancante, avvia installazione
-            if error.localizedDescription.contains("python3") || error.localizedDescription.contains("Python") || error.localizedDescription.contains("command not found") {
-                Task {
-                    await DependencyManager.shared.handleServiceError(error, for: .python)
-                }
-            }
-            
-            throw ImportError.invalidData("Impossibile avviare lo script Python: \(error.localizedDescription)")
-        }
-
-        // Timeout di sicurezza
-        let task = Task {
-            try await Task.sleep(nanoseconds: 30_000_000_000) // 30 secondi
-            if process.isRunning {
-                print("[ExcelReader] TIMEOUT: Il processo sta impiegando troppo tempo, terminazione forzata.")
-                process.terminate()
-            }
-        }
-        
-        process.waitUntilExit()
-        task.cancel() // Annulla il task di timeout
-        
-        // Assicura che i readability handler vengano rimossi
-        outputPipe.fileHandleForReading.readabilityHandler = nil
-        errorPipe.fileHandleForReading.readabilityHandler = nil
-
-        print("[ExcelReader] Processo Python terminato con codice di uscita: \(process.terminationStatus)")
-
-        let finalErrorOutput = await outputQueue.sync { String(data: errorData, encoding: .utf8) }
-        if let error = finalErrorOutput, !error.isEmpty {
-            print("[ExcelReader] Output finale di errore (stderr) dallo script:\n--- \(error) ---")
-        }
-
-        if process.terminationStatus != 0 {
-            // Estrai messaggio di errore più dettagliato
-            var errorMessage = "Lo script Python è fallito (codice \(process.terminationStatus))"
-            
-            // Prova a leggere l'errore dall'output JSON se disponibile
-            let finalOutputData = await outputQueue.sync { outputData }
-            if let output = String(data: finalOutputData, encoding: .utf8),
-               let jsonData = output.data(using: .utf8),
-               let jsonObject = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
-               let jsonError = jsonObject["error"] as? String {
-                errorMessage = jsonError
-            } else if let stderrOutput = finalErrorOutput, !stderrOutput.isEmpty {
-                // Usa stderr se disponibile
-                let lines = stderrOutput.components(separatedBy: .newlines)
-                    .filter { $0.contains("[PY_ERROR]") || $0.contains("Error") || $0.contains("Exception") }
-                if let lastError = lines.last {
-                    errorMessage = "Errore Python: \(lastError.replacingOccurrences(of: "[PY_ERROR] ", with: ""))"
-                } else {
-                    errorMessage = "Errore Python: \(stderrOutput.trimmingCharacters(in: .whitespacesAndNewlines))"
-                }
-            }
-            
-            // Se l'errore indica Python mancante, avvia installazione
-            if errorMessage.contains("python3") || errorMessage.contains("Python") || errorMessage.contains("command not found") || errorMessage.contains("No such file") {
-                Task {
-                    await DependencyManager.shared.handleServiceError(
-                        NSError(domain: "ExcelReaderError", code: Int(process.terminationStatus), userInfo: [NSLocalizedDescriptionKey: errorMessage]),
-                        for: .python
-                    )
-                }
-            }
-            
-            throw ImportError.invalidData(errorMessage)
-        }
-        
-        let finalOutputData = await outputQueue.sync { outputData }
-        guard let output = String(data: finalOutputData, encoding: .utf8),
-              let jsonData = output.data(using: .utf8) else {
+        guard let jsonData = result.output.data(using: .utf8) else {
             throw ImportError.invalidData("Nessun dato o dato non valido ricevuto dallo script Python.")
         }
 
@@ -396,7 +205,6 @@ class GenericExcelReader {
             let result = try JSONDecoder().decode(ExcelReadResult.self, from: jsonData)
             return ImportService.ImportData(headers: result.headers, rows: result.rows, fileName: url.lastPathComponent)
         } catch {
-            print("[ExcelReader] ERRORE: Fallita la decodifica dell'output JSON. Output grezzo: \(output)")
             throw ImportError.invalidData("Errore interno durante l'analisi dei dati del file Excel: \(error.localizedDescription)")
         }
     }
@@ -405,4 +213,4 @@ class GenericExcelReader {
         let headers: [String]
         let rows: [[String]]
     }
-} 
+}

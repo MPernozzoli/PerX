@@ -2,13 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 
+import { getPortalTenantBranding, type PortalTenantBranding } from "@/lib/api";
 import { getBrowserPortalHost, getTenantDomainFromHost } from "@/lib/tenant";
 
 const NAV_ITEMS = [
   { href: "/claim", label: "Panoramica" },
   { href: "/claim/documentazione", label: "Documentazione" },
-  { href: "/claim/sopralluogo", label: "Sopralluogo" },
+  { href: "/claim/sopralluogo", label: "Perizia" },
   { href: "/claim/pagamenti", label: "Pagamenti" },
   { href: "/claim/atto", label: "Atto" },
   { href: "/claim/messaggi", label: "Messaggi" },
@@ -40,6 +42,23 @@ function BrandMark() {
 export function PortalNav() {
   const pathname = usePathname();
   const isAuthPage = pathname === "/";
+  const [branding, setBranding] = useState<PortalTenantBranding>({});
+
+  useEffect(() => {
+    getPortalTenantBranding()
+      .then((nextBranding) => {
+        setBranding(nextBranding);
+        const color = nextBranding.primary_color?.trim();
+        if (color && /^#[0-9a-f]{6}$/i.test(color)) {
+          const root = document.documentElement;
+          root.style.setProperty("--accent", color);
+          root.style.setProperty("--accent-2", `color-mix(in srgb, ${color} 78%, black)`);
+          root.style.setProperty("--accent-soft", `color-mix(in srgb, ${color} 22%, white)`);
+          root.style.setProperty("--accent-tint", `color-mix(in srgb, ${color} 12%, white)`);
+        }
+      })
+      .catch(() => undefined);
+  }, []);
 
   const tenantDomain =
     typeof window !== "undefined"
@@ -50,7 +69,11 @@ export function PortalNav() {
     <header className="topbar">
       <div className="topbar__inner">
         <Link href="/" className="brand">
-          <BrandMark />
+          {branding.logo_data_url ? (
+            <img className="brand__logo" src={branding.logo_data_url} alt={branding.tenant_name ?? "Logo tenant"} />
+          ) : (
+            <BrandMark />
+          )}
           <div>
             <div className="brand__name">
               PerX{" "}

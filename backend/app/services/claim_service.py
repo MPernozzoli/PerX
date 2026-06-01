@@ -44,14 +44,21 @@ class ClaimService:
         if actor_id is None:
             return None, None, None
 
+        # Tenant check: l'address_id/iban_id arriva dal client, quindi
+        # snapshot con tenant_id valida che appartenga a un attore di questo
+        # tenant (no cross-tenant leak).
         if payload.address_id:
-            addr_snap = await ActorService.snapshot_address(db, payload.address_id)
+            addr_snap = await ActorService.snapshot_address(
+                db, payload.address_id, tenant_id=tenant_id
+            )
         else:
             addr = await ActorService.get_primary_address(db, actor_id)
             addr_snap = await ActorService.snapshot_address(db, addr.id) if addr else None
 
         if payload.iban_id:
-            iban_snap = await ActorService.snapshot_iban(db, payload.iban_id)
+            iban_snap = await ActorService.snapshot_iban(
+                db, payload.iban_id, tenant_id=tenant_id
+            )
         else:
             iban = await ActorService.get_primary_iban(db, actor_id)
             iban_snap = await ActorService.snapshot_iban(db, iban.id) if iban else None

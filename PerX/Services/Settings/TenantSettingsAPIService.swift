@@ -45,21 +45,38 @@ struct TenantCATSettingsDTO: Codable {
     let municipalities: [TenantCATMunicipalityDTO]
 }
 
+struct TenantVideoInspectionSettingsDTO: Codable {
+    let enabled: Bool
+    let assignment_run_hour: Int
+    let first_slot_time: String
+    let slot_minutes: Int
+}
+
 struct TenantInspectionProviderSettingsDTO: Codable {
     let map_provider: String
     let maps_api_key: String
     let routing_provider: String
     let routing_api_key: String
+    let routing_enabled: Bool
+    let routing_cache_ttl_days: Int
     let geocoding_provider: String
     let geocoding_api_key: String
     let messaging_provider: String
     let messaging_api_key: String
 }
 
+struct TenantBrandingDTO: Codable {
+    let icon_data_url: String?
+    let badge_data_url: String?
+    let logo_data_url: String?
+    let primary_color: String?
+}
+
 struct TenantSettingsDTO: Codable {
     let tenant_id: String
     let tenant_name: String
     let tenant_slug: String
+    let portal_domains: [String]
     let internal_domains: [String]
     let internal_emails: [String]
     let system_emails: [String]
@@ -67,12 +84,15 @@ struct TenantSettingsDTO: Codable {
     let claim_garanzie: [String]
     let default_claim_garanzia: String
     let cat_settings: TenantCATSettingsDTO
+    let video_inspection_settings: TenantVideoInspectionSettingsDTO
     let provider_settings: TenantInspectionProviderSettingsDTO?
+    let branding: TenantBrandingDTO?
 }
 
 struct TenantSettingsPayloadDTO: Encodable {
     let tenant_name: String
     let tenant_slug: String
+    let portal_domains: [String]
     let internal_domains: [String]
     let internal_emails: [String]
     let system_emails: [String]
@@ -80,7 +100,9 @@ struct TenantSettingsPayloadDTO: Encodable {
     let claim_garanzie: [String]
     let default_claim_garanzia: String
     let cat_settings: TenantCATSettingsDTO
+    let video_inspection_settings: TenantVideoInspectionSettingsDTO
     let provider_settings: TenantInspectionProviderSettingsDTO?
+    let branding: TenantBrandingDTO?
 }
 
 struct TenantInspectionRouteStopDTO: Decodable, Identifiable, Hashable {
@@ -230,6 +252,7 @@ final class TenantSettingsAPIService: ObservableObject {
         let payload = TenantSettingsPayloadDTO(
             tenant_name: settings.tenantName,
             tenant_slug: settings.tenantSlug,
+            portal_domains: settings.portalDomains,
             internal_domains: settings.internalDomains,
             internal_emails: settings.internalEmails,
             system_emails: settings.systemEmails,
@@ -237,7 +260,16 @@ final class TenantSettingsAPIService: ObservableObject {
             claim_garanzie: settings.claimGaranzie,
             default_claim_garanzia: settings.defaultClaimGaranzia,
             cat_settings: map(settings.catSettings),
-            provider_settings: settings.providerSettings.map(map)
+            video_inspection_settings: map(settings.videoInspectionSettings),
+            provider_settings: settings.providerSettings.map(map),
+            branding: CurrentUserService.shared.isPlatformAdmin
+                ? settings.branding.map { TenantBrandingDTO(
+                    icon_data_url: $0.iconDataURL,
+                    badge_data_url: $0.badgeDataURL,
+                    logo_data_url: $0.logoDataURL,
+                    primary_color: $0.primaryColor
+                ) }
+                : nil
         )
 
         TenantMailSettingsService.shared.settings = settings
@@ -418,6 +450,7 @@ final class TenantSettingsAPIService: ObservableObject {
         TenantMailSettings(
             tenantName: dto.tenant_name,
             tenantSlug: dto.tenant_slug,
+            portalDomains: dto.portal_domains,
             internalDomains: dto.internal_domains,
             internalEmails: dto.internal_emails,
             systemEmails: dto.system_emails,
@@ -425,7 +458,25 @@ final class TenantSettingsAPIService: ObservableObject {
             claimGaranzie: dto.claim_garanzie,
             defaultClaimGaranzia: dto.default_claim_garanzia,
             catSettings: map(dto.cat_settings),
-            providerSettings: dto.provider_settings.map(map)
+            videoInspectionSettings: map(dto.video_inspection_settings),
+            providerSettings: dto.provider_settings.map(map),
+            branding: dto.branding.map {
+                TenantBrandingSettings(
+                    iconDataURL: $0.icon_data_url,
+                    badgeDataURL: $0.badge_data_url,
+                    logoDataURL: $0.logo_data_url,
+                    primaryColor: $0.primary_color
+                )
+            }
+        )
+    }
+
+    private func map(_ dto: TenantVideoInspectionSettingsDTO) -> TenantVideoInspectionSettings {
+        TenantVideoInspectionSettings(
+            enabled: dto.enabled,
+            assignmentRunHour: dto.assignment_run_hour,
+            firstSlotHour: Int(dto.first_slot_time.split(separator: ":").first ?? "10") ?? 10,
+            slotMinutes: dto.slot_minutes
         )
     }
 
@@ -474,6 +525,8 @@ final class TenantSettingsAPIService: ObservableObject {
             mapsAPIKey: dto.maps_api_key,
             routingProvider: dto.routing_provider,
             routingAPIKey: dto.routing_api_key,
+            routingEnabled: dto.routing_enabled,
+            routingCacheTTLDays: dto.routing_cache_ttl_days,
             geocodingProvider: dto.geocoding_provider,
             geocodingAPIKey: dto.geocoding_api_key,
             messagingProvider: dto.messaging_provider,
@@ -526,10 +579,21 @@ final class TenantSettingsAPIService: ObservableObject {
             maps_api_key: value.mapsAPIKey,
             routing_provider: value.routingProvider,
             routing_api_key: value.routingAPIKey,
+            routing_enabled: value.routingEnabled,
+            routing_cache_ttl_days: value.routingCacheTTLDays,
             geocoding_provider: value.geocodingProvider,
             geocoding_api_key: value.geocodingAPIKey,
             messaging_provider: value.messagingProvider,
             messaging_api_key: value.messagingAPIKey
+        )
+    }
+
+    private func map(_ value: TenantVideoInspectionSettings) -> TenantVideoInspectionSettingsDTO {
+        TenantVideoInspectionSettingsDTO(
+            enabled: value.enabled,
+            assignment_run_hour: value.assignmentRunHour,
+            first_slot_time: String(format: "%02d:00", value.firstSlotHour),
+            slot_minutes: value.slotMinutes
         )
     }
 }

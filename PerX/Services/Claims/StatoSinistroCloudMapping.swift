@@ -21,7 +21,7 @@ extension StatoManager.StatoSinistro {
         case .daScaricare, .istruzione:          return "istruzione"
         case .inAttesaDocumentale:               return "in_attesa_documentale"
         case .periziaDaEseguire:                 return "da_gestire_tradizionale"
-        case .videoperiziaDaFissare:             return "videoperizia_da_eseguire"
+        case .videoperiziaDaFissare:             return "videoperizia"
         case .periziaDaEseguireNoResidui:        return "da_gestire_no_residui"
         case .primoContatto:                     return "primo_contatto"
         case .secondoContatto:                   return "secondo_contatto"
@@ -31,10 +31,10 @@ extension StatoManager.StatoSinistro {
         case .periziaDaEseguireDocumentale:      return "da_gestire_documentale"
         case .inGestioneDocumentale:             return "da_gestire_documentale"
         case .inGestione:                        return "in_gestione"
-        case .inGestioneVideoperizia:            return "da_gestire_video"
-        case .videoperiziaFissata:               return "da_gestire_video"
+        case .inGestioneVideoperizia:            return "videoperizia"
+        case .videoperiziaFissata:               return "videoperizia"
         case .sopralluogoAssegnato:              return "sopralluogo"
-        case .videoperiziaDaEseguire:            return "videoperizia_da_eseguire"
+        case .videoperiziaDaEseguire:            return "videoperizia"
         case .daGestireVideoperizia:             return "da_gestire_video"
         case .daGestireTradizionale:             return "da_gestire_tradizionale"
         case .daGestireDocumentale:              return "da_gestire_documentale"
@@ -82,7 +82,10 @@ extension StatoManager.StatoSinistro {
         case .sopralluogoRestituito:     return "da_rifissare"
         case .sopralluogoDaFissare:      return "da_fissare"
         case .sopralluogoDaConcordare:   return "da_concordare"
+        case .videoperiziaDaFissare:     return "da_fissare"
         case .videoperiziaFissata:       return "fissata"
+        case .videoperiziaDaEseguire:    return "da_eseguire"
+        case .inGestioneVideoperizia:    return "da_eseguire"
         case .periziaDaEseguireDocumentale: return "da_aprire"
         default:                          return nil
         }
@@ -102,11 +105,26 @@ enum BackendStatoMapping {
         return raw  // assumiamo già slug
     }
 
-    /// Stato iOS (SV) dato uno slug canonico del backend. Per slug che
-    /// rappresentano una fusione di più stati legacy (es. "atto_ricevuto",
-    /// "sopralluogo", "in_attesa_terzi", "da_gestire_video") restituisce il
-    /// rappresentante più informativo; il substato eventuale va letto da
-    /// `stato_substati` separato.
+    /// Stato iOS (SV) dato uno slug canonico del backend, opzionalmente
+    /// affinato dai substati ricevuti dal server. Per gli stati "merged"
+    /// (videoperizia/sopralluogo/...) il substato è il discriminatore reale.
+    /// Quando il substato non è disponibile, ricade sul rappresentante
+    /// più generico.
+    static func statoSinistro(
+        forCloudSlug slug: String,
+        substati: [CloudSubstato]? = nil
+    ) -> StatoManager.StatoSinistro? {
+        if slug == "videoperizia" || slug == "videoperizia_da_eseguire" {
+            let tags = Set((substati ?? []).map(\.tag))
+            if tags.contains("da_eseguire") { return .videoperiziaDaEseguire }
+            if tags.contains("fissata")     { return .videoperiziaFissata }
+            return .videoperiziaDaFissare
+        }
+        return statoSinistro(forCloudSlug: slug)
+    }
+
+    /// Variante senza substati per call site che non li hanno disponibili.
+    /// I client moderni dovrebbero preferire la forma con `substati:`.
     static func statoSinistro(forCloudSlug slug: String) -> StatoManager.StatoSinistro? {
         switch slug {
         case "istruzione":                   return .istruzione
@@ -114,7 +132,13 @@ enum BackendStatoMapping {
         case "secondo_contatto":             return .secondoContatto
         case "in_attesa_assegnazione":       return .inAttesaAssegnazione
         case "in_attesa_documentale":       return .inAttesaDocumentale
-        case "videoperizia_da_eseguire":     return .videoperiziaDaEseguire
+        // Nuovo stato unificato post-2026-06 (migration 030): il backend invia
+        // sempre "videoperizia" e discrimina con il substato. Manteniamo
+        // legacy "videoperizia_da_eseguire" per compat coi vecchi snapshot.
+        // Il discriminatore preciso (da_fissare/fissata/da_eseguire) va letto
+        // dal campo stato_substati separato dal chiamante.
+        case "videoperizia", "videoperizia_da_eseguire":
+            return .videoperiziaDaFissare
         case "da_gestire_tradizionale":     return .daGestireTradizionale
         case "da_gestire_documentale":      return .daGestireDocumentale
         case "da_gestire_video":             return .daGestireVideoperizia

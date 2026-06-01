@@ -49,6 +49,19 @@ const domainsFromRecipients = (recipients: string[]): string[] => {
   return Array.from(domains);
 };
 
+const addUnique = (target: string[], values: string[]) => {
+  const known = new Set(target.map((value) => value.toLowerCase()));
+  for (const value of values.map((item) => item.trim().toLowerCase()).filter(Boolean)) {
+    if (!known.has(value)) {
+      target.push(value);
+      known.add(value);
+    }
+  }
+};
+
+const stringList = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") {
     return json({ error: "method_not_allowed" }, 405);
@@ -81,9 +94,9 @@ Deno.serve(async (req) => {
   }
 
   const data = event.data ?? {};
-  const toAddresses = normalizeAddressList(data.to);
+  const originalToAddresses = normalizeAddressList(data.to);
   const ccAddresses = normalizeAddressList(data.cc);
-  const recipientDomains = domainsFromRecipients([...toAddresses, ...ccAddresses]);
+  const recipientDomains = domainsFromRecipients([...originalToAddresses, ...ccAddresses]);
 
   if (recipientDomains.length === 0) {
     return json({ status: "ignored", reason: "missing_recipient_domain" }, 202);
@@ -113,6 +126,76 @@ Deno.serve(async (req) => {
   const providerEventId = event.id ?? crypto.randomUUID();
   const receivedAt = data.received_at ?? data.created_at ?? event.created_at ?? new Date().toISOString();
   const inboundEventId = crypto.randomUUID();
+  const toAddresses = [...originalToAddresses];
+  const reroutedUserIds: string[] = [];
+  const reroutedClaimIds: string[] = [];
+  const reroutedRecipients: string[] = [];
+
+  const { data: aliases } = await supabase
+    .from("email_aliases")
+    .select("address, target_id")
+    .eq("tenant_id", matchedDomain.tenant_id)
+    .eq("target_type", "user")
+    .eq("is_active", "true")
+    .in("address", [...originalToAddresses, ...ccAddresses]);
+
+  const aliasUserIds = Array.from(new Set((aliases ?? []).map((alias) => alias.target_id).filter(Boolean)));
+  if (aliasUserIds.length > 0) {
+    const { data: users } = await supabase
+      .from("users")
+      .select("id, is_active")
+      .in("id", aliasUserIds);
+    const disabledUserIds = new Set((users ?? []).filter((user) => !user.is_active).map((user) => user.id));
+    reroutedUserIds.push(...disabledUserIds);
+  }
+
+  if (reroutedUserIds.length > 0) {
+    const { data: tenant } = await supabase
+      .from("tenants")
+      .select("settings_json")
+      .eq("id", matchedDomain.tenant_id)
+      .single();
+    addUnique(reroutedRecipients, stringList(tenant?.settings_json?.secretariat_emails));
+
+    const searchableText = `${data.subject ?? ""}\n${data.text ?? ""}\n${data.html ?? ""}`.toLowerCase();
+    const { data: claims } = await supabase
+      .from("claims")
+      .select("id, external_ref, numero_sinistro")
+      .eq("tenant_id", matchedDomain.tenant_id);
+    for (const claim of claims ?? []) {
+      const references = [claim.external_ref, claim.numero_sinistro]
+        .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+        .map((value) => value.trim().toLowerCase());
+      if (references.some((reference) => searchableText.includes(reference))) {
+        reroutedClaimIds.push(claim.id);
+      }
+    }
+
+    if (reroutedClaimIds.length > 0) {
+      const { data: assignments } = await supabase
+        .from("claim_assignments")
+        .select("assignee_user_id")
+        .eq("tenant_id", matchedDomain.tenant_id)
+        .is("unassigned_at", null)
+        .in("claim_id", reroutedClaimIds);
+      const assigneeIds = Array.from(new Set((assignments ?? []).map((item) => item.assignee_user_id).filter(Boolean)));
+      if (assigneeIds.length > 0) {
+        const { data: assignees } = await supabase
+          .from("users")
+          .select("professional_email, email, is_active")
+          .in("id", assigneeIds);
+        addUnique(
+          reroutedRecipients,
+          (assignees ?? [])
+            .filter((user) => user.is_active)
+            .map((user) => user.professional_email ?? user.email)
+            .filter(Boolean),
+        );
+      }
+    }
+
+    addUnique(toAddresses, reroutedRecipients);
+  }
 
   const inboundRecord = {
     id: inboundEventId,
@@ -130,7 +213,15 @@ Deno.serve(async (req) => {
     body_html: data.html ?? null,
     received_at: receivedAt,
     status: "queued",
-    raw_payload: event,
+    raw_payload: {
+      ...event,
+      perx_routing: {
+        original_to_addresses: originalToAddresses,
+        disabled_user_ids: reroutedUserIds,
+        related_claim_ids: reroutedClaimIds,
+        forwarded_to_addresses: reroutedRecipients,
+      },
+    },
     attachments_json: data.attachments ?? null,
   };
 

@@ -214,6 +214,13 @@ button, input, textarea { font: inherit; }
   font-weight: 500;
   flex-shrink: 0;
 }
+.brand__logo {
+  display: block;
+  width: auto;
+  max-width: 150px;
+  height: 34px;
+  object-fit: contain;
+}
 .brand__name {
   font-family: var(--display);
   font-size: 18px;

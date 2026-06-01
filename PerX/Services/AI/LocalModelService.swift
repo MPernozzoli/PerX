@@ -13,8 +13,8 @@ class LocalModelService {
         let model = UserDefaults.standard.string(forKey: "ai_local_multimodal_model") ?? ""
         let ggufPath = UserDefaults.standard.string(forKey: "ai_local_multimodal_gguf_path") ?? ""
         
-        let available = !multimodalEndpoint.isEmpty && (!model.isEmpty || !ggufPath.isEmpty)
-        print("[LocalModelService] 🔍 isMultimodalAvailable: \(available) (endpoint: \(!multimodalEndpoint.isEmpty), model: \(!model.isEmpty), gguf: \(!ggufPath.isEmpty))")
+        let available = !model.isEmpty || !ggufPath.isEmpty
+        print("[LocalModelService] 🔍 isMultimodalAvailable: \(available) (model: \(!model.isEmpty), gguf: \(!ggufPath.isEmpty))")
         return available
     }
     
@@ -23,17 +23,17 @@ class LocalModelService {
         let model = UserDefaults.standard.string(forKey: "ai_local_text_model") ?? ""
         let ggufPath = UserDefaults.standard.string(forKey: "ai_local_text_gguf_path") ?? ""
         
-        let available = !textEndpoint.isEmpty && (!model.isEmpty || !ggufPath.isEmpty)
-        print("[LocalModelService] 🔍 isTextAvailable: \(available) (endpoint: \(!textEndpoint.isEmpty), model: \(!model.isEmpty), gguf: \(!ggufPath.isEmpty))")
+        let available = !model.isEmpty || !ggufPath.isEmpty
+        print("[LocalModelService] 🔍 isTextAvailable: \(available) (model: \(!model.isEmpty), gguf: \(!ggufPath.isEmpty))")
         return available
     }
     
     private var multimodalEndpoint: String {
-        UserDefaults.standard.string(forKey: "ai_local_multimodal_endpoint") ?? "http://localhost:11434/api/generate"
+        "PerX Local Agent"
     }
     
     private var textEndpoint: String {
-        UserDefaults.standard.string(forKey: "ai_local_text_endpoint") ?? "http://localhost:11434/api/generate"
+        "PerX Local Agent"
     }
     
     private var multimodalModel: String {
@@ -64,33 +64,7 @@ class LocalModelService {
         return value
     }
     
-    private var timeout: TimeInterval {
-        let value = UserDefaults.standard.double(forKey: "ai_local_timeout")
-        return value > 0 ? value : 60.0
-    }
-    
-    private let session: URLSession
-    private let streamingSession: URLSession
-    
-    private init() {
-        let timeoutValue: TimeInterval = {
-            let value = UserDefaults.standard.double(forKey: "ai_local_timeout")
-            return value > 0 ? value : 60.0
-        }()
-        
-        // Session normale con timeout standard
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = timeoutValue
-        config.timeoutIntervalForResource = timeoutValue * 2
-        self.session = URLSession(configuration: config)
-        
-        // Session per streaming con timeout più lungo (5 minuti per prompt lunghi)
-        let streamingConfig = URLSessionConfiguration.default
-        let streamingTimeout = max(timeoutValue, 300.0) // Minimo 5 minuti per streaming
-        streamingConfig.timeoutIntervalForRequest = streamingTimeout
-        streamingConfig.timeoutIntervalForResource = streamingTimeout * 2
-        self.streamingSession = URLSession(configuration: streamingConfig)
-    }
+    private init() {}
     
     // MARK: - Public API
     
@@ -296,11 +270,6 @@ class LocalModelService {
             return .failure(.invalidInput)
         }
         
-        // Leggi il file
-        guard let fileData = try? Data(contentsOf: URL(fileURLWithPath: filePath)) else {
-            return .failure(.invalidInput)
-        }
-        
         // Prepara il prompt (usa prompt personalizzato se presente, altrimenti usa quello predefinito)
         let customPrompt = task.parameters["prompt"]?.value as? String
         let sinistroID = task.parameters["sinistroID"]?.value as? String ?? ""
@@ -311,45 +280,18 @@ class LocalModelService {
             prompt = buildDocumentAnalysisPrompt(sinistroID: sinistroID)
         }
         
-        // Crea la richiesta
-        var request = URLRequest(url: URL(string: endpoint)!)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        // Costruisci il payload (formato Ollama-like)
-        let payload: [String: Any] = [
-            "model": model,
-            "prompt": prompt,
-            "images": [fileData.base64EncodedString()],
-            "stream": false
-        ]
-        
-        request.httpBody = try? JSONSerialization.data(withJSONObject: payload)
-        
         do {
-            let (data, response) = try await session.data(for: request)
-            
-            guard let httpResponse = response as? HTTPURLResponse else {
-                return .failure(.networkError("Risposta non valida"))
-            }
-            
-            guard httpResponse.statusCode == 200 else {
-                return .failure(.networkError("Status code: \(httpResponse.statusCode)"))
-            }
-            
-            // Parse risposta
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let responseText = json["response"] as? String {
-                let result = AIResult.success(
-                    taskID: task.id,
-                    provider: .localMultimodal,
-                    result: responseText,
-                    metadata: ["model": model, "endpoint": endpoint]
-                )
-                return .success(result)
-            }
-            
-            return .failure(.processingError("Risposta non valida dal modello"))
+            let responseText = try await LocalAIService.shared.analyzeImageWithLocalVision(
+                imagePath: filePath,
+                prompt: prompt
+            )
+            let result = AIResult.success(
+                taskID: task.id,
+                provider: .localMultimodal,
+                result: responseText,
+                metadata: ["model": model, "endpoint": endpoint]
+            )
+            return .success(result)
         } catch {
             if (error as NSError).code == NSURLErrorTimedOut {
                 return .failure(.timeout)
@@ -384,70 +326,21 @@ class LocalModelService {
         print("[LocalModelService] • Endpoint: \(endpoint)")
         print("[LocalModelService] • Modello: \(model)")
         print("[LocalModelService] • Prompt: \(prompt.prefix(100))...")
-        
-        guard let url = URL(string: endpoint) else {
-            print("[LocalModelService] ❌ URL non valido: \(endpoint)")
-            return .failure(.invalidInput)
-        }
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        let payload: [String: Any] = [
-            "model": model,
-            "prompt": prompt,
-            "stream": false
-        ]
-        
-        guard let bodyData = try? JSONSerialization.data(withJSONObject: payload) else {
-            print("[LocalModelService] ❌ Errore serializzazione payload")
-            return .failure(.invalidInput)
-        }
-        
-        request.httpBody = bodyData
-        
+
         do {
             print("[LocalModelService] ⏳ Attesa risposta...")
-            let (data, response) = try await session.data(for: request)
-            
-            guard let httpResponse = response as? HTTPURLResponse else {
-                print("[LocalModelService] ❌ Risposta non valida")
-                return .failure(.networkError("Risposta non valida"))
-            }
-            
-            print("[LocalModelService] • Status code: \(httpResponse.statusCode)")
-            
-            guard httpResponse.statusCode == 200 else {
-                let errorString = String(data: data, encoding: .utf8) ?? "Nessun dettaglio"
-                print("[LocalModelService] ❌ Errore HTTP \(httpResponse.statusCode): \(errorString)")
-                return .failure(.networkError("Errore HTTP \(httpResponse.statusCode): \(errorString)"))
-            }
-            
-            print("[LocalModelService] ✅ Risposta ricevuta, parsing...")
-            
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                print("[LocalModelService] • JSON ricevuto: \(json.keys.joined(separator: ", "))")
-                
-                if let responseText = json["response"] as? String {
-                    print("[LocalModelService] ✅ Risposta valida: \(responseText.prefix(100))...")
-                    let result = AIResult.success(
-                        taskID: task.id,
-                        provider: provider,
-                        result: responseText,
-                        metadata: ["model": model, "endpoint": endpoint]
-                    )
-                    return .success(result)
-                } else {
-                    print("[LocalModelService] ❌ Campo 'response' mancante nel JSON")
-                    print("[LocalModelService] • JSON completo: \(json)")
-                }
-            } else {
-                let responseString = String(data: data, encoding: .utf8) ?? "Non decodificabile"
-                print("[LocalModelService] ❌ Risposta non è JSON valido: \(responseString.prefix(500))")
-            }
-            
-            return .failure(.processingError("Risposta non valida"))
+            let responseText = try await LocalAIService.shared.generateLocalText(
+                prompt: prompt,
+                model: model
+            )
+            print("[LocalModelService] ✅ Risposta valida: \(responseText.prefix(100))...")
+            let result = AIResult.success(
+                taskID: task.id,
+                provider: provider,
+                result: responseText,
+                metadata: ["model": model, "endpoint": endpoint]
+            )
+            return .success(result)
         } catch {
             print("[LocalModelService] ❌ Errore network: \(error.localizedDescription)")
             if (error as NSError).code == NSURLErrorTimedOut {
@@ -466,28 +359,6 @@ class LocalModelService {
         print("[LocalModelService] • Modello: \(model)")
         print("[LocalModelService] • Prompt: \(prompt.prefix(100))...")
         
-        guard let url = URL(string: endpoint) else {
-            print("[LocalModelService] ❌ URL non valido: \(endpoint)")
-            return .failure(.invalidInput)
-        }
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        let payload: [String: Any] = [
-            "model": model,
-            "prompt": prompt,
-            "stream": true
-        ]
-        
-        guard let bodyData = try? JSONSerialization.data(withJSONObject: payload) else {
-            print("[LocalModelService] ❌ Errore serializzazione payload")
-            return .failure(.invalidInput)
-        }
-        
-        request.httpBody = bodyData
-        
         // Ottieni il callback di streaming da AIManager
         let streamCallback = await MainActor.run {
             return AIManager.shared.getStreamCallback(for: task.id)
@@ -496,49 +367,12 @@ class LocalModelService {
         do {
             print("[LocalModelService] ⏳ Attesa risposta streaming...")
             print("[LocalModelService] • Lunghezza prompt: \(prompt.count) caratteri")
-            // Usa streamingSession con timeout più lungo per prompt lunghi
-            let (asyncBytes, response) = try await streamingSession.bytes(for: request)
-            
-            guard let httpResponse = response as? HTTPURLResponse else {
-                print("[LocalModelService] ❌ Risposta non valida")
-                return .failure(.networkError("Risposta non valida"))
-            }
-            
-            print("[LocalModelService] • Status code: \(httpResponse.statusCode)")
-            
-            guard httpResponse.statusCode == 200 else {
-                print("[LocalModelService] ❌ Errore HTTP \(httpResponse.statusCode)")
-                return .failure(.networkError("Errore HTTP \(httpResponse.statusCode)"))
-            }
-            
-            var fullResponse = ""
-            var buffer = Data()
-            
-            // Leggi lo stream JSON line-by-line
-            for try await byte in asyncBytes {
-                buffer.append(byte)
-                
-                // Ollama invia JSON objects separati da newline
-                if byte == 10 { // newline
-                    if let line = String(data: buffer, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                       !line.isEmpty {
-                        if let json = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any] {
-                            if let responseText = json["response"] as? String {
-                                fullResponse += responseText
-                                
-                                // Notifica il token in streaming
-                                await MainActor.run {
-                                    streamCallback?(responseText)
-                                }
-                            }
-                            
-                            // Se done è true, abbiamo finito
-                            if let done = json["done"] as? Bool, done {
-                                break
-                            }
-                        }
-                    }
-                    buffer = Data()
+            let fullResponse = try await LocalAIService.shared.streamLocalText(
+                prompt: prompt,
+                model: model
+            ) { token in
+                Task { @MainActor in
+                    streamCallback?(token)
                 }
             }
             
@@ -600,4 +434,3 @@ class LocalModelService {
         return prompt
     }
 }
-

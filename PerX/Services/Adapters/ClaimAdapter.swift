@@ -300,7 +300,7 @@ struct SinistroListItem: Identifiable {
         self.id = dto.id
         self.riferimento = dto.external_ref ?? dto.id
         self.garanzia = dto.garanzia
-        self.stato = BackendStatoMapping.statoSinistro(forCloudSlug: dto.stato_corrente) ?? .istruzione
+        self.stato = BackendStatoMapping.statoSinistro(forCloudSlug: dto.stato_corrente, substati: dto.stato_substati) ?? .istruzione
         self.nomeAssicurato = dto.nome_assicurato
         self.nomeCompagnia = dto.compagnia
         self.dataAssegnazione = dto.created_at
@@ -353,7 +353,7 @@ struct SinistroDetail: Identifiable {
         self.id = dto.id
         self.riferimento = dto.external_ref ?? dto.id
         self.garanzia = dto.garanzia
-        self.stato = BackendStatoMapping.statoSinistro(forCloudSlug: dto.stato_corrente) ?? .istruzione
+        self.stato = BackendStatoMapping.statoSinistro(forCloudSlug: dto.stato_corrente, substati: dto.stato_substati) ?? .istruzione
         self.numeroSinistroCompagnia = dto.numero_sinistro
         self.nomeAssicurato = dto.nome_assicurato
         self.nomeCompagnia = dto.compagnia

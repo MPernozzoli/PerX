@@ -69,6 +69,8 @@ lib/
 lib64/
 !catdispatcher/src/lib/
 !catdispatcher/src/lib/**
+!portal-web/lib/
+!portal-web/lib/**
 parts/
 sdist/
 var/

@@ -21,6 +21,7 @@ from app.schemas.comms import (
     EmailResponse,
 )
 from app.services.claim_service import ClaimService
+from app.services.email_routing_service import EmailRoutingService
 
 router = APIRouter()
 
@@ -86,6 +87,7 @@ async def create_email(
         provider_id=payload.provider_id,
     )
     db.add(email)
+    await EmailRoutingService.reroute_disabled_user_email(db, email)
     await db.commit()
     await db.refresh(email)
     return EmailResponse.model_validate(email)
@@ -131,6 +133,7 @@ async def link_email_to_claim(
         created_by=payload.created_by,
     )
     db.add(link)
+    await EmailRoutingService.reroute_disabled_user_email(db, email, claim_ids=[claim.id])
     db.add(
         ClaimEvent(
             id=str(uuid.uuid4()),

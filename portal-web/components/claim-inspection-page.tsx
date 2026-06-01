@@ -16,6 +16,7 @@ import {
   updateInspectionLocation
 } from "@/lib/api";
 import type { PortalInspectionSchedulingOverview } from "@/lib/types";
+import type { PortalSession } from "@/lib/types";
 
 type InspectionSlotDraft = {
   key: string;
@@ -118,6 +119,175 @@ function parseCoordinateInput(value: string) {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function VideoInspectionSchedulingCard({
+  claimId,
+  notes,
+  overview,
+  refresh,
+  selectedKeys,
+  session,
+  setError,
+  setNotes,
+  setResult,
+  setSelectedKeys
+}: {
+  claimId: string;
+  notes: string;
+  overview: PortalInspectionSchedulingOverview;
+  refresh: (claimId?: string) => Promise<void>;
+  selectedKeys: string[];
+  session: PortalSession;
+  setError: (message: string | null) => void;
+  setNotes: (value: string) => void;
+  setResult: (message: string | null) => void;
+  setSelectedKeys: (value: string[] | ((current: string[]) => string[])) => void;
+}) {
+  const selectedSlots = resolveSelectedInspectionSlots(overview, selectedKeys);
+  const hasAvailability = overview.availability_days.some((day) => day.slot_count > 0);
+  const isLocked = overview.status === "confirmed";
+
+  return (
+    <SectionCard title="Fissazione videoperizia" eyebrow="Operatività" accent="green">
+      <div className="inspection-stack">
+        <p>{overview.instructions}</p>
+        {overview.pending_confirmation_message ? (
+          <p className="feedback feedback--success">{overview.pending_confirmation_message}</p>
+        ) : null}
+
+        <div className="inspection-summary-box">
+          <div>
+            <p className="section-card__eyebrow">Prima della chiamata</p>
+            <h3>Prepara la videoperizia</h3>
+          </div>
+          <ol className="plain-list">
+            {overview.preparation_items.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ol>
+        </div>
+
+        <div className="inspection-availability">
+          <div>
+            <p className="section-card__eyebrow">Finestre disponibili</p>
+            <h3>Seleziona una fascia da {overview.slot_duration_minutes} minuti</h3>
+            <p className="support-copy">
+              {overview.assigned_expert_retained
+                ? `Gli orari mostrati sono quelli disponibili del perito già incaricato: ${overview.assigned_expert_name}.`
+                : `Il giorno scelto, alle ore ${String(overview.assignment_run_hour).padStart(2, "0")}:00, assegneremo il primo perito compatibile anche in base al carico di lavoro. Riceverai una notifica con il suo nome.`}
+            </p>
+          </div>
+
+          {hasAvailability ? (
+            <div className="inspection-days-grid">
+              {overview.availability_days.map((day) => (
+                <article
+                  key={day.date}
+                  className={`inspection-day-card${!day.is_available ? " inspection-day-card--disabled" : ""}`}
+                >
+                  <div className="inspection-day-card__header">
+                    <strong>{formatInspectionDayLabel(day.date)}</strong>
+                    <span>{day.is_available ? `${day.slot_count} fasce disponibili` : "Nessuna disponibilità"}</span>
+                  </div>
+                  {day.slots.length > 0 ? (
+                    <div className="inspection-slot-grid">
+                      {day.slots.map((slot) => {
+                        const slotKey = buildInspectionSlotKey(slot.date, slot.label);
+                        const isSelected = selectedKeys.includes(slotKey);
+                        return (
+                          <button
+                            key={slot.id}
+                            type="button"
+                            className={`inspection-slot-button${isSelected ? " inspection-slot-button--selected" : ""}`}
+                            disabled={isLocked}
+                            onClick={() => setSelectedKeys([slotKey])}
+                          >
+                            <strong>{slot.label}</strong>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="feedback">Nessuna fascia utile rilevata nell&apos;orizzonte corrente.</p>
+          )}
+        </div>
+
+        <div className="inspection-summary-box">
+          <div>
+            <p className="section-card__eyebrow">Appuntamento</p>
+            <h3>Fascia selezionata</h3>
+          </div>
+          {selectedSlots.length > 0 ? (
+            <ul className="plain-list">
+              {selectedSlots.map((slot) => (
+                <li key={slot.key}>
+                  <strong>{formatInspectionDayLabel(slot.date)}</strong>
+                  <span>{slot.label}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="support-copy">Non hai ancora selezionato una fascia oraria.</p>
+          )}
+          {!isLocked ? (
+            <div className="mini-form">
+              <label>
+                Note per il perito
+                <textarea
+                  value={notes}
+                  onChange={(event) => setNotes(event.target.value)}
+                  placeholder="Indicazioni utili per la videochiamata..."
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  if (selectedSlots.length !== 1) {
+                    setError("Seleziona una fascia oraria prima di confermare.");
+                    return;
+                  }
+                  startTransition(() => {
+                    void (async () => {
+                      try {
+                        await submitInspectionPreferences(
+                          session,
+                          {
+                            selectedSlots: selectedSlots.map((slot) => ({
+                              date: slot.date,
+                              startTime: slot.startTime,
+                              endTime: slot.endTime,
+                              label: slot.label
+                            })),
+                            notes
+                          },
+                          claimId
+                        );
+                        setResult("Fascia videoperizia registrata.");
+                        await refresh(claimId);
+                      } catch (requestError) {
+                        setError(
+                          requestError instanceof Error
+                            ? requestError.message
+                            : "Invio preferenza videoperizia non riuscito."
+                        );
+                      }
+                    })();
+                  });
+                }}
+              >
+                Conferma fascia videoperizia
+              </button>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </SectionCard>
+  );
+}
+
 export function ClaimInspectionPage() {
   const { error, inspectionOverview, isLoading, refresh, session, setError, summary } =
     usePortalClaimData();
@@ -166,13 +336,18 @@ export function ClaimInspectionPage() {
     inspectionOverview,
     selectedInspectionSlotKeys
   );
+  const isVideoInspection = inspectionOverview?.mode === "video_inspection";
 
   return (
     <div className="dashboard-shell">
       <ClaimPageHeader
-        eyebrow="Sopralluogo"
-        title="Conferma posizione e preferenze"
-        description="Quando il sinistro richiede un sopralluogo, qui confermi il punto di incontro e scegli le finestre orarie disponibili."
+        eyebrow={isVideoInspection ? "Videoperizia" : "Sopralluogo"}
+        title={isVideoInspection ? "Scegli data e fascia oraria" : "Conferma posizione e preferenze"}
+        description={
+          isVideoInspection
+            ? "Qui scegli l'appuntamento di videoperizia e trovi le indicazioni per preparare la chiamata."
+            : "Quando il sinistro richiede un sopralluogo, qui confermi il punto di incontro e scegli le finestre orarie disponibili."
+        }
         summary={summary}
       >
         <Link href="/claim" className="ghost-button">
@@ -187,6 +362,19 @@ export function ClaimInspectionPage() {
         <SectionCard title="Sopralluogo" eyebrow="Stato" accent="ink">
           <p>Al momento non ci sono attività di sopralluogo da gestire per questo sinistro.</p>
         </SectionCard>
+      ) : isVideoInspection ? (
+        <VideoInspectionSchedulingCard
+          claimId={summary.claim_id}
+          notes={inspectionNotes}
+          overview={inspectionOverview}
+          refresh={refresh}
+          selectedKeys={selectedInspectionSlotKeys}
+          session={session}
+          setError={setError}
+          setNotes={setInspectionNotes}
+          setResult={setInspectionResult}
+          setSelectedKeys={setSelectedInspectionSlotKeys}
+        />
       ) : (
         <SectionCard title="Fissazione sopralluogo" eyebrow="Operatività" accent="green">
           <div className="inspection-stack">

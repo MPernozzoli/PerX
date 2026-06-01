@@ -9,8 +9,6 @@ struct AITestChatView: View {
     @State private var ollamaStatus: OllamaStatus = .checking
     @State private var selectedFiles: [URL] = []
     
-    @StateObject private var mlxVisionService = MLXVisionService.shared
-    
     enum OllamaStatus {
         case checking
         case running
@@ -54,14 +52,9 @@ struct AITestChatView: View {
                 
                 Spacer()
                 
-                // Status Ollama per modello testo locale
-                if selectedProvider == .localText {
+                // Status Ollama per modelli locali
+                if selectedProvider == .localText || selectedProvider == .localMultimodal {
                     OllamaStatusView(status: $ollamaStatus)
-                }
-                
-                // Status modello multimodale (MLX)
-                if selectedProvider == .localMultimodal {
-                    ModelStatusView(service: mlxVisionService)
                 }
             }
             
@@ -170,63 +163,31 @@ struct AITestChatView: View {
             checkOllamaStatus()
         }
         .onChange(of: selectedProvider) { _ in
-            if selectedProvider == .localText {
+            if selectedProvider == .localText || selectedProvider == .localMultimodal {
                 checkOllamaStatus()
             }
-        }
-    }
-    
-    // MARK: - Model Status View
-    
-    struct ModelStatusView: View {
-        @ObservedObject var service: MLXVisionService
-        
-        var body: some View {
-            HStack(spacing: 6) {
-                if service.isLoading {
-                    ProgressView()
-                        .scaleEffect(0.7)
-                    Text("Caricamento... \(Int(service.loadProgress * 100))%")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                } else if service.isModelLoaded {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.green)
-                    Text("Modello pronto")
-                        .font(.caption2)
-                        .foregroundColor(.green)
-                } else if let error = service.loadError {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundColor(.orange)
-                    Text("Errore")
-                        .font(.caption2)
-                        .foregroundColor(.orange)
-                } else {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.red)
-                    Text("Non caricato")
-                        .font(.caption2)
-                        .foregroundColor(.red)
-                }
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(Color(.controlBackgroundColor))
-            .cornerRadius(6)
         }
     }
     
     private func checkOllamaStatus() {
         ollamaStatus = .checking
         Task {
-            let isRunning = await OllamaService.shared.isRunning()
+            let isRunning = await LocalAIService.shared.isOllamaAvailable()
             await MainActor.run {
                 ollamaStatus = isRunning ? .running : .notRunning
             }
             
             // Se non è in esecuzione, prova ad avviarlo
             if !isRunning {
-                let started = await OllamaService.shared.startOllama()
+                let started: Bool
+                do {
+                    started = try await LocalAIService.shared.startOllamaIfNeeded()
+                } catch {
+                    await MainActor.run {
+                        ollamaStatus = .error(error.localizedDescription)
+                    }
+                    return
+                }
                 await MainActor.run {
                     ollamaStatus = started ? .running : .error("Impossibile avviare Ollama")
                 }
@@ -296,11 +257,6 @@ struct AITestChatView: View {
             // Se ci sono immagini E il provider supporta immagini, usa imageAnalysis
             if hasImages && (selectedProvider == .localMultimodal || selectedProvider == .cloudOpenAI) {
                 print("[AITestChatView] 🔍 Creazione task con immagini: tipo=imageAnalysis, provider=\(selectedProvider.rawValue), immagini=\(imageFiles.count), prompt='\(text)'")
-                
-                if selectedProvider == .localMultimodal {
-                    print("[AITestChatView] • MLXVisionService.serviceAvailable: \(MLXVisionService.shared.serviceAvailable)")
-                    print("[AITestChatView] • MLXVisionService.isModelLoaded: \(MLXVisionService.shared.isModelLoaded)")
-                }
                 
                 // Analizza ogni immagine separatamente
                 for imageURL in imageFiles {
@@ -584,4 +540,3 @@ struct OllamaStatusView: View {
         }
     }
 }
-

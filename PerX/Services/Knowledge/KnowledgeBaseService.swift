@@ -15,8 +15,8 @@ protocol KnowledgeBaseProtocol {
 final class KnowledgeBaseService: KnowledgeBaseProtocol {
     static let shared = KnowledgeBaseService()
     
-    /// Provider di embedding (default: OpenAI)
-    var embeddingProvider: EmbeddingProvider = OpenAIEmbeddingProvider.shared
+    /// Provider di embedding locale. Il client non contatta provider cloud.
+    var embeddingProvider: EmbeddingProvider = StubEmbeddingProvider()
     
     private let kbFileName = "kb.sqlite"
     private var chunks: [KnowledgeChunk] = []
@@ -162,4 +162,3 @@ final class KnowledgeBaseService: KnowledgeBaseProtocol {
         return result
     }
 }
-

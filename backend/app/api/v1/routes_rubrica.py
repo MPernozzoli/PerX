@@ -10,8 +10,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import get_current_active_user
+from app.models.compagnia import RubricaCompagnia
 from app.models.rubrica import RubricaAgente, RubricaAgenzia, RubricaLiquidatore
 from app.models.user import User
+from app.schemas.compagnia import (
+    CompagniaCreate,
+    CompagniaListResponse,
+    CompagniaResponse,
+    CompagniaUpdate,
+)
 from app.schemas.rubrica import (
     AgenziaCreate,
     AgenziaListResponse,
@@ -437,3 +444,134 @@ async def _get_agente_or_404(
     if not agente:
         raise HTTPException(status_code=404, detail="Agente not found")
     return agente
+
+
+# ======================================================================
+# COMPAGNIE
+# ======================================================================
+
+@router.get("/compagnie", response_model=CompagniaListResponse)
+async def list_compagnie(
+    search: str | None = Query(None),
+    gruppo: str | None = Query(None),
+    is_active: bool | None = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    query = select(RubricaCompagnia).where(RubricaCompagnia.tenant_id == current_user.tenant_id)
+    if search:
+        like = f"%{search}%"
+        query = query.where(
+            or_(
+                RubricaCompagnia.nome.ilike(like),
+                RubricaCompagnia.codice.ilike(like),
+                RubricaCompagnia.gruppo.ilike(like),
+                RubricaCompagnia.partita_iva.ilike(like),
+            )
+        )
+    if gruppo is not None:
+        query = query.where(RubricaCompagnia.gruppo == gruppo)
+    if is_active is not None:
+        query = query.where(RubricaCompagnia.is_active == is_active)
+
+    total_q = select(func.count()).select_from(query.subquery())
+    total = (await db.execute(total_q)).scalar() or 0
+
+    query = query.order_by(RubricaCompagnia.nome.asc()).offset(skip).limit(limit)
+    result = await db.execute(query)
+    items = result.scalars().all()
+    return CompagniaListResponse(
+        items=[CompagniaResponse.model_validate(c) for c in items],
+        total=int(total),
+    )
+
+
+@router.post("/compagnie", response_model=CompagniaResponse, status_code=status.HTTP_201_CREATED)
+async def create_compagnia(
+    payload: CompagniaCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    # Riuso per nome (vincolo UNIQUE tenant_id+nome): se esiste, ritorno quello.
+    existing = await db.execute(
+        select(RubricaCompagnia).where(
+            RubricaCompagnia.tenant_id == current_user.tenant_id,
+            RubricaCompagnia.nome == payload.nome,
+        )
+    )
+    found = existing.scalar_one_or_none()
+    if found is not None:
+        return CompagniaResponse.model_validate(found)
+
+    compagnia = RubricaCompagnia(
+        id=str(uuid.uuid4()),
+        tenant_id=current_user.tenant_id,
+        **payload.model_dump(),
+    )
+    db.add(compagnia)
+    await db.commit()
+    await db.refresh(compagnia)
+    return CompagniaResponse.model_validate(compagnia)
+
+
+@router.get("/compagnie/{compagnia_id}", response_model=CompagniaResponse)
+async def get_compagnia(
+    compagnia_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    result = await db.execute(
+        select(RubricaCompagnia).where(
+            RubricaCompagnia.id == compagnia_id,
+            RubricaCompagnia.tenant_id == current_user.tenant_id,
+        )
+    )
+    compagnia = result.scalar_one_or_none()
+    if compagnia is None:
+        raise HTTPException(status_code=404, detail="Compagnia not found")
+    return CompagniaResponse.model_validate(compagnia)
+
+
+@router.patch("/compagnie/{compagnia_id}", response_model=CompagniaResponse)
+async def update_compagnia(
+    compagnia_id: str,
+    payload: CompagniaUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    result = await db.execute(
+        select(RubricaCompagnia).where(
+            RubricaCompagnia.id == compagnia_id,
+            RubricaCompagnia.tenant_id == current_user.tenant_id,
+        )
+    )
+    compagnia = result.scalar_one_or_none()
+    if compagnia is None:
+        raise HTTPException(status_code=404, detail="Compagnia not found")
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        setattr(compagnia, key, value)
+    compagnia.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(compagnia)
+    return CompagniaResponse.model_validate(compagnia)
+
+
+@router.delete("/compagnie/{compagnia_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_compagnia(
+    compagnia_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    result = await db.execute(
+        select(RubricaCompagnia).where(
+            RubricaCompagnia.id == compagnia_id,
+            RubricaCompagnia.tenant_id == current_user.tenant_id,
+        )
+    )
+    compagnia = result.scalar_one_or_none()
+    if compagnia is None:
+        raise HTTPException(status_code=404, detail="Compagnia not found")
+    await db.delete(compagnia)
+    await db.commit()

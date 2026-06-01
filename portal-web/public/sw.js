@@ -17,13 +17,15 @@ self.addEventListener("push", (event) => {
     }
   }
   const { title, body, url, tag, data } = payload;
+  const icon = (data && data.icon) || "/icon-192.png";
+  const badge = (data && data.badge) || "/badge-72.png";
   event.waitUntil(
     self.registration.showNotification(title || "Portale assicurati", {
       body,
       tag,
       data: { url, ...(data || {}) },
-      icon: "/icon-192.png",
-      badge: "/badge-72.png"
+      icon,
+      badge
     })
   );
 });

@@ -25,6 +25,9 @@ from app.models.claim_state import ClaimState
 # Sopralluogo substato names produced by the inspection workflow.
 SOPRALLUOGO_AUTO_SUBSTATI = {"da_fissare", "fissato", "confermato", "da_concordare", "da_rifissare"}
 
+# Videoperizia substato names produced by the video-inspection workflow.
+VIDEOPERIZIA_AUTO_SUBSTATI = {"da_fissare", "fissata", "da_eseguire"}
+
 
 def can_exit_istruzione(claim: Claim) -> tuple[bool, list[str]]:
     missing = [f for f in ISTRUZIONE_REQUIRED_FIELDS if not getattr(claim, f, None)]
@@ -198,6 +201,7 @@ class StateService:
         commit: bool = True,
         event_source: str = "manual",
         sopralluogo_substato: Optional[str] = None,
+        videoperizia_substato: Optional[str] = None,
     ) -> bool:
         """Transition claim to new state with validation."""
         claim = await StateService._load_claim(db, tenant_id, claim_id)
@@ -258,6 +262,21 @@ class StateService:
                 if s.get("tag") not in SOPRALLUOGO_AUTO_SUBSTATI
             ]
 
+        if to_state == ClaimStatus.VIDEOPERIZIA.value:
+            kept = [s for s in StateService._substati_list(claim) if s.get("tag") not in VIDEOPERIZIA_AUTO_SUBSTATI]
+            seed_tag = videoperizia_substato or "da_fissare"
+            kept.append({
+                "tag": seed_tag,
+                "source": "system",
+                "added_at": StateService._now_iso(),
+            })
+            claim.stato_substati = kept
+        elif old_state == ClaimStatus.VIDEOPERIZIA.value:
+            claim.stato_substati = [
+                s for s in StateService._substati_list(claim)
+                if s.get("tag") not in VIDEOPERIZIA_AUTO_SUBSTATI
+            ]
+
         claim.version += 1
         claim.updated_at = now
 
@@ -292,6 +311,21 @@ class StateService:
                 source=event_source,
             ))
 
+        notify_videoperizia_da_fissare = (
+            to_state == ClaimStatus.VIDEOPERIZIA.value
+            and (videoperizia_substato or "da_fissare") == "da_fissare"
+        )
+        if notify_videoperizia_da_fissare:
+            db.add(ClaimEvent(
+                id=str(uuid.uuid4()),
+                tenant_id=tenant_id,
+                claim_id=claim_id,
+                event_type="video_inspection_scheduling_requested",
+                actor_user_id=user_id,
+                data_json={},
+                source=event_source,
+            ))
+
         if event_source != "automation":
             from app.core.config import settings
             if settings.FF_AUTOMATIONS_ENABLED:
@@ -306,6 +340,22 @@ class StateService:
 
         if commit:
             await db.commit()
+
+        if notify_videoperizia_da_fissare:
+            from app.services.insured_notification_service import (
+                InsuredNotificationService,
+                build_portal_deeplink,
+            )
+            await InsuredNotificationService.notify(
+                db, claim,
+                kind="video_inspection_da_fissare",
+                title="Scegli quando svolgere la videoperizia",
+                body=(
+                    "Abbiamo bisogno di programmare la videoperizia per il tuo sinistro. "
+                    "Apri il portale per scegliere il giorno e l'ora più comodi."
+                ),
+                deeplink=build_portal_deeplink(claim, "videoperizia"),
+            )
         return True
 
 

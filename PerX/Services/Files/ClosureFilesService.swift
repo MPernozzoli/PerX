@@ -423,7 +423,7 @@ class ClosureFilesService {
             
             // Upload immediato dei file di chiusura (prioritario)
             if !generatedFiles.isEmpty {
-                let prepared = self.prepareClosureFilesForUpload(generatedFiles, sinistroPath: sinistroPath)
+                let prepared = await self.prepareClosureFilesForUpload(generatedFiles)
                 Task { @MainActor in
                     await self.claimSyncService.uploadClosureFilesImmediately(riferimento: riferimento, fileURLs: prepared)
                 }
@@ -432,35 +432,27 @@ class ClosureFilesService {
     }
     
     /// Verifica dimensione e, se necessario, comprime/splitta i file per rientrare sotto i 10 MB.
-    /// Nota: opera dentro la cartella del sinistro con security-scoped access.
-    private func prepareClosureFilesForUpload(_ files: [URL], sinistroPath: String) -> [URL] {
-        var result: [URL] = []
-        
-        let prepared: [URL] = fileService.performWithSecurityScopedAccess(to: sinistroPath) {
-            var out: [URL] = []
-            for url in files {
-                let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.int64Value
-                    ?? (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map { Int64($0) }
-                    ?? 0
-                
-                if size > 0 && size > maxUploadFileSize {
-                    out.append(contentsOf: compressOrSplitToUnderLimit(url: url, maxBytes: maxUploadFileSize))
-                } else {
-                    out.append(url)
-                }
+    private func prepareClosureFilesForUpload(_ files: [URL]) async -> [URL] {
+        var prepared: [URL] = []
+        for url in files {
+            let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.int64Value
+                ?? (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map { Int64($0) }
+                ?? 0
+
+            if size > 0 && size > maxUploadFileSize {
+                prepared.append(contentsOf: await compressOrSplitToUnderLimit(url: url, maxBytes: maxUploadFileSize))
+            } else {
+                prepared.append(url)
             }
-            return out
-        } ?? files
-        
-        result.append(contentsOf: prepared)
-        return result
+        }
+        return prepared
     }
     
     /// Strategia:
     /// - prova a zippare il file
     /// - se lo zip resta > limite, splitta lo zip in parti <= ~9MB
     /// - NON rimuove l'originale (richiesto dall'utente per preservare i file di partenza)
-    private func compressOrSplitToUnderLimit(url: URL, maxBytes: Int64) -> [URL] {
+    private func compressOrSplitToUnderLimit(url: URL, maxBytes: Int64) async -> [URL] {
         let fm = FileManager.default
         let dir = url.deletingLastPathComponent()
         
@@ -468,7 +460,7 @@ class ClosureFilesService {
         let zipURL = dir.appendingPathComponent(url.lastPathComponent + ".zip")
         _ = try? fm.removeItem(at: zipURL)
         
-        let zipOk = runZip(input: url, output: zipURL)
+        let zipOk = await runZip(input: url, output: zipURL)
         if zipOk, let zipSize = (try? fm.attributesOfItem(atPath: zipURL.path)[.size] as? NSNumber)?.int64Value {
             if zipSize <= maxBytes {
                 // Restituiamo lo zip, ma NON cancelliamo l'originale
@@ -488,17 +480,15 @@ class ClosureFilesService {
         return [url]
     }
     
-    private func runZip(input: URL, output: URL) -> Bool {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
-        // -j: no path, -9: max compression
-        process.arguments = ["-j", "-9", output.lastPathComponent, input.lastPathComponent]
-        process.currentDirectoryURL = input.deletingLastPathComponent()
-        
+    private func runZip(input: URL, output: URL) async -> Bool {
         do {
-            try process.run()
-            process.waitUntilExit()
-            return process.terminationStatus == 0
+            try await PerXLocalAgent.shared.createZipArchive(
+                from: input,
+                at: output,
+                recursive: false,
+                flattenPaths: true
+            )
+            return true
         } catch {
             return false
         }
@@ -2218,4 +2208,3 @@ class ClosureFilesService {
         return missingFiles
     }
 }
-

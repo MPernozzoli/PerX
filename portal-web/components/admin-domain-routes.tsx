@@ -54,6 +54,12 @@ type TenantSettings = {
     technicians: unknown[];
     municipalities: unknown[];
   };
+  video_inspection_settings: {
+    enabled: boolean;
+    assignment_run_hour: number;
+    first_slot_time: string;
+    slot_minutes: number;
+  };
   provider_settings?: {
     map_provider: string;
     maps_api_key: string;
@@ -474,6 +480,22 @@ export function AdminDomainRoutes() {
                   className="w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2"
                   value={settings.default_claim_garanzia}
                   onChange={(event) => setSettings({ ...settings, default_claim_garanzia: event.target.value })}
+                />
+              </Field>
+              <Field label="Primo slot videoperizia">
+                <input
+                  className="w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2"
+                  type="time"
+                  value={settings.video_inspection_settings.first_slot_time}
+                  onChange={(event) =>
+                    setSettings({
+                      ...settings,
+                      video_inspection_settings: {
+                        ...settings.video_inspection_settings,
+                        first_slot_time: event.target.value
+                      }
+                    })
+                  }
                 />
               </Field>
               <div className="md:col-span-2">

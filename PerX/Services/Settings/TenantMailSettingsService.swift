@@ -148,21 +148,77 @@ struct TenantCATSettings: Codable, Hashable {
     )
 }
 
+struct TenantVideoInspectionSettings: Codable, Hashable {
+    var enabled: Bool
+    var assignmentRunHour: Int
+    var firstSlotHour: Int
+    var slotMinutes: Int
+
+    static let `default` = TenantVideoInspectionSettings(
+        enabled: true,
+        assignmentRunHour: 9,
+        firstSlotHour: 10,
+        slotMinutes: 30
+    )
+}
+
 struct TenantInspectionProviderSettings: Codable, Hashable {
     var mapProvider: String
     var mapsAPIKey: String
     var routingProvider: String
     var routingAPIKey: String
+    var routingEnabled: Bool
+    var routingCacheTTLDays: Int
     var geocodingProvider: String
     var geocodingAPIKey: String
     var messagingProvider: String
     var messagingAPIKey: String
+
+    init(
+        mapProvider: String,
+        mapsAPIKey: String,
+        routingProvider: String,
+        routingAPIKey: String,
+        routingEnabled: Bool = false,
+        routingCacheTTLDays: Int = 14,
+        geocodingProvider: String,
+        geocodingAPIKey: String,
+        messagingProvider: String,
+        messagingAPIKey: String
+    ) {
+        self.mapProvider = mapProvider
+        self.mapsAPIKey = mapsAPIKey
+        self.routingProvider = routingProvider
+        self.routingAPIKey = routingAPIKey
+        self.routingEnabled = routingEnabled
+        self.routingCacheTTLDays = routingCacheTTLDays
+        self.geocodingProvider = geocodingProvider
+        self.geocodingAPIKey = geocodingAPIKey
+        self.messagingProvider = messagingProvider
+        self.messagingAPIKey = messagingAPIKey
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        mapProvider = try container.decode(String.self, forKey: .mapProvider)
+        mapsAPIKey = try container.decode(String.self, forKey: .mapsAPIKey)
+        routingProvider = try container.decode(String.self, forKey: .routingProvider)
+        routingAPIKey = try container.decode(String.self, forKey: .routingAPIKey)
+        routingEnabled = try container.decodeIfPresent(Bool.self, forKey: .routingEnabled) ?? false
+        routingCacheTTLDays = try container.decodeIfPresent(Int.self, forKey: .routingCacheTTLDays) ?? 14
+        geocodingProvider = try container.decode(String.self, forKey: .geocodingProvider)
+        geocodingAPIKey = try container.decode(String.self, forKey: .geocodingAPIKey)
+        messagingProvider = try container.decode(String.self, forKey: .messagingProvider)
+        messagingAPIKey = try container.decode(String.self, forKey: .messagingAPIKey)
+    }
 
     static let `default` = TenantInspectionProviderSettings(
         mapProvider: "google_maps",
         mapsAPIKey: "",
         routingProvider: "google_routes",
         routingAPIKey: "",
+        routingEnabled: false,
+        routingCacheTTLDays: 14,
         geocodingProvider: "google_geocoding",
         geocodingAPIKey: "",
         messagingProvider: "twilio",
@@ -170,9 +226,24 @@ struct TenantInspectionProviderSettings: Codable, Hashable {
     )
 }
 
+struct TenantBrandingSettings: Codable, Equatable {
+    var iconDataURL: String?
+    var badgeDataURL: String?
+    var logoDataURL: String?
+    var primaryColor: String?
+
+    static let empty = TenantBrandingSettings(
+        iconDataURL: nil,
+        badgeDataURL: nil,
+        logoDataURL: nil,
+        primaryColor: nil
+    )
+}
+
 struct TenantMailSettings: Codable {
     var tenantName: String
     var tenantSlug: String
+    var portalDomains: [String]
     var internalDomains: [String]
     var internalEmails: [String]
     var systemEmails: [String]
@@ -180,11 +251,61 @@ struct TenantMailSettings: Codable {
     var claimGaranzie: [String]
     var defaultClaimGaranzia: String
     var catSettings: TenantCATSettings
+    var videoInspectionSettings: TenantVideoInspectionSettings
     var providerSettings: TenantInspectionProviderSettings?
+    var branding: TenantBrandingSettings?
+
+    init(
+        tenantName: String,
+        tenantSlug: String,
+        portalDomains: [String] = [],
+        internalDomains: [String],
+        internalEmails: [String],
+        systemEmails: [String],
+        secretariatEmails: [String],
+        claimGaranzie: [String],
+        defaultClaimGaranzia: String,
+        catSettings: TenantCATSettings,
+        videoInspectionSettings: TenantVideoInspectionSettings,
+        providerSettings: TenantInspectionProviderSettings?,
+        branding: TenantBrandingSettings?
+    ) {
+        self.tenantName = tenantName
+        self.tenantSlug = tenantSlug
+        self.portalDomains = portalDomains
+        self.internalDomains = internalDomains
+        self.internalEmails = internalEmails
+        self.systemEmails = systemEmails
+        self.secretariatEmails = secretariatEmails
+        self.claimGaranzie = claimGaranzie
+        self.defaultClaimGaranzia = defaultClaimGaranzia
+        self.catSettings = catSettings
+        self.videoInspectionSettings = videoInspectionSettings
+        self.providerSettings = providerSettings
+        self.branding = branding
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        tenantName = try container.decode(String.self, forKey: .tenantName)
+        tenantSlug = try container.decode(String.self, forKey: .tenantSlug)
+        portalDomains = try container.decodeIfPresent([String].self, forKey: .portalDomains) ?? []
+        internalDomains = try container.decode([String].self, forKey: .internalDomains)
+        internalEmails = try container.decode([String].self, forKey: .internalEmails)
+        systemEmails = try container.decode([String].self, forKey: .systemEmails)
+        secretariatEmails = try container.decode([String].self, forKey: .secretariatEmails)
+        claimGaranzie = try container.decode([String].self, forKey: .claimGaranzie)
+        defaultClaimGaranzia = try container.decode(String.self, forKey: .defaultClaimGaranzia)
+        catSettings = try container.decode(TenantCATSettings.self, forKey: .catSettings)
+        videoInspectionSettings = try container.decodeIfPresent(TenantVideoInspectionSettings.self, forKey: .videoInspectionSettings) ?? .default
+        providerSettings = try container.decodeIfPresent(TenantInspectionProviderSettings.self, forKey: .providerSettings)
+        branding = try container.decodeIfPresent(TenantBrandingSettings.self, forKey: .branding)
+    }
 
     static let `default` = TenantMailSettings(
         tenantName: "Nuovo Studio",
         tenantSlug: "nuovo-studio",
+        portalDomains: [],
         internalDomains: ["manivaperizie.it", "studioperizie.it"],
         internalEmails: [],
         systemEmails: ["info@pynkstudio.it"],
@@ -192,7 +313,9 @@ struct TenantMailSettings: Codable {
         claimGaranzie: ["Fenomeno Elettrico"],
         defaultClaimGaranzia: "Fenomeno Elettrico",
         catSettings: .default,
-        providerSettings: nil
+        videoInspectionSettings: .default,
+        providerSettings: nil,
+        branding: nil
     )
 }
 
@@ -214,7 +337,10 @@ final class TenantMailSettingsService {
         }
         set {
             let value = normalized(newValue)
-            guard let data = try? JSONEncoder().encode(value) else { return }
+            var cachedValue = value
+            // Le chiavi provider restano server-side e non vengono persistite sul client.
+            cachedValue.providerSettings = nil
+            guard let data = try? JSONEncoder().encode(cachedValue) else { return }
             defaults.set(data, forKey: storageKey)
             NotificationCenter.default.post(name: .tenantSettingsChanged, object: nil)
         }
@@ -243,6 +369,7 @@ final class TenantMailSettingsService {
         return TenantMailSettings(
             tenantName: value.tenantName.trimmingCharacters(in: .whitespacesAndNewlines),
             tenantSlug: normalizeSlug(value.tenantSlug),
+            portalDomains: normalizeDomains(value.portalDomains),
             internalDomains: normalizeDomains(value.internalDomains),
             internalEmails: normalizeEmails(value.internalEmails),
             systemEmails: normalizeEmails(value.systemEmails),
@@ -253,7 +380,18 @@ final class TenantMailSettingsService {
                 allowed: normalizedGaranzie
             ),
             catSettings: normalizeCATSettings(value.catSettings),
-            providerSettings: value.providerSettings.map(normalizeProviderSettings)
+            videoInspectionSettings: normalizeVideoInspectionSettings(value.videoInspectionSettings),
+            providerSettings: value.providerSettings.map(normalizeProviderSettings),
+            branding: value.branding
+        )
+    }
+
+    private func normalizeVideoInspectionSettings(_ value: TenantVideoInspectionSettings) -> TenantVideoInspectionSettings {
+        TenantVideoInspectionSettings(
+            enabled: value.enabled,
+            assignmentRunHour: min(max(value.assignmentRunHour, 0), 23),
+            firstSlotHour: min(max(value.firstSlotHour, 0), 23),
+            slotMinutes: min(max(value.slotMinutes, 15), 60)
         )
     }
 
@@ -308,6 +446,8 @@ final class TenantMailSettingsService {
             mapsAPIKey: value.mapsAPIKey.trimmingCharacters(in: .whitespacesAndNewlines),
             routingProvider: value.routingProvider.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
             routingAPIKey: value.routingAPIKey.trimmingCharacters(in: .whitespacesAndNewlines),
+            routingEnabled: value.routingEnabled,
+            routingCacheTTLDays: max(value.routingCacheTTLDays, 1),
             geocodingProvider: value.geocodingProvider.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
             geocodingAPIKey: value.geocodingAPIKey.trimmingCharacters(in: .whitespacesAndNewlines),
             messagingProvider: value.messagingProvider.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),

@@ -310,7 +310,10 @@ private struct TenantUserEditorSheet: View {
 
                 Section("Ruoli e accesso") {
                     roleGrid
-                    Toggle("Utente attivo", isOn: $isActive)
+                    Toggle("Consenti accesso a PerX", isOn: $isActive)
+                    Text("Se disabilitato, l'utente non può accedere. Le mail indirizzate ai suoi alias vengono inoltrate alla segreteria e agli assegnatari attivi dei sinistri correlati.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     if mode == .create {
                         Toggle("Invia invito per creare la password", isOn: $sendInvite)
                     }

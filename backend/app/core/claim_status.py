@@ -15,7 +15,7 @@ class ClaimStatus(str, Enum):
     IN_ATTESA_ASSEGNAZIONE = "in_attesa_assegnazione"
     SOPRALLUOGO = "sopralluogo"
     IN_ATTESA_DOCUMENTALE = "in_attesa_documentale"
-    VIDEOPERIZIA_DA_ESEGUIRE = "videoperizia_da_eseguire"
+    VIDEOPERIZIA = "videoperizia"
     DA_GESTIRE_VIDEO = "da_gestire_video"
     DA_GESTIRE_TRADIZIONALE = "da_gestire_tradizionale"
     DA_GESTIRE_DOCUMENTALE = "da_gestire_documentale"
@@ -53,7 +53,7 @@ VALID_TRANSITIONS: dict[str, set[str]] = {
         ClaimStatus.SECONDO_CONTATTO.value,
         ClaimStatus.IN_ATTESA_ASSEGNAZIONE.value,
         ClaimStatus.IN_ATTESA_DOCUMENTALE.value,
-        ClaimStatus.VIDEOPERIZIA_DA_ESEGUIRE.value,
+        ClaimStatus.VIDEOPERIZIA.value,
         ClaimStatus.DA_GESTIRE_TRADIZIONALE.value,
         ClaimStatus.DA_GESTIRE_DOCUMENTALE.value,
         ClaimStatus.SOPRALLUOGO.value,
@@ -61,7 +61,7 @@ VALID_TRANSITIONS: dict[str, set[str]] = {
     ClaimStatus.SECONDO_CONTATTO.value: {
         ClaimStatus.IN_ATTESA_ASSEGNAZIONE.value,
         ClaimStatus.IN_ATTESA_DOCUMENTALE.value,
-        ClaimStatus.VIDEOPERIZIA_DA_ESEGUIRE.value,
+        ClaimStatus.VIDEOPERIZIA.value,
         ClaimStatus.DA_GESTIRE_TRADIZIONALE.value,
         ClaimStatus.DA_GESTIRE_DOCUMENTALE.value,
         ClaimStatus.SOPRALLUOGO.value,
@@ -82,7 +82,7 @@ VALID_TRANSITIONS: dict[str, set[str]] = {
         ClaimStatus.DA_GESTIRE_DOCUMENTALE.value,
         ClaimStatus.ATTESA_PASSIVA.value,
     },
-    ClaimStatus.VIDEOPERIZIA_DA_ESEGUIRE.value: {
+    ClaimStatus.VIDEOPERIZIA.value: {
         ClaimStatus.DA_GESTIRE_VIDEO.value,
     },
     ClaimStatus.DA_GESTIRE_VIDEO.value: {
@@ -182,7 +182,7 @@ LEGACY_SV_TO_SLUG: dict[str, tuple[str, str | None]] = {
     "SV001": (ClaimStatus.ISTRUZIONE.value, None),
     "SV002": (ClaimStatus.IN_ATTESA_DOCUMENTALE.value, None),
     "SV003": (ClaimStatus.DA_GESTIRE_TRADIZIONALE.value, None),
-    "SV004": (ClaimStatus.VIDEOPERIZIA_DA_ESEGUIRE.value, None),
+    "SV004": (ClaimStatus.VIDEOPERIZIA.value, "da_fissare"),
     "SV005": (ClaimStatus.DA_GESTIRE_NO_RESIDUI.value, None),
     "SV006": (ClaimStatus.ISTRUZIONE.value, None),
     "SV007": (ClaimStatus.PRIMO_CONTATTO.value, None),
@@ -191,8 +191,8 @@ LEGACY_SV_TO_SLUG: dict[str, tuple[str, str | None]] = {
     "SV010": (ClaimStatus.DA_GESTIRE_DOCUMENTALE.value, "da_aprire"),
     "SV011": (ClaimStatus.DA_GESTIRE_DOCUMENTALE.value, None),
     "SV012": (ClaimStatus.IN_GESTIONE.value, None),
-    "SV013": (ClaimStatus.DA_GESTIRE_VIDEO.value, None),
-    "SV014": (ClaimStatus.DA_GESTIRE_VIDEO.value, "fissata"),
+    "SV013": (ClaimStatus.VIDEOPERIZIA.value, "da_eseguire"),
+    "SV014": (ClaimStatus.VIDEOPERIZIA.value, "fissata"),
     "SV020": (ClaimStatus.ATTO_DA_INVIARE.value, None),
     "SV021": (ClaimStatus.ESITO_DA_COMUNICARE.value, None),
     "SV022": (ClaimStatus.IN_ATTESA_TERZI.value, "assicurato"),
@@ -233,6 +233,13 @@ SOLLECITABLE_STATES: frozenset[str] = frozenset({
 
 # Substato tags reserved for the inspection workflow on SOPRALLUOGO.
 SOPRALLUOGO_SUBSTATI = ("da_fissare", "fissato", "confermato", "da_concordare", "da_rifissare")
+
+# Substato tags reserved for the video-inspection workflow on VIDEOPERIZIA.
+# Lifecycle:
+#   da_fissare → assicurato deve scegliere lo slot dal portale
+#   fissata    → slot confermato dall'assicurato, in attesa del giorno X
+#   da_eseguire→ giorno X, perito assegnato, videochiamata imminente
+VIDEOPERIZIA_SUBSTATI = ("da_fissare", "fissata", "da_eseguire")
 
 
 def is_valid_transition(from_state: str | None, to_state: str) -> bool:

@@ -25,6 +25,16 @@ RelationType = Literal[
     "altro",
 ]
 
+LegalBasis = Literal[
+    "consent",
+    "contract",
+    "legal_obligation",
+    "vital_interest",
+    "public_interest",
+    "legitimate_interest",
+    "other",
+]
+
 
 # ------------------------------------------------------------------
 # Address
@@ -112,6 +122,8 @@ class ActorRelationBase(BaseModel):
     from_actor_id: str
     to_actor_id: str
     relation_type: RelationType
+    legal_basis: Optional[LegalBasis] = None
+    legal_basis_note: Optional[str] = None
     note: Optional[str] = None
 
 
@@ -186,6 +198,53 @@ class ActorDetailResponse(ActorResponse):
 class ActorListResponse(BaseModel):
     items: List[ActorResponse]
     total: int
+
+
+class ActorSummaryResponse(BaseModel):
+    """
+    Versione minimizzata di Actor pensata per la search.
+
+    Non espone email/telefono/indirizzo. CF/PIVA mascherati: si vedono
+    solo i primi 3 e gli ultimi 3 caratteri (es. "RSS***SRO80" → utile
+    per distinguere duplicati senza dare via il dato completo).
+    Il dato completo lo si ottiene solo via GET /actors/{id}, che è a
+    sua volta autorizzato + audit-loggato.
+    """
+    id: str
+    actor_type: ActorType
+    display_name: str
+    codice_fiscale_masked: Optional[str] = None
+    partita_iva_masked: Optional[str] = None
+
+
+class ActorSummaryListResponse(BaseModel):
+    items: List[ActorSummaryResponse]
+    total: int
+
+
+def _mask_identifier(value: Optional[str]) -> Optional[str]:
+    """RSSMRA80A01H501Z -> RSS********501Z. Mostra solo prefisso + suffisso."""
+    if value is None:
+        return None
+    v = value.strip()
+    if len(v) <= 6:
+        return "*" * len(v)
+    return f"{v[:3]}{'*' * (len(v) - 6)}{v[-3:]}"
+
+
+def build_actor_summary(actor) -> ActorSummaryResponse:
+    """Helper per costruire il summary minimizzato da un Actor SQLAlchemy."""
+    if actor.actor_type == "person":
+        display = " ".join(filter(None, [actor.nome, actor.cognome])).strip() or (actor.denominazione or "—")
+    else:
+        display = actor.denominazione or "—"
+    return ActorSummaryResponse(
+        id=actor.id,
+        actor_type=actor.actor_type,
+        display_name=display,
+        codice_fiscale_masked=_mask_identifier(actor.codice_fiscale),
+        partita_iva_masked=_mask_identifier(actor.partita_iva),
+    )
 
 
 # ------------------------------------------------------------------

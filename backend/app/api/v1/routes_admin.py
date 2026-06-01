@@ -147,9 +147,14 @@ async def update_tenant_settings(
         "claim_garanzie": payload.claim_garanzie or ["Fenomeno Elettrico"],
         "default_claim_garanzia": payload.default_claim_garanzia or "Fenomeno Elettrico",
         "cat_settings": payload.cat_settings.model_dump(),
+        "video_inspection_settings": payload.video_inspection_settings.model_dump(),
     }
     if payload.provider_settings is not None:
         updated_settings["provider_settings"] = payload.provider_settings.model_dump()
+    if payload.ai_settings is not None:
+        updated_settings["ai_settings"] = payload.ai_settings.model_dump()
+    if payload.branding is not None:
+        updated_settings["branding"] = payload.branding.model_dump(exclude_none=True)
 
     tenant.settings_json = updated_settings
     await db.execute(delete(TenantPortalDomain).where(TenantPortalDomain.tenant_id == tenant.id))

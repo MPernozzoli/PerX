@@ -108,11 +108,30 @@ enum CloudActorRelationType: String, Codable, CaseIterable {
     }
 }
 
+enum CloudLegalBasis: String, Codable, CaseIterable {
+    case consent, contract, legal_obligation, vital_interest
+    case public_interest, legitimate_interest, other
+
+    var localized: String {
+        switch self {
+        case .consent: return "Consenso"
+        case .contract: return "Esecuzione contratto"
+        case .legal_obligation: return "Obbligo di legge"
+        case .vital_interest: return "Interesse vitale"
+        case .public_interest: return "Interesse pubblico"
+        case .legitimate_interest: return "Interesse legittimo"
+        case .other: return "Altro"
+        }
+    }
+}
+
 struct CloudActorRelation: Codable, Identifiable, Hashable {
     let id: String
     let from_actor_id: String
     let to_actor_id: String
     let relation_type: CloudActorRelationType
+    let legal_basis: CloudLegalBasis?
+    let legal_basis_note: String?
     let note: String?
     let created_at: Date
 }
@@ -121,6 +140,8 @@ struct CloudActorRelationCreate: Codable {
     let from_actor_id: String
     let to_actor_id: String
     let relation_type: CloudActorRelationType
+    let legal_basis: CloudLegalBasis?
+    let legal_basis_note: String?
     let note: String?
 }
 
@@ -233,6 +254,53 @@ struct CloudActorUpdate: Codable {
 struct CloudActorListResponse: Codable {
     let items: [CloudActorResponse]
     let total: Int
+}
+
+// MARK: - Minimized search summary (GDPR-aware)
+//
+// La search /api/v1/actors ritorna questa shape minimizzata: niente
+// email/telefono/indirizzi, CF/PIVA mascherati. Per ottenere il dato
+// completo serve un GET /actors/{id} esplicito (audit-loggato).
+
+struct CloudActorSummary: Codable, Identifiable, Hashable {
+    let id: String
+    let actor_type: CloudActorType
+    let display_name: String
+    let codice_fiscale_masked: String?
+    let partita_iva_masked: String?
+
+    var identifyingMasked: String? {
+        partita_iva_masked ?? codice_fiscale_masked
+    }
+}
+
+struct CloudActorSummaryListResponse: Codable {
+    let items: [CloudActorSummary]
+    let total: Int
+}
+
+extension CloudActorSummary {
+    /// Costruisce un summary "client-side" da un Actor completo appena creato.
+    /// Usato dal flusso "crea nuovo attore" del picker per non dover rifare
+    /// una search round-trip dopo la creazione.
+    static func fromCreated(_ actor: CloudActorResponse) -> CloudActorSummary {
+        CloudActorSummary(
+            id: actor.id,
+            actor_type: actor.actor_type,
+            display_name: actor.displayName,
+            codice_fiscale_masked: actor.codice_fiscale.map(_mask),
+            partita_iva_masked: actor.partita_iva.map(_mask)
+        )
+    }
+}
+
+private func _mask(_ v: String) -> String {
+    let trimmed = v.trimmingCharacters(in: .whitespaces)
+    if trimmed.count <= 6 { return String(repeating: "*", count: trimmed.count) }
+    let prefix = trimmed.prefix(3)
+    let suffix = trimmed.suffix(3)
+    let stars = String(repeating: "*", count: trimmed.count - 6)
+    return "\(prefix)\(stars)\(suffix)"
 }
 
 // MARK: - Snapshots embedded in claim

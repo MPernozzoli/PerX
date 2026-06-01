@@ -74,7 +74,12 @@ export default function ClaimPortalEntryPage() {
       });
       setStoredPortalSession(session);
       setStage("done");
-      const destination = focus === "atto" ? "/claim/atto" : "/claim";
+      const focusDestinations: Record<string, string> = {
+        atto: "/claim/atto",
+        videoperizia: "/claim/videoperizia",
+        sopralluogo: "/claim/sopralluogo",
+      };
+      const destination = (focus && focusDestinations[focus]) || "/claim";
       router.replace(destination);
     } catch (requestError) {
       setError(

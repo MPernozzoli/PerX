@@ -588,6 +588,38 @@ async def get_push_vapid_public_key():
     return PortalPushVapidKeyResponse(public_key=settings.PORTAL_VAPID_PUBLIC_KEY)
 
 
+@router.get("/tenant/branding")
+async def get_tenant_branding(
+    portal_host: str | None = Query(default=None),
+    host: str | None = Header(default=None),
+    x_forwarded_host: str | None = Header(default=None, alias="x-forwarded-host"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Branding pubblico del tenant (logo, colore, icone push) usato dal portale."""
+    portal_host = _portal_host(portal_host, x_forwarded_host, host)
+    tenant_id = await PortalService.resolve_tenant_id_for_portal_host(db, portal_host)
+    if not tenant_id:
+        return {
+            "tenant_name": None,
+            "icon_data_url": None,
+            "badge_data_url": None,
+            "logo_data_url": None,
+            "primary_color": None,
+        }
+    branding = await PortalService._get_tenant_branding(db, tenant_id)
+    from app.models.tenant import Tenant
+    from sqlalchemy import select as _select
+    result = await db.execute(_select(Tenant).where(Tenant.id == tenant_id))
+    tenant = result.scalar_one_or_none()
+    return {
+        "tenant_name": tenant.name if tenant else None,
+        "icon_data_url": branding.get("icon_data_url"),
+        "badge_data_url": branding.get("badge_data_url"),
+        "logo_data_url": branding.get("logo_data_url"),
+        "primary_color": branding.get("primary_color"),
+    }
+
+
 @router.post("/push/subscribe", response_model=PortalPushSubscriptionResponse)
 async def subscribe_push(
     payload: PortalPushSubscribeRequest,

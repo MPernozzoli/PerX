@@ -69,7 +69,7 @@ struct PerXApp: App {
             }
             .onChange(of: authService.isAuthenticated) { newValue in
                 if newValue {
-                    Task { await TenantAIKeysService.shared.fetchIfNeeded() }
+                    TenantAIKeysService.shared.purgeLegacyClientKeys()
                 } else {
                     // Logout: ferma tutti i servizi, ma SEMPRE fuori dal ciclo di rendering SwiftUI
                     DispatchQueue.main.async {
@@ -210,7 +210,11 @@ struct PerXApp: App {
                 Task {
                     await CPUThrottler.shared.runAtStartup {
                         if BuildFeatures.localOllamaEnabled {
-                            await OllamaService.shared.startOllama()
+                            do {
+                                try await LocalAIService.shared.startOllamaIfNeeded()
+                            } catch {
+                                print("[PerXApp] Ollama locale non disponibile: \(error.localizedDescription)")
+                            }
                         } else {
                             print("[PerXApp] ℹ️ Ollama sospeso (Release/produzione)")
                         }

@@ -1,5 +1,6 @@
 import SwiftUI
 import MapKit
+import UniformTypeIdentifiers
 
 struct TenantSettingsView: View {
     @StateObject private var currentUserService = CurrentUserService.shared
@@ -8,6 +9,7 @@ struct TenantSettingsView: View {
     @State private var selectedTenantId: String = ""
     @State private var tenantName = ""
     @State private var tenantSlug = ""
+    @State private var portalDomainsText = ""
     @State private var internalDomainsText = ""
     @State private var internalEmailsText = ""
     @State private var systemEmailsText = ""
@@ -15,7 +17,10 @@ struct TenantSettingsView: View {
     @State private var claimGaranzieText = ""
     @State private var defaultClaimGaranzia = "Fenomeno Elettrico"
     @State private var catSettings = TenantCATSettings.default
+    @State private var videoInspectionSettings = TenantVideoInspectionSettings.default
     @State private var providerSettings = TenantInspectionProviderSettings.default
+    @State private var branding = TenantBrandingSettings.empty
+    @State private var brandingError: String?
     @State private var territoryCameraPosition: MapCameraPosition = .automatic
     @State private var hasChanges = false
     @State private var saveMessage: String?
@@ -27,63 +32,90 @@ struct TenantSettingsView: View {
     var body: some View {
         Group {
             if currentUserService.canManageTenantSettings {
-                ScrollView {
-                    VStack(spacing: 20) {
-                        headerCard
-                        if currentUserService.isPlatformAdmin && !apiService.availableTenants.isEmpty {
-                            tenantPickerCard
-                        }
-                        StudioTenantOverviewView(
-                            tenantName: tenantName,
-                            tenantSlug: tenantSlug,
-                            internalDomainsText: internalDomainsText,
-                            targetTenantId: selectedTenantId.isEmpty ? nil : selectedTenantId
-                        )
-                        identityCard
-                        mailCard
-                        claimsCard
-                        catPlannerCard
-                        inspectionAutomationCard
-                        catTerritoryMapCard
-                        catTechniciansCard
-                        catMunicipalitiesCard
-                        if currentUserService.isPlatformAdmin {
-                            providerCredentialsCard
-                        } else {
-                            providerCredentialsNoticeCard
-                        }
-                        actionsCard
-                    }
-                    .padding()
-                }
-                .task {
-                    await bootstrap()
-                }
-                .onChange(of: tenantName) { _, _ in markDirty() }
-                .onChange(of: tenantSlug) { _, _ in markDirty() }
-                .onChange(of: internalDomainsText) { _, _ in markDirty() }
-                .onChange(of: internalEmailsText) { _, _ in markDirty() }
-                .onChange(of: systemEmailsText) { _, _ in markDirty() }
-                .onChange(of: secretariatEmailsText) { _, _ in markDirty() }
-                .onChange(of: claimGaranzieText) { _, _ in markDirty() }
-                .onChange(of: defaultClaimGaranzia) { _, _ in markDirty() }
-                .onChange(of: catSettings) { _, _ in
-                    markDirty()
-                    updateTerritoryMap()
-                }
-                .onChange(of: providerSettings) { _, _ in
-                    guard currentUserService.isPlatformAdmin else { return }
-                    markDirty()
-                }
+                tenantSettingsContent
             } else {
-                ContentUnavailableView(
-                    "Accesso riservato",
-                    systemImage: "lock.shield",
-                    description: Text("Questa sezione è visibile solo all'admin generale dell'app e all'admin del tenant.")
-                )
-                .padding()
+                restrictedContent
             }
         }
+    }
+
+    private var tenantSettingsContent: some View {
+        trackedTenantSettingsContent
+            .onChange(of: branding) { _, _ in markDirty() }
+            .onChange(of: providerSettings) { _, _ in
+                guard currentUserService.isPlatformAdmin else { return }
+                markDirty()
+            }
+    }
+
+    private var trackedTenantSettingsContent: some View {
+        baseTenantSettingsContent
+            .onChange(of: tenantName) { _, _ in markDirty() }
+            .onChange(of: tenantSlug) { _, _ in markDirty() }
+            .onChange(of: portalDomainsText) { _, _ in markDirty() }
+            .onChange(of: internalDomainsText) { _, _ in markDirty() }
+            .onChange(of: internalEmailsText) { _, _ in markDirty() }
+            .onChange(of: systemEmailsText) { _, _ in markDirty() }
+            .onChange(of: secretariatEmailsText) { _, _ in markDirty() }
+            .onChange(of: claimGaranzieText) { _, _ in markDirty() }
+            .onChange(of: defaultClaimGaranzia) { _, _ in markDirty() }
+            .onChange(of: catSettings) { _, _ in
+                markDirty()
+                updateTerritoryMap()
+            }
+            .onChange(of: videoInspectionSettings) { _, _ in markDirty() }
+    }
+
+    private var baseTenantSettingsContent: some View {
+        ScrollView {
+            tenantSettingsCards
+                .padding()
+        }
+        .task {
+            await bootstrap()
+        }
+    }
+
+    private var tenantSettingsCards: some View {
+        VStack(spacing: 20) {
+            headerCard
+            if currentUserService.isPlatformAdmin && !apiService.availableTenants.isEmpty {
+                tenantPickerCard
+            }
+            StudioTenantOverviewView(
+                tenantName: tenantName,
+                tenantSlug: tenantSlug,
+                internalDomainsText: internalDomainsText,
+                targetTenantId: selectedTenantId.isEmpty ? nil : selectedTenantId
+            )
+            identityCard
+            if currentUserService.isPlatformAdmin {
+                portalDomainsCard
+                brandingCard
+            }
+            mailCard
+            claimsCard
+            catPlannerCard
+            videoInspectionSettingsCard
+            inspectionAutomationCard
+            if currentUserService.isPlatformAdmin {
+                AIPromptSettingsCard()
+            }
+            catTerritoryMapCard
+            catTechniciansCard
+            catMunicipalitiesCard
+            providerCredentialsNoticeCard
+            actionsCard
+        }
+    }
+
+    private var restrictedContent: some View {
+        ContentUnavailableView(
+            "Accesso riservato",
+            systemImage: "lock.shield",
+            description: Text("Questa sezione è visibile solo all'admin generale dell'app e all'admin del tenant.")
+        )
+        .padding()
     }
 
     private var inspectionAutomationCard: some View {
@@ -257,12 +289,192 @@ struct TenantSettingsView: View {
                         .foregroundColor(.secondary)
                     TextField("studio-peritale-rossi", text: $tenantSlug)
                         .textFieldStyle(.roundedBorder)
+                        .disabled(!currentUserService.isPlatformAdmin)
+                    if !currentUserService.isPlatformAdmin {
+                        Text("Lo slug viene gestito dall'admin generale Pynkstudio.")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
                 }
             }
             .padding()
         } label: {
             Label("Identità Tenant", systemImage: "person.text.rectangle")
         }
+    }
+
+    private var portalDomainsCard: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 12) {
+                mailField(
+                    title: "Domini portale assicurati",
+                    text: $portalDomainsText,
+                    placeholder: "studio.it, portale.studio.it",
+                    help: "Inserire i domini base senza il prefisso assicurati. Il backend aggiorna il routing pubblico del portale."
+                )
+            }
+            .padding()
+        } label: {
+            Label("Domini Portale Assicurati", systemImage: "globe")
+        }
+    }
+
+    private var brandingCard: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Le immagini vengono usate dal portale assicurati e nelle notifiche push. PNG consigliato. Verranno salvate come data URL base64 nelle impostazioni tenant.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                brandingRow(
+                    title: "Logo portale (orizzontale)",
+                    hint: "Mostrato nell'header del portale. PNG/SVG, max ~150KB.",
+                    dataURL: branding.logoDataURL,
+                    onPick: { pickBrandingImage(kind: .logo) },
+                    onClear: { branding.logoDataURL = nil }
+                )
+
+                brandingRow(
+                    title: "Icona notifica (192×192)",
+                    hint: "Quadrata, PNG. Mostrata nelle notifiche push.",
+                    dataURL: branding.iconDataURL,
+                    onPick: { pickBrandingImage(kind: .icon) },
+                    onClear: { branding.iconDataURL = nil }
+                )
+
+                brandingRow(
+                    title: "Badge notifica (72×72, monocromatico)",
+                    hint: "Monocromatico, PNG. Usato nella status bar Android.",
+                    dataURL: branding.badgeDataURL,
+                    onPick: { pickBrandingImage(kind: .badge) },
+                    onClear: { branding.badgeDataURL = nil }
+                )
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Colore primario portale")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    HStack(spacing: 8) {
+                        TextField("#0E5FFF", text: Binding(
+                            get: { branding.primaryColor ?? "" },
+                            set: { branding.primaryColor = $0.isEmpty ? nil : $0 }
+                        ))
+                        .textFieldStyle(.roundedBorder)
+                        .frame(maxWidth: 160)
+                        if let hex = branding.primaryColor, let color = colorFromHex(hex) {
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(color)
+                                .frame(width: 32, height: 32)
+                                .overlay(RoundedRectangle(cornerRadius: 6).stroke(.secondary, lineWidth: 1))
+                        }
+                    }
+                }
+
+                if let brandingError {
+                    Text(brandingError)
+                        .font(.caption)
+                        .foregroundColor(.red)
+                }
+            }
+            .padding()
+        } label: {
+            Label("Branding portale assicurati", systemImage: "paintpalette")
+        }
+    }
+
+    private enum BrandingImageKind {
+        case logo
+        case icon
+        case badge
+    }
+
+    private func brandingRow(
+        title: String,
+        hint: String,
+        dataURL: String?,
+        onPick: @escaping () -> Void,
+        onClear: @escaping () -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 12) {
+                if let dataURL, let image = imageFromDataURL(dataURL) {
+                    Image(nsImage: image)
+                        .resizable()
+                        .interpolation(.high)
+                        .scaledToFit()
+                        .frame(width: 64, height: 64)
+                        .background(Color.black.opacity(0.04))
+                        .cornerRadius(8)
+                } else {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.secondary.opacity(0.1))
+                        .frame(width: 64, height: 64)
+                        .overlay(Image(systemName: "photo").foregroundColor(.secondary))
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title).font(.subheadline.weight(.medium))
+                    Text(hint).font(.caption).foregroundColor(.secondary)
+                }
+                Spacer()
+                Button("Carica…") { onPick() }
+                    .buttonStyle(.bordered)
+                if dataURL != nil {
+                    Button("Rimuovi") { onClear() }
+                        .buttonStyle(.bordered)
+                        .tint(.red)
+                }
+            }
+        }
+    }
+
+    private func pickBrandingImage(kind: BrandingImageKind) {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.png, .jpeg, .svg]
+        panel.title = "Scegli immagine"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let data = try Data(contentsOf: url)
+            guard data.count <= 256 * 1024 else {
+                brandingError = "L'immagine è troppo grande (max 256KB)."
+                return
+            }
+            let mime: String
+            switch url.pathExtension.lowercased() {
+            case "jpg", "jpeg": mime = "image/jpeg"
+            case "svg": mime = "image/svg+xml"
+            default: mime = "image/png"
+            }
+            let dataURL = "data:\(mime);base64,\(data.base64EncodedString())"
+            switch kind {
+            case .logo: branding.logoDataURL = dataURL
+            case .icon: branding.iconDataURL = dataURL
+            case .badge: branding.badgeDataURL = dataURL
+            }
+            brandingError = nil
+        } catch {
+            brandingError = "Errore di lettura: \(error.localizedDescription)"
+        }
+    }
+
+    private func imageFromDataURL(_ dataURL: String) -> NSImage? {
+        guard let comma = dataURL.firstIndex(of: ","),
+              let data = Data(base64Encoded: String(dataURL[dataURL.index(after: comma)...])) else {
+            return nil
+        }
+        return NSImage(data: data)
+    }
+
+    private func colorFromHex(_ hex: String) -> Color? {
+        var trimmed = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix("#") { trimmed.removeFirst() }
+        guard trimmed.count == 6, let value = UInt32(trimmed, radix: 16) else { return nil }
+        let r = Double((value >> 16) & 0xFF) / 255.0
+        let g = Double((value >> 8) & 0xFF) / 255.0
+        let b = Double(value & 0xFF) / 255.0
+        return Color(red: r, green: g, blue: b)
     }
 
     private var mailCard: some View {
@@ -437,6 +649,38 @@ struct TenantSettingsView: View {
         }
     }
 
+    private var videoInspectionSettingsCard: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 14) {
+                Toggle("Attiva prenotazione videoperizia", isOn: $videoInspectionSettings.enabled)
+                HStack(spacing: 24) {
+                    Stepper(
+                        "Assegnazione automatica: \(String(format: "%02d:00", videoInspectionSettings.assignmentRunHour))",
+                        value: $videoInspectionSettings.assignmentRunHour,
+                        in: 0...23
+                    )
+                    Stepper(
+                        "Primo slot: \(String(format: "%02d:00", videoInspectionSettings.firstSlotHour))",
+                        value: $videoInspectionSettings.firstSlotHour,
+                        in: 0...23
+                    )
+                    Stepper(
+                        "Durata slot: \(videoInspectionSettings.slotMinutes) minuti",
+                        value: $videoInspectionSettings.slotMinutes,
+                        in: 15...60,
+                        step: 15
+                    )
+                }
+                Text("Alle 09:00 il sistema assegna il primo perito compatibile che lavora quel giorno, è abilitato alle videoperizie e non ha restrizioni sulla compagnia o sulla polizza. A parità di compatibilità considera il carico attivo.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .padding()
+        } label: {
+            Label("Planner Videoperizie", systemImage: "video.badge.clock")
+        }
+    }
+
     private var catTechniciansCard: some View {
         GroupBox {
             VStack(alignment: .leading, spacing: 16) {
@@ -603,6 +847,14 @@ struct TenantSettingsView: View {
 
                 SecureField("API Key routing", text: $providerSettings.routingAPIKey)
                     .textFieldStyle(.roundedBorder)
+
+                Toggle("Abilita routing traffic-aware", isOn: $providerSettings.routingEnabled)
+
+                Stepper(
+                    "Cache routing: \(providerSettings.routingCacheTTLDays) giorni",
+                    value: $providerSettings.routingCacheTTLDays,
+                    in: 1...90
+                )
 
                 providerPickerRow(
                     title: "Provider geocoding",
@@ -834,6 +1086,7 @@ struct TenantSettingsView: View {
         tenantSettings = TenantMailSettingsService.shared.settings
         tenantName = tenantSettings.tenantName
         tenantSlug = tenantSettings.tenantSlug
+        portalDomainsText = tenantSettings.portalDomains.joined(separator: ", ")
         internalDomainsText = tenantSettings.internalDomains.joined(separator: ", ")
         internalEmailsText = tenantSettings.internalEmails.joined(separator: ", ")
         systemEmailsText = tenantSettings.systemEmails.joined(separator: ", ")
@@ -841,7 +1094,9 @@ struct TenantSettingsView: View {
         claimGaranzieText = tenantSettings.claimGaranzie.joined(separator: ", ")
         defaultClaimGaranzia = tenantSettings.defaultClaimGaranzia
         catSettings = tenantSettings.catSettings
+        videoInspectionSettings = tenantSettings.videoInspectionSettings
         providerSettings = tenantSettings.providerSettings ?? .default
+        branding = tenantSettings.branding ?? .empty
         hasChanges = false
         saveMessage = nil
         updateTerritoryMap()
@@ -853,6 +1108,9 @@ struct TenantSettingsView: View {
 
         tenantSettings.tenantName = tenantName.trimmingCharacters(in: .whitespacesAndNewlines)
         tenantSettings.tenantSlug = tenantSlug
+        if currentUserService.isPlatformAdmin {
+            tenantSettings.portalDomains = splitValues(portalDomainsText)
+        }
         tenantSettings.internalDomains = splitValues(internalDomainsText)
         tenantSettings.internalEmails = splitValues(internalEmailsText)
         tenantSettings.systemEmails = splitValues(systemEmailsText)
@@ -863,7 +1121,13 @@ struct TenantSettingsView: View {
         }
         tenantSettings.defaultClaimGaranzia = defaultClaimGaranzia
         tenantSettings.catSettings = catSettings
-        tenantSettings.providerSettings = currentUserService.isPlatformAdmin ? providerSettings : nil
+        tenantSettings.videoInspectionSettings = videoInspectionSettings
+        tenantSettings.providerSettings = nil
+        // Il branding (loghi/icone) è gestito solo dai platform admin: i tenant
+        // admin lasciano invariato il branding salvato lato backend.
+        tenantSettings.branding = currentUserService.isPlatformAdmin
+            ? branding
+            : tenantSettings.branding
 
         let targetTenantId = selectedTenantId.isEmpty ? nil : selectedTenantId
         let saved = await apiService.saveTenantSettings(tenantSettings, targetTenantId: targetTenantId)

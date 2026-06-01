@@ -5,8 +5,7 @@ import UniformTypeIdentifiers
 struct AISettingsView: View {
     @Environment(\.managedObjectContext) private var viewContext
 
-    @AppStorage("ai_mlx_vision_model_path") private var mlxVisionModelPath = ""
-    @AppStorage("ai_local_text_endpoint") private var textEndpoint = "http://localhost:11434/api/generate"
+    @AppStorage("ai_local_multimodal_model") private var multimodalModel = ""
     @AppStorage("ai_local_text_model") private var textModel = ""
     @AppStorage("ai_local_text_gguf_path") private var textGGUFPath = ""
     @AppStorage("ai_local_timeout") private var localTimeout = 60.0
@@ -23,13 +22,9 @@ struct AISettingsView: View {
     
     @State private var loadingModel: ModelType?
     @State private var modelLoadStatus: String?
-    @State private var loadingMLXModel = false
-    @State private var mlxModelLoadStatus: String?
     
     @StateObject private var aiManager = AIManager.shared
     @StateObject private var resourceMonitor = ResourceMonitor.shared
-    @StateObject private var mlxVisionService = MLXVisionService.shared
-    @State private var isRefreshingKeys = false
     
     @FetchRequest(
         sortDescriptors: [NSSortDescriptor(keyPath: \AIKnowledgeDocument.ordine, ascending: true)],
@@ -54,78 +49,6 @@ struct AISettingsView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
-                // Cloud AI — status (chiavi gestite da Supabase)
-                GroupBox("AI Cloud (OpenAI + Claude)") {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Image(systemName: "info.circle")
-                                .foregroundColor(.blue)
-                            Text("Le chiavi API vengono configurate dall'amministratore su Supabase e sincronizzate automaticamente.")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-
-                        Divider()
-
-                        // OpenAI
-                        HStack {
-                            Label("OpenAI", systemImage: "cloud")
-                                .font(.callout)
-                            Spacer()
-                            if TenantAIKeysService.shared.hasOpenAIKey {
-                                Label(TenantAIKeysService.shared.openAIModel, systemImage: "checkmark.circle.fill")
-                                    .font(.caption)
-                                    .foregroundColor(.green)
-                            } else {
-                                Label("Non configurato", systemImage: "xmark.circle")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-
-                        // Claude
-                        HStack {
-                            Label("Claude (Anthropic)", systemImage: "cloud")
-                                .font(.callout)
-                            Spacer()
-                            if TenantAIKeysService.shared.hasAnthropicKey {
-                                Label(TenantAIKeysService.shared.anthropicModel, systemImage: "checkmark.circle.fill")
-                                    .font(.caption)
-                                    .foregroundColor(.green)
-                            } else {
-                                Label("Non configurato", systemImage: "xmark.circle")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-
-                        Divider()
-
-                        Toggle("Abilita fallback cloud", isOn: $enableCloudFallback)
-                            .font(.callout)
-
-                        HStack {
-                            Spacer()
-                            Button {
-                                isRefreshingKeys = true
-                                Task {
-                                    await TenantAIKeysService.shared.forceRefresh()
-                                    isRefreshingKeys = false
-                                }
-                            } label: {
-                                if isRefreshingKeys {
-                                    ProgressView().scaleEffect(0.7)
-                                } else {
-                                    Label("Sincronizza chiavi", systemImage: "arrow.clockwise")
-                                }
-                            }
-                            .buttonStyle(.bordered)
-                            .disabled(isRefreshingKeys)
-                        }
-                    }
-                    .padding()
-                }
-                
                 // Local Models Configuration
                 GroupBox("Modelli Locali") {
                     VStack(alignment: .leading, spacing: 16) {
@@ -141,7 +64,7 @@ struct AISettingsView: View {
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
-                            Text("• Modello Multimodale: Llama 3.1 8B Vision con PyTorch/MPS su Apple Silicon")
+                            Text("• Modello Vision: usa Ollama tramite PerX Local Agent")
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
                             Text("• Modello Testo: Usa Ollama (gestito automaticamente)")
@@ -152,104 +75,23 @@ struct AISettingsView: View {
                         
                         Divider()
                         
-                        // Multimodale (Llama 3.1 8B Vision - MLX)
+                        // Multimodale Ollama
                         VStack(alignment: .leading, spacing: 12) {
-                            Toggle("Modello Multimodale (Llama 3.1 8B Vision - MLX)", isOn: $enableLocalMultimodal)
+                            Toggle("Modello Vision Ollama", isOn: $enableLocalMultimodal)
                             
                             if enableLocalMultimodal {
                                 VStack(alignment: .leading, spacing: 8) {
-                                    Text("Modello MLX")
+                                    Text("Nome modello vision in Ollama")
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                     
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        if loadingMLXModel || mlxVisionService.isLoading {
-                                            HStack {
-                                                ProgressView()
-                                                    .scaleEffect(0.7)
-                                                Text(loadingMLXModel ? "Caricamento in corso..." : "Caricamento automatico...")
-                                                    .font(.caption)
-                                                    .foregroundColor(.secondary)
-                                            }
-                                            
-                                            if mlxVisionService.isLoading {
-                                                ProgressView(value: mlxVisionService.loadProgress)
-                                                    .progressViewStyle(.linear)
-                                                Text("Progresso: \(Int(mlxVisionService.loadProgress * 100))%")
-                                                    .font(.caption2)
-                                                    .foregroundColor(.secondary)
-                                            }
-                                        }
-                                        
-                                        if let status = mlxModelLoadStatus {
-                                            Text(status)
-                                                .font(.caption2)
-                                                .foregroundColor(status.contains("✅") ? .green : .red)
-                                        }
-                                        
-                                        if mlxVisionService.isModelLoaded {
-                                            HStack {
-                                                Image(systemName: "checkmark.circle.fill")
-                                                    .foregroundColor(.green)
-                                                Text("Modello caricato e pronto")
-                                                    .font(.caption)
-                                                    .foregroundColor(.green)
-                                            }
-                                        }
-                                        
-                                        if let error = mlxVisionService.loadError {
-                                            HStack {
-                                                Image(systemName: "exclamationmark.triangle.fill")
-                                                    .foregroundColor(.orange)
-                                                Text(error)
-                                                    .font(.caption2)
-                                                    .foregroundColor(.orange)
-                                            }
-                                        }
-                                    }
-                                    
-                                    Text("Inserisci l'ID del modello Hugging Face (es. 'qresearch/llama-3.1-8B-vision-378') o seleziona una cartella locale. Il modello verrà scaricato automaticamente se non presente.")
+                                    TextField("es. llava:latest", text: $multimodalModel)
+                                        .textFieldStyle(.roundedBorder)
+
+                                    Text("Il modello deve essere già disponibile in Ollama e compatibile con immagini. Se manca, PerX mostra un errore leggibile durante l'analisi.")
                                         .font(.caption2)
                                         .foregroundColor(.secondary)
-                                    
-                                    TextField("qresearch/llama-3.1-8B-vision-378", text: $mlxVisionModelPath)
-                                        .textFieldStyle(.roundedBorder)
-                                        .onSubmit {
-                                            if !mlxVisionModelPath.isEmpty {
-                                                loadMLXModel(path: mlxVisionModelPath)
-                                            }
-                                        }
-                                    
-                                    HStack {
-                                        Button("Usa ID Hugging Face") {
-                                            mlxVisionModelPath = "qresearch/llama-3.1-8B-vision-378"
-                                            loadMLXModel(path: mlxVisionModelPath)
-                                        }
-                                        .buttonStyle(.bordered)
-                                        
-                                        Button("Scegli Cartella Locale...") {
-                                            selectMLXModel()
-                                        }
-                                        .buttonStyle(.bordered)
-                                        
-                                        if !mlxVisionModelPath.isEmpty && !mlxVisionService.isModelLoaded {
-                                            Button("Ricarica Modello") {
-                                                loadMLXModel(path: mlxVisionModelPath)
-                                            }
-                                            .buttonStyle(.bordered)
-                                            .foregroundColor(.orange)
-                                        }
-                                    }
-                                    
-                                    #if !arch(arm64)
-                                    HStack {
-                                        Image(systemName: "exclamationmark.triangle.fill")
-                                            .foregroundColor(.orange)
-                                        Text("⚠️ MLX è ottimizzato per Apple Silicon (M-series). Le prestazioni potrebbero essere ridotte su Intel.")
-                                            .font(.caption2)
-                                            .foregroundColor(.orange)
-                                    }
-                                    #endif
+
                                 }
                             }
                         }
@@ -610,33 +452,6 @@ struct AISettingsView: View {
         }
     }
     
-    private func selectMLXModel() {
-        let openPanel = NSOpenPanel()
-        openPanel.allowsMultipleSelection = false
-        openPanel.canChooseFiles = false
-        openPanel.canChooseDirectories = true
-        openPanel.canCreateDirectories = false
-        openPanel.title = "Seleziona cartella modello MLX"
-        openPanel.prompt = "Seleziona"
-        
-        if openPanel.runModal() == .OK {
-            if let selectedURL = openPanel.url {
-                let path = selectedURL.path
-                print("[AISettingsView] 📁 Percorso selezionato: \(path)")
-                mlxVisionModelPath = path
-                UserDefaults.standard.set(path, forKey: "ai_mlx_vision_model_path")
-                print("[AISettingsView] 💾 Percorso salvato in UserDefaults: \(path)")
-                
-                // Verifica che il percorso sia stato salvato
-                let verifyPath = UserDefaults.standard.string(forKey: "ai_mlx_vision_model_path") ?? ""
-                print("[AISettingsView] ✅ Verifica percorso salvato: '\(verifyPath)'")
-                
-                // Carica il modello
-                loadMLXModel(path: path)
-            }
-        }
-    }
-    
     // MARK: - RAG build helpers
     
     private func selectKnowledgeFiles() {
@@ -678,26 +493,6 @@ struct AISettingsView: View {
         }
     }
     
-    private func loadMLXModel(path: String) {
-        loadingMLXModel = true
-        mlxModelLoadStatus = "Caricamento in corso..."
-        
-        Task { @MainActor in
-            print("[AISettingsView] 🚀 Avvio caricamento modello: \(path)")
-            let success = await mlxVisionService.loadModel(modelPath: path)
-            
-            loadingMLXModel = false
-            if success {
-                mlxModelLoadStatus = "✅ Modello caricato con successo"
-                print("[AISettingsView] ✅ Modello caricato con successo")
-            } else {
-                let errorMsg = mlxVisionService.loadError ?? "Errore sconosciuto"
-                mlxModelLoadStatus = "❌ Errore: \(errorMsg)"
-                print("[AISettingsView] ❌ Errore nel caricare il modello: \(errorMsg)")
-            }
-        }
-    }
-
     private func ensureKnowledgeWorkdir() throws -> URL {
         let support = try FileManager.default.url(
             for: .applicationSupportDirectory,
@@ -739,7 +534,16 @@ struct AISettingsView: View {
             // Estrai nome modello dal nome file (senza estensione)
             let modelName = ((path as NSString).lastPathComponent as NSString).deletingPathExtension
             
-            let result = await OllamaService.shared.loadModel(modelName: modelName, ggufPath: path)
+            let result: Result<String, Error>
+            do {
+                let importedModel = try await LocalAIService.shared.importGGUFModel(
+                    modelName: modelName,
+                    ggufPath: path
+                )
+                result = .success(importedModel)
+            } catch {
+                result = .failure(error)
+            }
             
             await MainActor.run {
                 loadingModel = nil
@@ -913,24 +717,9 @@ final class RAGBuildManager: ObservableObject {
     
     private func openAIEnv() -> [String: String] {
         var env = ProcessInfo.processInfo.environment
-        // Usa la chiave dal backend (Supabase); fallback a UserDefaults per retrocompatibilità
-        let tenantKey = TenantAIKeysCache.snapshot().openAIKey
-        if env["OPENAI_API_KEY"]?.isEmpty ?? true {
-            let key = tenantKey.isEmpty
-                ? (UserDefaults.standard.string(forKey: "ai_openai_api_key") ?? "")
-                : tenantKey
-            if !key.isEmpty { env["OPENAI_API_KEY"] = key }
-        }
-        if env["OPENAI_BASE_URL"]?.isEmpty ?? true {
-            if let base = UserDefaults.standard.string(forKey: "ai_openai_base_url"), !base.isEmpty {
-                env["OPENAI_BASE_URL"] = base
-            }
-        }
-        if env["OPENAI_EMBEDDING_MODEL"]?.isEmpty ?? true {
-            if let model = UserDefaults.standard.string(forKey: "ai_openai_embedding_model"), !model.isEmpty {
-                env["OPENAI_EMBEDDING_MODEL"] = model
-            }
-        }
+        env.removeValue(forKey: "OPENAI_API_KEY")
+        env.removeValue(forKey: "OPENAI_BASE_URL")
+        env.removeValue(forKey: "OPENAI_EMBEDDING_MODEL")
         return env
     }
     
@@ -939,55 +728,23 @@ final class RAGBuildManager: ObservableObject {
         files: [URL],
         outputURL: URL
     ) async throws -> String {
-        let pythonPath = "/usr/bin/python3"
-        guard FileManager.default.fileExists(atPath: pythonPath) else {
-            throw NSError(domain: "RAGBuildManager", code: 500, userInfo: [NSLocalizedDescriptionKey: "Python3 non trovato"])
-        }
-        
         let args = [scriptPath] + files.map { $0.path } + ["--output", outputURL.path, "--drop-existing"]
-        
-        return try await withCheckedThrowingContinuation { cont in
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: pythonPath)
-            process.arguments = args
-            process.environment = openAIEnv()
-            
-            let outputPipe = Pipe()
-            let errorPipe = Pipe()
-            process.standardOutput = outputPipe
-            process.standardError = errorPipe
-            
-            outputPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
-                guard let line = String(data: handle.availableData, encoding: .utf8), !line.isEmpty else { return }
-                Task { @MainActor in
-                    self?.status = line.trimmingCharacters(in: .whitespacesAndNewlines)
-                }
-            }
-            errorPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
-                guard let line = String(data: handle.availableData, encoding: .utf8), !line.isEmpty else { return }
-                Task { @MainActor in
-                    self?.errorMessage = line.trimmingCharacters(in: .whitespacesAndNewlines)
-                }
-            }
-            
-            process.terminationHandler = { proc in
-                outputPipe.fileHandleForReading.readabilityHandler = nil
-                errorPipe.fileHandleForReading.readabilityHandler = nil
-                let code = proc.terminationStatus
-                if code == 0 {
-                    cont.resume(returning: "Generazione completata: \(outputURL.lastPathComponent)")
-                } else {
-                    let err = NSError(domain: "RAGBuildManager", code: Int(code), userInfo: [NSLocalizedDescriptionKey: "Processo terminato con codice \(code)"])
-                    cont.resume(throwing: err)
-                }
-            }
-            
-            do {
-                try process.run()
-            } catch {
-                cont.resume(throwing: error)
-            }
+
+        let result = try await PerXLocalAgent.shared.runPythonScript(
+            scriptPath: args[0],
+            arguments: Array(args.dropFirst()),
+            environment: openAIEnv(),
+            standardInput: nil,
+            timeout: 900
+        )
+        guard result.exitCode == 0 else {
+            throw NSError(
+                domain: "RAGBuildManager",
+                code: Int(result.exitCode),
+                userInfo: [NSLocalizedDescriptionKey: result.combinedOutput]
+            )
         }
+        return "Generazione completata: \(outputURL.lastPathComponent)"
     }
 }
 

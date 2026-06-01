@@ -4,12 +4,13 @@ User settings and shared (tenant-level) settings routes
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import get_current_active_user
+from app.core.permissions import is_studio_admin
 from app.models.user import User
 from app.models.user_settings import SharedSettings, UserSettings
 from app.schemas.user_settings import (
@@ -115,6 +116,11 @@ async def update_shared_settings(
     current_user: User = Depends(get_current_active_user),
 ):
     """Merge-patch: merges top-level keys from payload.settings into shared settings_json."""
+    if not current_user.is_platform_admin and not await is_studio_admin(db, current_user.id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tenant admin access required",
+        )
     settings = await _get_or_create_shared_settings(db, current_user.tenant_id)
     current = dict(settings.settings_json or {})
     current.update(payload.settings)

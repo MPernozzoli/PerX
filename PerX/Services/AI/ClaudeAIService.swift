@@ -4,19 +4,19 @@ import Foundation
 class ClaudeAIService {
     static let shared = ClaudeAIService()
 
-    private let baseURL = "https://api.anthropic.com/v1"
+    private let baseURL = "about:blank"
     private let apiVersion = "2023-06-01"
 
     var isAvailable: Bool {
-        TenantAIKeysCache.snapshot().hasAnthropicKey
+        false
     }
 
     private var apiKey: String {
-        TenantAIKeysCache.snapshot().anthropicKey
+        ""
     }
 
     private var model: String {
-        TenantAIKeysCache.snapshot().anthropicModel
+        ""
     }
 
     private let session: URLSession

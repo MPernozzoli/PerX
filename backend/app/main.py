@@ -25,8 +25,10 @@ from app.api.v1 import (
     routes_hub_compat,
     routes_ai_chat,
     routes_ai_prompts,
+    routes_ai_routing,
     routes_planning,
     routes_portal,
+    routes_portal_me,
     routes_process_jobs,
     routes_profiles,
     routes_invitations,
@@ -42,6 +44,7 @@ from app.api.v1 import (
     routes_realtime,
 )
 from app.services.inspection_workflow_service import InspectionAutomationRuntime
+from app.services.video_inspection_workflow_service import VideoInspectionAutomationRuntime
 from app.services.automation_service import AutomationRuntime
 from app.services.scheduled_email_service import ScheduledEmailRuntime
 
@@ -56,8 +59,10 @@ async def lifespan(app: FastAPI):
     await ScheduledEmailRuntime.start()
     await AutomationRuntime.start()
     await InspectionAutomationRuntime.start()
+    await VideoInspectionAutomationRuntime.start()
     yield
     # Shutdown
+    await VideoInspectionAutomationRuntime.stop()
     await InspectionAutomationRuntime.stop()
     await AutomationRuntime.stop()
     await ScheduledEmailRuntime.stop()
@@ -97,9 +102,11 @@ app.include_router(routes_hub_compat.router, prefix="/api/v1/hub", tags=["hub-co
 app.include_router(routes_internal_chat.router, prefix="/api/v1/internal-chat", tags=["internal-chat"])
 app.include_router(routes_ai_chat.router, prefix="/api/v1/ai-chat", tags=["ai-chat"])
 app.include_router(routes_ai_prompts.router, prefix="/api/v1/ai-prompts", tags=["ai-prompts"])
+app.include_router(routes_ai_routing.router, prefix="/api/v1/ai-routing", tags=["ai-routing"])
 app.include_router(routes_inspections.router, prefix="/api/v1", tags=["inspections"])
 app.include_router(routes_planning.router, prefix="/api/v1", tags=["planning"])
 app.include_router(routes_portal.router, prefix="/api/v1/portal", tags=["portal"])
+app.include_router(routes_portal_me.router, prefix="/api/v1/portal/me", tags=["portal-me"])
 app.include_router(routes_admin.router, prefix="/api/v1/admin", tags=["admin"])
 app.include_router(routes_invitations.router, prefix="/api/v1/invitations", tags=["invitations"])
 app.include_router(routes_tenants.router, prefix="/api/v1/tenants", tags=["tenants"])

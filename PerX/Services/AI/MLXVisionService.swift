@@ -488,183 +488,35 @@ class MLXVisionService: ObservableObject {
             return ["error": "Script bridge non trovato"]
         }
         
-        print("[MLXVisionService] 📄 Script path: \(scriptPath)")
-        print("[MLXVisionService] 📄 Script esiste: \(FileManager.default.fileExists(atPath: scriptPath))")
-        
-        // Verifica che Python sia disponibile
-        guard let pythonPath = findPythonPath() else {
-            print("[MLXVisionService] ❌ Python non trovato")
-            return ["error": "Python non trovato. Assicurati che Python 3 sia installato e che MLX sia disponibile."]
-        }
-        
-        print("[MLXVisionService] 🐍 Python path: \(pythonPath)")
-        
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: pythonPath)
-        process.arguments = [scriptPath, command]
-        
-        print("[MLXVisionService] 📋 Argomenti: \(process.arguments ?? [])")
-        
         // Prepara input JSON
         var inputDict = parameters
         if let modelPath = modelPath {
             inputDict["model_path"] = modelPath
         }
         
-        guard let inputJSON = try? JSONSerialization.data(withJSONObject: inputDict),
-              let inputString = String(data: inputJSON, encoding: .utf8) else {
+        guard let inputJSON = try? JSONSerialization.data(withJSONObject: inputDict) else {
             return ["error": "Errore nella serializzazione input"]
         }
-        
-        // Prepara variabili d'ambiente
-        var env = ProcessInfo.processInfo.environment
-        env["PYTHONIOENCODING"] = "utf-8"
-        env["LANG"] = "en_US.UTF-8"
-        env["HOME"] = NSHomeDirectory()
-        
-        // Aggiungi percorsi Python comuni
-        let pythonPaths = [
-            "/opt/homebrew/lib/python3.11/site-packages",
-            "/opt/homebrew/lib/python3.12/site-packages",
-            "/usr/local/lib/python3.11/site-packages",
-            "/usr/local/lib/python3.12/site-packages",
-            "/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/site-packages"
-        ]
-        
-        var currentPythonPath = env["PYTHONPATH"] ?? ""
-        for path in pythonPaths {
-            if FileManager.default.fileExists(atPath: path) {
-                if !currentPythonPath.isEmpty {
-                    currentPythonPath += ":"
-                }
-                currentPythonPath += path
-            }
-        }
-        if !currentPythonPath.isEmpty {
-            env["PYTHONPATH"] = currentPythonPath
-        }
-        
-        process.environment = env
-        
-        let inputPipe = Pipe()
-        let outputPipe = Pipe()
-        let errorPipe = Pipe()
-        
-        process.standardInput = inputPipe
-        process.standardOutput = outputPipe
-        process.standardError = errorPipe
-        
+
         do {
-            print("[MLXVisionService] 🚀 Avvio processo Python...")
-            try process.run()
-            print("[MLXVisionService] ✅ Processo avviato (PID: \(process.processIdentifier))")
-            
-            // Scrivi input
-            print("[MLXVisionService] 📤 Invio input JSON...")
-            inputPipe.fileHandleForWriting.write(inputJSON)
-            inputPipe.fileHandleForWriting.closeFile()
-            
-            // Leggi output con timeout
-            let timeoutTask = Task {
-                try await Task.sleep(nanoseconds: 60_000_000_000) // 60 secondi
-                if process.isRunning {
-                    print("[MLXVisionService] ⏱️ TIMEOUT: Il processo sta impiegando troppo tempo")
-                    process.terminate()
-                }
+            let result = try await PerXLocalAgent.shared.runPythonScript(
+                scriptPath: scriptPath,
+                arguments: [command],
+                environment: [:],
+                standardInput: inputJSON,
+                timeout: 60
+            )
+            guard result.exitCode == 0 else {
+                return ["error": result.combinedOutput]
             }
-            
-            process.waitUntilExit()
-            timeoutTask.cancel()
-            
-            print("[MLXVisionService] 📥 Processo terminato (codice: \(process.terminationStatus))")
-            
-            // Leggi output
-            let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
-            let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-            
-            // Log errori (se presenti)
-            if !errorData.isEmpty {
-                if let errorString = String(data: errorData, encoding: .utf8) {
-                    print("[MLXVisionService] 📋 Python stderr (\(errorData.count) bytes):")
-                    print(errorString)
-                } else {
-                    print("[MLXVisionService] ⚠️ Python stderr non decodificabile (\(errorData.count) bytes)")
-                }
+            guard let outputData = result.output.data(using: .utf8),
+                  let outputJSON = try? JSONSerialization.jsonObject(with: outputData) as? [String: Any] else {
+                return ["error": "Output non valido dal bridge Python"]
             }
-            
-            // Log output
-            if !outputData.isEmpty {
-                if let outputString = String(data: outputData, encoding: .utf8) {
-                    print("[MLXVisionService] 📋 Python stdout (\(outputData.count) bytes): \(outputString.prefix(500))")
-                } else {
-                    print("[MLXVisionService] ⚠️ Python stdout non decodificabile (\(outputData.count) bytes)")
-                }
-            } else {
-                print("[MLXVisionService] ⚠️ Python stdout vuoto!")
-            }
-            
-            // Parse output JSON
-            guard !outputData.isEmpty else {
-                return ["error": "Nessun output dal bridge Python. Verifica i log per errori."]
-            }
-            
-            guard let outputString = String(data: outputData, encoding: .utf8) else {
-                return ["error": "Impossibile decodificare output dal bridge Python"]
-            }
-            
-            guard let outputJSON = try? JSONSerialization.jsonObject(with: outputData) as? [String: Any] else {
-                print("[MLXVisionService] ❌ Output non è JSON valido: \(outputString)")
-                return ["error": "Output non è JSON valido dal bridge Python: \(outputString.prefix(200))"]
-            }
-            
-            print("[MLXVisionService] ✅ Output parsato correttamente")
             return outputJSON
-            
         } catch {
             print("[MLXVisionService] ❌ Errore esecuzione bridge: \(error)")
-            if let nsError = error as NSError? {
-                print("[MLXVisionService] • Domain: \(nsError.domain)")
-                print("[MLXVisionService] • Code: \(nsError.code)")
-                print("[MLXVisionService] • UserInfo: \(nsError.userInfo)")
-            }
             return ["error": "Errore esecuzione bridge: \(error.localizedDescription)"]
         }
     }
-    
-    /// Trova il percorso di Python 3
-    private func findPythonPath() -> String? {
-        // Prova python3
-        let candidates = ["/usr/bin/python3", "/usr/local/bin/python3", "/opt/homebrew/bin/python3"]
-        
-        for candidate in candidates {
-            if FileManager.default.fileExists(atPath: candidate) {
-                return candidate
-            }
-        }
-        
-        // Prova a trovare python3 nel PATH
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/which")
-        process.arguments = ["python3"]
-        
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        
-        do {
-            try process.run()
-            process.waitUntilExit()
-            
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            if let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-               !path.isEmpty,
-               FileManager.default.fileExists(atPath: path) {
-                return path
-            }
-        } catch {
-            // Ignora errori
-        }
-        
-        return nil
-    }
 }
-

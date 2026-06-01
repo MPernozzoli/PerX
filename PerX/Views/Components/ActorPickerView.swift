@@ -21,8 +21,12 @@ import SwiftUI
 
 struct ActorPickerView: View {
     let title: String
-    @Binding var selection: CloudActorResponse?
+    @Binding var selection: CloudActorSummary?
     var suggestedType: CloudActorType = .person
+    /// ID del sinistro nel cui contesto si sta cercando (per audit log
+    /// lato backend). Quando nil, la search avviene "fuori contesto" —
+    /// l'audit ne tiene comunque traccia.
+    var claimContextId: String? = nil
 
     @StateObject private var repo = ActorRepository.shared
 
@@ -46,8 +50,9 @@ struct ActorPickerView: View {
             ActorCreateSheet(
                 initialQuery: queryText,
                 suggestedType: suggestedType,
+                claimContextId: claimContextId,
                 onCreated: { created in
-                    selection = created
+                    selection = CloudActorSummary.fromCreated(created)
                     queryText = ""
                     repo.clearSearch()
                     showingCreateSheet = false
@@ -59,13 +64,13 @@ struct ActorPickerView: View {
 
     // MARK: - Selected state
 
-    private func selectedRow(_ actor: CloudActorResponse) -> some View {
+    private func selectedRow(_ actor: CloudActorSummary) -> some View {
         HStack(spacing: 10) {
             actorIcon(actor.actor_type)
             VStack(alignment: .leading, spacing: 2) {
-                Text(actor.displayName)
+                Text(actor.display_name)
                     .font(.body)
-                if let code = actor.identifyingCode {
+                if let code = actor.identifyingMasked {
                     Text(code)
                         .font(.caption2)
                         .foregroundColor(.secondary)
@@ -97,7 +102,7 @@ struct ActorPickerView: View {
                 TextField("Cerca per nome, CF o P.IVA…", text: $queryText)
                     .textFieldStyle(.plain)
                     .onChange(of: queryText) { _, newValue in
-                        repo.search(query: newValue, actorType: suggestedType)
+                        repo.search(query: newValue, actorType: suggestedType, claimContextId: claimContextId)
                     }
                 if repo.isSearching {
                     ProgressView().controlSize(.small)
@@ -142,9 +147,9 @@ struct ActorPickerView: View {
                         HStack(spacing: 10) {
                             actorIcon(actor.actor_type)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(actor.displayName)
+                                Text(actor.display_name)
                                     .font(.callout)
-                                if let code = actor.identifyingCode {
+                                if let code = actor.identifyingMasked {
                                     Text(code)
                                         .font(.caption2)
                                         .foregroundColor(.secondary)
@@ -208,6 +213,7 @@ struct ActorPickerView: View {
 struct ActorCreateSheet: View {
     let initialQuery: String
     let suggestedType: CloudActorType
+    var claimContextId: String? = nil
     var onCreated: (CloudActorResponse) -> Void
     var onCancel: () -> Void
 
@@ -350,7 +356,7 @@ struct ActorCreateSheet: View {
             ibans: nil
         )
         do {
-            let created = try await repo.create(payload)
+            let created = try await repo.create(payload, claimContextId: claimContextId)
             onCreated(created)
         } catch {
             self.error = (error as NSError).localizedDescription

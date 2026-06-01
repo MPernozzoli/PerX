@@ -43,6 +43,13 @@ class TenantCATSettingsPayload(BaseModel):
     municipalities: list[TenantCATMunicipality] = Field(default_factory=list)
 
 
+class TenantVideoInspectionSettingsPayload(BaseModel):
+    enabled: bool = True
+    assignment_run_hour: int = Field(default=9, ge=0, le=23)
+    first_slot_time: str = "10:00"
+    slot_minutes: int = Field(default=30, ge=15, le=60)
+
+
 class TenantInspectionProviderSettingsPayload(BaseModel):
     map_provider: str = "google_maps"
     maps_api_key: str = ""
@@ -63,11 +70,20 @@ class TenantAISettingsPayload(BaseModel):
     anthropic_model: str = "claude-opus-4-7"
 
 
-class TenantAIKeysResponse(BaseModel):
-    openai_api_key: str
-    openai_model: str
-    anthropic_api_key: str
-    anthropic_model: str
+class TenantBrandingPayload(BaseModel):
+    """
+    Asset di branding del portale assicurati.
+    Le immagini sono passate come data URL base64 (es. "data:image/png;base64,iVBORw0KGgo…")
+    e vengono inoltrate al service worker nelle notifiche push.
+    - icon_data_url: 192x192 PNG, icona principale della notifica
+    - badge_data_url: 72x72 PNG monocromatico, badge per la barra di stato Android
+    - logo_data_url: logo orizzontale del tenant, mostrato nel portale (header)
+    - primary_color: colore primario hex per il tema portale (es. "#0E5FFF")
+    """
+    icon_data_url: str | None = None
+    badge_data_url: str | None = None
+    logo_data_url: str | None = None
+    primary_color: str | None = None
 
 
 class TenantMailSettingsPayload(BaseModel):
@@ -81,8 +97,10 @@ class TenantMailSettingsPayload(BaseModel):
     claim_garanzie: list[str] = Field(default_factory=lambda: ["Fenomeno Elettrico"])
     default_claim_garanzia: str = "Fenomeno Elettrico"
     cat_settings: TenantCATSettingsPayload = Field(default_factory=TenantCATSettingsPayload)
+    video_inspection_settings: TenantVideoInspectionSettingsPayload = Field(default_factory=TenantVideoInspectionSettingsPayload)
     provider_settings: TenantInspectionProviderSettingsPayload | None = None
     ai_settings: TenantAISettingsPayload | None = None
+    branding: TenantBrandingPayload | None = None
 
 
 class TenantSettingsResponse(BaseModel):
@@ -97,8 +115,10 @@ class TenantSettingsResponse(BaseModel):
     claim_garanzie: list[str]
     default_claim_garanzia: str
     cat_settings: TenantCATSettingsPayload
+    video_inspection_settings: TenantVideoInspectionSettingsPayload
     provider_settings: TenantInspectionProviderSettingsPayload | None = None
     ai_settings: TenantAISettingsPayload | None = None
+    branding: TenantBrandingPayload | None = None
 
 
 class TenantUserResponse(BaseModel):

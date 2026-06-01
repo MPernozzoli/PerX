@@ -228,7 +228,7 @@ class PortalInspectionSelectedSlotInput(BaseModel):
 class PortalInspectionPreferencesUpdateRequest(BaseModel):
     selected_slots: list[PortalInspectionSelectedSlotInput] = Field(default_factory=list)
     notes: Optional[str] = None
-    requested_duration_minutes: Optional[int] = Field(default=None, ge=60, le=240)
+    requested_duration_minutes: Optional[int] = Field(default=None, ge=15, le=240)
 
 
 class PortalInspectionLocationResponse(BaseModel):
@@ -282,6 +282,7 @@ class PortalInspectionCandidateResponse(BaseModel):
 
 class PortalInspectionSchedulingOverviewResponse(BaseModel):
     enabled: bool
+    mode: str = "inspection"
     status: str
     workflow_stage: Optional[str] = None
     instructions: str
@@ -293,6 +294,11 @@ class PortalInspectionSchedulingOverviewResponse(BaseModel):
     candidate_cats: list[PortalInspectionCandidateResponse] = Field(default_factory=list)
     route_review_deadline: Optional[datetime] = None
     route_proposal_event_id: Optional[str] = None
+    slot_duration_minutes: int = 120
+    assignment_run_hour: int = 9
+    assigned_expert_name: Optional[str] = None
+    assigned_expert_retained: bool = False
+    preparation_items: list[str] = Field(default_factory=list)
 
 
 class PortalDocumentResponse(BaseModel):

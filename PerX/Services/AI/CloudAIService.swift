@@ -5,24 +5,19 @@ class CloudAIService {
     static let shared = CloudAIService()
     
     var isAvailable: Bool {
-        return !apiKey.isEmpty
+        false
     }
 
     private var apiKey: String {
-        // Preferisce la chiave dal backend (Supabase), poi fallback a UserDefaults per retrocompatibilità
-        let tenantKey = TenantAIKeysCache.snapshot().openAIKey
-        if !tenantKey.isEmpty { return tenantKey }
-        return UserDefaults.standard.string(forKey: "ai_openai_api_key") ?? ""
+        ""
     }
 
     private var baseURL: String {
-        UserDefaults.standard.string(forKey: "ai_openai_base_url") ?? "https://api.openai.com/v1"
+        "about:blank"
     }
 
     private var model: String {
-        let tenantModel = TenantAIKeysCache.snapshot().openAIModel
-        if !tenantModel.isEmpty { return tenantModel }
-        return UserDefaults.standard.string(forKey: "ai_openai_model") ?? "gpt-4o"
+        "gpt-4o"
     }
     
     private var timeout: TimeInterval {

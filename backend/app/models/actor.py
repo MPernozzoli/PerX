@@ -56,6 +56,12 @@ class Actor(Base):
 
     note = Column(String, nullable=True)
 
+    # GDPR art. 17: soft delete. Quando valorizzato l'attore è "cancellato"
+    # logicamente: invisibile a search/get, ma il record persiste per integrità
+    # storica sui sinistri (i campi piatti sul Claim vengono però pseudonimizzati
+    # contestualmente — vedi soft_delete_actor in actor_service).
+    deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -140,6 +146,18 @@ class ActorRelation(Base):
 
     # figlia/figlio/madre/padre/sorella/fratello/coniuge/amministratore/tutore/delegato/altro
     relation_type = Column(String, nullable=False)
+
+    # GDPR art. 6: base giuridica del trattamento del sub-contatto
+    # (dato personale di un terzo). Valori:
+    #   consent              - consenso esplicito dell'interessato
+    #   contract             - esecuzione contratto (es. delegato in polizza)
+    #   legal_obligation     - obbligo di legge
+    #   vital_interest       - interesse vitale (caso medico/emergenza)
+    #   public_interest      - interesse pubblico
+    #   legitimate_interest  - interesse legittimo (es. contatto di emergenza)
+    #   other                - da specificare in legal_basis_note
+    legal_basis = Column(String, nullable=True)
+    legal_basis_note = Column(String, nullable=True)
 
     note = Column(String, nullable=True)
 

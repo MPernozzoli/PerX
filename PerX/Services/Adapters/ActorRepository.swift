@@ -21,7 +21,7 @@ final class ActorRepository: ObservableObject {
 
     private var searchTask: Task<Void, Never>?
 
-    @Published private(set) var lastSearchResults: [CloudActorResponse] = []
+    @Published private(set) var lastSearchResults: [CloudActorSummary] = []
     @Published private(set) var isSearching = false
     @Published var lastError: String?
 
@@ -33,7 +33,14 @@ final class ActorRepository: ObservableObject {
 
     /// Esegue una ricerca con debounce (350ms). Aggiorna `lastSearchResults`
     /// e `isSearching`. Cancella query precedenti ancora in volo.
-    func search(query: String, actorType: CloudActorType? = nil, limit: Int = 30) {
+    /// `claimContextId` viene loggato dal backend per attestare il motivo
+    /// del trattamento (sinistro in lavorazione).
+    func search(
+        query: String,
+        actorType: CloudActorType? = nil,
+        claimContextId: String? = nil,
+        limit: Int = 30
+    ) {
         searchTask?.cancel()
 
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -52,7 +59,10 @@ final class ActorRepository: ObservableObject {
             if Task.isCancelled { return }
             do {
                 let response = try await self.client.listActors(
-                    query: trimmed, actorType: actorType, limit: limit
+                    query: trimmed,
+                    actorType: actorType,
+                    claimContextId: claimContextId,
+                    limit: limit
                 )
                 if Task.isCancelled { return }
                 self.lastSearchResults = response.items
@@ -86,8 +96,8 @@ final class ActorRepository: ObservableObject {
         detailCache.removeValue(forKey: id)
     }
 
-    func create(_ payload: CloudActorCreate) async throws -> CloudActorResponse {
-        let actor = try await client.createActor(payload)
+    func create(_ payload: CloudActorCreate, claimContextId: String? = nil) async throws -> CloudActorResponse {
+        let actor = try await client.createActor(payload, claimContextId: claimContextId)
         // L'API è upsert per CF/PIVA: invalida la cache se per caso esisteva.
         detailCache.removeValue(forKey: actor.id)
         return actor

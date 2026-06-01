@@ -27,6 +27,10 @@ class AIPromptTemplate(Base):
     variables_json = Column(JSON, nullable=True)  # lista nomi variabili attese, per UI
 
     version = Column(Integer, nullable=False, default=1)
+    # short hash (8 char) della riga più recente di ai_prompt_template_versions
+    # per questo template. NULL solo finché non si esegue la migration 030 di
+    # backfill o per template appena creati prima del primo commit di versione.
+    current_version_id = Column(String, nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

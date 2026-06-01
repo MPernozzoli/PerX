@@ -399,18 +399,23 @@ final class HubAPIAdapterClient {
 
     // MARK: - Actors (anagrafica unificata)
 
+    /// Search anagrafica. Ritorna shape minimizzata per GDPR (no contatti,
+    /// CF/PIVA mascherati). `claimContextId` viene loggato sul backend per
+    /// dimostrare la finalità del trattamento (sinistro in lavorazione).
     func listActors(
         query: String? = nil,
         actorType: CloudActorType? = nil,
+        claimContextId: String? = nil,
         limit: Int = 50,
         offset: Int = 0
-    ) async throws -> CloudActorListResponse {
+    ) async throws -> CloudActorSummaryListResponse {
         var items: [URLQueryItem] = [
             URLQueryItem(name: "limit", value: String(limit)),
             URLQueryItem(name: "offset", value: String(offset)),
         ]
         if let query, !query.isEmpty { items.append(URLQueryItem(name: "q", value: query)) }
         if let actorType { items.append(URLQueryItem(name: "actor_type", value: actorType.rawValue)) }
+        if let claimContextId { items.append(URLQueryItem(name: "claim_context_id", value: claimContextId)) }
 
         var components = URLComponents()
         components.queryItems = items
@@ -419,12 +424,22 @@ final class HubAPIAdapterClient {
         return try await cloudGet(path)
     }
 
-    func createActor(_ payload: CloudActorCreate) async throws -> CloudActorResponse {
-        try await cloudPost("/api/v1/actors", body: payload)
+    func createActor(_ payload: CloudActorCreate, claimContextId: String? = nil) async throws -> CloudActorResponse {
+        let path: String
+        if let claimContextId, let enc = claimContextId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+            path = "/api/v1/actors?claim_context_id=\(enc)"
+        } else {
+            path = "/api/v1/actors"
+        }
+        return try await cloudPost(path, body: payload)
     }
 
-    func getActor(id: String) async throws -> CloudActorDetail {
-        try await cloudGet("/api/v1/actors/\(id)")
+    func getActor(id: String, claimContextId: String? = nil) async throws -> CloudActorDetail {
+        var path = "/api/v1/actors/\(id)"
+        if let claimContextId, let enc = claimContextId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+            path += "?claim_context_id=\(enc)"
+        }
+        return try await cloudGet(path)
     }
 
     func updateActor(id: String, payload: CloudActorUpdate) async throws -> CloudActorResponse {
@@ -475,6 +490,34 @@ final class HubAPIAdapterClient {
 
     func listActorCompanies(actorId: String) async throws -> [CloudActorCompanyLink] {
         try await cloudGet("/api/v1/actors/\(actorId)/companies")
+    }
+
+    // MARK: - Rubrica (compagnie / agenzie backend)
+
+    func listCompagnie(query: String? = nil, limit: Int = 100) async throws -> CloudCompagniaListResponse {
+        var path = "/api/v1/rubrica/compagnie?limit=\(limit)"
+        if let query, !query.isEmpty,
+           let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+            path += "&search=\(encoded)"
+        }
+        return try await cloudGet(path)
+    }
+
+    func createCompagnia(_ payload: CloudCompagniaCreate) async throws -> CloudCompagniaResponse {
+        try await cloudPost("/api/v1/rubrica/compagnie", body: payload)
+    }
+
+    func listAgenzieFromBackend(query: String? = nil, limit: Int = 100) async throws -> CloudAgenziaListResponse {
+        var path = "/api/v1/rubrica/agenzie?limit=\(limit)"
+        if let query, !query.isEmpty,
+           let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+            path += "&search=\(encoded)"
+        }
+        return try await cloudGet(path)
+    }
+
+    func createAgenziaOnBackend(_ payload: CloudAgenziaCreate) async throws -> CloudAgenziaResponse {
+        try await cloudPost("/api/v1/rubrica/agenzie", body: payload)
     }
 
     // MARK: - Claim actor refs (PATCH dedicato)

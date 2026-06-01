@@ -85,10 +85,17 @@ class ActorService:
         return actor
 
     @staticmethod
-    async def get_actor(db: AsyncSession, tenant_id: str, actor_id: str) -> Optional[Actor]:
-        res = await db.execute(
-            select(Actor).where(Actor.id == actor_id, Actor.tenant_id == tenant_id)
-        )
+    async def get_actor(
+        db: AsyncSession,
+        tenant_id: str,
+        actor_id: str,
+        *,
+        include_deleted: bool = False,
+    ) -> Optional[Actor]:
+        conds = [Actor.id == actor_id, Actor.tenant_id == tenant_id]
+        if not include_deleted:
+            conds.append(Actor.deleted_at.is_(None))
+        res = await db.execute(select(Actor).where(*conds))
         return res.scalar_one_or_none()
 
     @staticmethod
@@ -119,6 +126,72 @@ class ActorService:
     # Identity-based upsert
     # ------------------------------------------------------------------
 
+    # ------------------------------------------------------------------
+    # Soft delete (GDPR art. 17)
+    # ------------------------------------------------------------------
+
+    ANONYMIZED_PLACEHOLDER = "[Cancellato art.17]"
+
+    @staticmethod
+    async def soft_delete_actor(
+        db: AsyncSession,
+        tenant_id: str,
+        actor_id: str,
+    ) -> Optional[Actor]:
+        """
+        Marca l'attore come cancellato (`deleted_at = now()`) e anonimizza
+        i campi piatti sui sinistri collegati (nome/email/telefono/indirizzo
+        per il ruolo corrispondente). I `*_id` FK sui sinistri restano
+        valorizzati: chiunque verifichi il record troverà un attore
+        soft-deleted con dati pseudonimizzati, garantendo integrità storica
+        senza esporre più i dati personali.
+
+        I record di Address/Iban/Relations non vengono toccati qui: l'Actor
+        è soft-deleted, e di conseguenza inaccessibile dagli endpoint
+        standard (filtro `deleted_at IS NULL`).
+        """
+        actor = await ActorService.get_actor(db, tenant_id, actor_id, include_deleted=False)
+        if actor is None:
+            return None
+
+        actor.deleted_at = datetime.now(timezone.utc)
+
+        # Pseudonimizza i campi piatti su tutti i sinistri collegati,
+        # ruolo per ruolo. Lasciamo `*_id` come riferimento storico.
+        ph = ActorService.ANONYMIZED_PLACEHOLDER
+        for role, name_col, email_col, tel_col, addr_col in (
+            ("contraente", "nome_contraente", "email_contraente", "telefono_contraente", "indirizzo_contraente"),
+            ("assicurato", "nome_assicurato", "email_assicurato", "telefono_assicurato", "indirizzo_assicurato"),
+            ("danneggiato", "nome_danneggiato", "email_danneggiato", "telefono_danneggiato", "indirizzo_danneggiato"),
+        ):
+            id_col = getattr(Claim, f"{role}_id", None)
+            if id_col is None:
+                continue
+            await db.execute(
+                Claim.__table__.update()
+                .where(id_col == actor_id, Claim.tenant_id == tenant_id)
+                .values({
+                    name_col: ph,
+                    email_col: None,
+                    tel_col: None,
+                    addr_col: None,
+                    f"{role}_address_snapshot": None,
+                })
+            )
+
+        # Anche l'iban_snapshot del sinistro va azzerato se l'attore era
+        # il "destinatario" della liquidazione (oggi tracciamo solo a livello
+        # claim, non per attore: lo azzeriamo se l'attore è il danneggiato).
+        await db.execute(
+            Claim.__table__.update()
+            .where(Claim.danneggiato_id == actor_id, Claim.tenant_id == tenant_id)
+            .values(iban_snapshot=None)
+        )
+
+        await db.commit()
+        await db.refresh(actor)
+        return actor
+
     @staticmethod
     async def find_by_identity(
         db: AsyncSession,
@@ -140,6 +213,7 @@ class ActorService:
         res = await db.execute(
             select(Actor).where(
                 Actor.tenant_id == tenant_id,
+                Actor.deleted_at.is_(None),
                 or_(*conditions),
             ).limit(1)
         )
@@ -234,9 +308,16 @@ class ActorService:
 
     @staticmethod
     async def snapshot_address(
-        db: AsyncSession, address_id: str
+        db: AsyncSession, address_id: str, *, tenant_id: Optional[str] = None
     ) -> Optional[ActorAddressSnapshot]:
-        res = await db.execute(select(ActorAddress).where(ActorAddress.id == address_id))
+        """Belt-and-braces tenant check: se `tenant_id` è passato, la query
+        JOINa Actor per verificare che l'address appartenga a un attore del
+        tenant indicato. Senza tenant_id la chiamata è considerata interna
+        (chiamante responsabile della verifica)."""
+        q = select(ActorAddress).where(ActorAddress.id == address_id)
+        if tenant_id is not None:
+            q = q.join(Actor, ActorAddress.actor_id == Actor.id).where(Actor.tenant_id == tenant_id)
+        res = await db.execute(q)
         addr = res.scalar_one_or_none()
         if addr is None:
             return None
@@ -305,9 +386,13 @@ class ActorService:
 
     @staticmethod
     async def snapshot_iban(
-        db: AsyncSession, iban_id: str
+        db: AsyncSession, iban_id: str, *, tenant_id: Optional[str] = None
     ) -> Optional[ActorIbanSnapshot]:
-        res = await db.execute(select(ActorIban).where(ActorIban.id == iban_id))
+        """Vedi snapshot_address — stessa logica di tenant check opzionale."""
+        q = select(ActorIban).where(ActorIban.id == iban_id)
+        if tenant_id is not None:
+            q = q.join(Actor, ActorIban.actor_id == Actor.id).where(Actor.tenant_id == tenant_id)
+        res = await db.execute(q)
         iban = res.scalar_one_or_none()
         if iban is None:
             return None
@@ -328,6 +413,8 @@ class ActorService:
         to_actor_id: str,
         relation_type: RelationType,
         note: Optional[str] = None,
+        legal_basis: Optional[str] = None,
+        legal_basis_note: Optional[str] = None,
     ) -> ActorRelation:
         rel = ActorRelation(
             id=str(uuid.uuid4()),
@@ -335,6 +422,8 @@ class ActorService:
             to_actor_id=to_actor_id,
             relation_type=relation_type,
             note=note,
+            legal_basis=legal_basis,
+            legal_basis_note=legal_basis_note,
         )
         db.add(rel)
         await db.commit()
@@ -486,22 +575,83 @@ class ActorService:
         actor_type: Optional[str] = None,
         limit: int = 50,
         offset: int = 0,
+        restrict_to_user_id: Optional[str] = None,
     ) -> Tuple[List[Actor], int]:
-        conditions = [Actor.tenant_id == tenant_id]
+        """
+        Search per anagrafica. GDPR-aware:
+
+        - **Niente reverse-lookup**: la query NON matcha mai email o telefono
+          (eviterebbe l'uso dell'app come "is this email registered" oracle).
+          Si cerca solo su nome/cognome/denominazione/CF/PIVA.
+        - **Scope per ruolo**: se `restrict_to_user_id` è valorizzato, la
+          search restituisce solo attori collegati a sinistri assegnati a
+          quell'utente (in uno qualsiasi dei 3 ruoli). Gli admin studio
+          devono passare None per vedere l'anagrafica completa del tenant.
+        - **Minima query**: ignoriamo query troppo corte (< 2 char) per
+          ridurre fishing-style probing.
+        """
+        conditions = [Actor.tenant_id == tenant_id, Actor.deleted_at.is_(None)]
         if actor_type:
             conditions.append(Actor.actor_type == actor_type)
-        if query:
-            q = f"%{query.strip()}%"
+
+        q_trim = (query or "").strip()
+        if q_trim and len(q_trim) >= 2:
+            q = f"%{q_trim}%"
+            q_upper = f"%{q_trim.upper()}%"
             conditions.append(
                 or_(
                     Actor.nome.ilike(q),
                     Actor.cognome.ilike(q),
                     Actor.denominazione.ilike(q),
-                    Actor.codice_fiscale.ilike(q.upper()),
-                    Actor.partita_iva.ilike(q.upper()),
-                    Actor.email.ilike(q),
+                    Actor.codice_fiscale.ilike(q_upper),
+                    Actor.partita_iva.ilike(q_upper),
                 )
             )
+        elif q_trim:
+            # Query troppo corta: ritorna vuoto, non l'intera anagrafica.
+            return [], 0
+
+        # Scope visibilità: solo attori collegati a sinistri assegnati
+        # all'utente corrente (via ClaimAssignment attivo).
+        if restrict_to_user_id is not None:
+            from app.models.claim_assignment import ClaimAssignment
+            allowed_actor_ids = (
+                select(Claim.contraente_id).where(
+                    Claim.tenant_id == tenant_id,
+                    Claim.id.in_(
+                        select(ClaimAssignment.claim_id).where(
+                            ClaimAssignment.assignee_user_id == restrict_to_user_id,
+                            ClaimAssignment.unassigned_at.is_(None),
+                        )
+                    ),
+                    Claim.contraente_id.isnot(None),
+                )
+                .union(
+                    select(Claim.assicurato_id).where(
+                        Claim.tenant_id == tenant_id,
+                        Claim.id.in_(
+                            select(ClaimAssignment.claim_id).where(
+                                ClaimAssignment.assignee_user_id == restrict_to_user_id,
+                                ClaimAssignment.unassigned_at.is_(None),
+                            )
+                        ),
+                        Claim.assicurato_id.isnot(None),
+                    )
+                )
+                .union(
+                    select(Claim.danneggiato_id).where(
+                        Claim.tenant_id == tenant_id,
+                        Claim.id.in_(
+                            select(ClaimAssignment.claim_id).where(
+                                ClaimAssignment.assignee_user_id == restrict_to_user_id,
+                                ClaimAssignment.unassigned_at.is_(None),
+                            )
+                        ),
+                        Claim.danneggiato_id.isnot(None),
+                    )
+                )
+            )
+            conditions.append(Actor.id.in_(allowed_actor_ids))
 
         total = (await db.execute(
             select(func.count()).select_from(Actor).where(and_(*conditions))
@@ -515,3 +665,37 @@ class ActorService:
             .offset(offset)
         )
         return list(res.scalars().all()), int(total or 0)
+
+    # ------------------------------------------------------------------
+    # Visibility check for single actor
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    async def user_can_view_actor(
+        db: AsyncSession,
+        tenant_id: str,
+        user_id: str,
+        actor_id: str,
+    ) -> bool:
+        """
+        True se l'utente è assegnatario di almeno un sinistro in cui
+        l'attore compare (in uno qualsiasi dei 3 ruoli). Usato per
+        autorizzare GET /actors/{id} ai non-admin.
+        """
+        from app.models.claim_assignment import ClaimAssignment
+        q = select(func.count()).select_from(Claim).where(
+            Claim.tenant_id == tenant_id,
+            or_(
+                Claim.contraente_id == actor_id,
+                Claim.assicurato_id == actor_id,
+                Claim.danneggiato_id == actor_id,
+            ),
+            Claim.id.in_(
+                select(ClaimAssignment.claim_id).where(
+                    ClaimAssignment.assignee_user_id == user_id,
+                    ClaimAssignment.unassigned_at.is_(None),
+                )
+            ),
+        )
+        n = (await db.execute(q)).scalar_one()
+        return int(n or 0) > 0

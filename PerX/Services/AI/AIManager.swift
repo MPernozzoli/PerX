@@ -579,15 +579,15 @@ class AIManager: ObservableObject {
     private func getDefaultFallbacks(for taskType: AITaskType) -> [AIModelProvider] {
         switch taskType {
         case .textGeneration, .chat:
-            return [.localText, .localMultimodal, .cloudOpenAI, .cloudClaude]
+            return [.localText, .localMultimodal, .appleIntelligence]
         case .documentAnalysis, .imageAnalysis:
-            return [.localMultimodal, .cloudOpenAI, .cloudClaude]
+            return [.localMultimodal]
         case .emailSummary, .textAnalysis:
-            return [.appleIntelligence, .localText, .cloudOpenAI, .cloudClaude]
+            return [.appleIntelligence, .localText]
         case .documentExtraction:
-            return [.localMultimodal, .cloudOpenAI, .cloudClaude]
+            return [.localMultimodal]
         case .guardrailing:
-            return [.appleIntelligence, .cloudOpenAI, .cloudClaude]
+            return [.appleIntelligence]
         }
     }
     
@@ -595,27 +595,17 @@ class AIManager: ObservableObject {
         // Esegui con il provider appropriato e assicurati che il risultato abbia il provider corretto
         let result: Result<AIResult, AIError>
         
-        let wantsStreaming = (task.parameters["stream"]?.value as? Bool) ?? false
-        
         switch provider {
         case .localMultimodal:
-            result = await MLXVisionService.shared.executeTask(task)
+            result = await LocalModelService.shared.executeMultimodalTask(task)
         case .localText:
             result = await LocalModelService.shared.executeTextTask(task)
         case .appleIntelligence:
             result = await AppleAIService.shared.executeTask(task)
         case .cloudOpenAI:
-            if wantsStreaming, let streamCb = streamCallbacks[task.id] {
-                result = await CloudAIService.shared.executeTaskStreaming(task, streamCallback: streamCb)
-            } else {
-                result = await CloudAIService.shared.executeTask(task)
-            }
+            result = .failure(.modelUnavailable)
         case .cloudClaude:
-            if wantsStreaming, let streamCb = streamCallbacks[task.id] {
-                result = await ClaudeAIService.shared.executeTaskStreaming(task, streamCallback: streamCb)
-            } else {
-                result = await ClaudeAIService.shared.executeTask(task)
-            }
+            result = .failure(.modelUnavailable)
         }
         
         // Assicurati che il provider nel risultato corrisponda a quello usato
@@ -678,8 +668,7 @@ class AIManager: ObservableObject {
                 print("[AIManager] ✅ Usando .localMultimodal per analisi")
                 return .localMultimodal
             }
-            print("[AIManager] ⚠️ .localMultimodal non disponibile, usando .cloudOpenAI")
-            return .cloudOpenAI
+            return .localMultimodal
             
         case .emailSummary, .textAnalysis:
             if isProviderAvailable(.appleIntelligence) {
@@ -688,7 +677,7 @@ class AIManager: ObservableObject {
             if isProviderAvailable(.localText) {
                 return .localText
             }
-            return .cloudOpenAI
+            return .localText
             
         case .textGeneration, .chat:
             // Per chat, rispetta il preferredProvider se disponibile
@@ -702,7 +691,7 @@ class AIManager: ObservableObject {
             if isProviderAvailable(.localMultimodal) {
                 return .localMultimodal
             }
-            return .cloudOpenAI
+            return .localText
             
         case .guardrailing:
             return .appleIntelligence
@@ -711,7 +700,7 @@ class AIManager: ObservableObject {
             if isProviderAvailable(.localMultimodal) {
                 return .localMultimodal
             }
-            return .cloudOpenAI
+            return .localMultimodal
         }
     }
     
@@ -723,14 +712,11 @@ class AIManager: ObservableObject {
     private func getProviderAvailability(_ provider: AIModelProvider) -> (available: Bool, reason: String?) {
         switch provider {
         case .localMultimodal:
-            let serviceAvailable = MLXVisionService.shared.serviceAvailable
-            let modelLoaded = MLXVisionService.shared.isModelLoaded
-            if serviceAvailable && modelLoaded {
+            let serviceAvailable = LocalModelService.shared.isMultimodalAvailable
+            if serviceAvailable {
                 return (true, nil)
-            } else if !serviceAvailable {
-                return (false, "Servizio MLX Vision non disponibile")
             } else {
-                return (false, "Modello vision non caricato")
+                return (false, "Modello vision Ollama non configurato")
             }
             
         case .localText:
@@ -750,26 +736,10 @@ class AIManager: ObservableObject {
             }
             
         case .cloudOpenAI:
-            let apiAvailable = CloudAIService.shared.isAvailable
-            let canWorkInBackground = resourceMonitor.canWorkInBackground()
-            if apiAvailable && canWorkInBackground {
-                return (true, nil)
-            } else if !apiAvailable {
-                return (false, "API key OpenAI non configurata")
-            } else {
-                return (false, "Risorse di sistema insufficienti per operazioni cloud")
-            }
+            return (false, "Provider cloud disponibile solo tramite backend")
 
         case .cloudClaude:
-            let apiAvailable = ClaudeAIService.shared.isAvailable
-            let canWorkInBackground = resourceMonitor.canWorkInBackground()
-            if apiAvailable && canWorkInBackground {
-                return (true, nil)
-            } else if !apiAvailable {
-                return (false, "API key Anthropic non configurata")
-            } else {
-                return (false, "Risorse di sistema insufficienti per operazioni cloud")
-            }
+            return (false, "Provider cloud disponibile solo tramite backend")
         }
     }
     

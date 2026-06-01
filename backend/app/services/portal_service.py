@@ -57,6 +57,7 @@ from app.schemas.portal import (
 from app.core.portal_security import generate_otp_code
 from app.services.iban_service import IbanService
 from app.services.inspection_workflow_service import InspectionWorkflowService
+from app.services.video_inspection_workflow_service import VideoInspectionWorkflowService
 from app.services.portal_status_service import PortalStatusService
 from app.services.process_job_service import ProcessJobService
 from app.services.resend_email_service import ResendEmailMessage, ResendEmailService
@@ -1537,6 +1538,22 @@ class PortalService:
                     ),
                 }
             )
+        if claim.stato_corrente == ClaimStatus.VIDEOPERIZIA.value:
+            video_slots = VideoInspectionWorkflowService._selected_slots(
+                VideoInspectionWorkflowService._preferences(claim)
+            )
+            requirements.append(
+                {
+                    "key": "video_inspection_scheduling",
+                    "label": "Videoperizia da fissare",
+                    "status": "pending_confirmation" if video_slots else "required",
+                    "description": (
+                        "La fascia scelta è registrata. Il giorno dell'appuntamento riceverai il nome del perito."
+                        if video_slots
+                        else "Scegli una finestra di 30 minuti per la videoperizia."
+                    ),
+                }
+            )
         if claim.stato_corrente in {
             ClaimStatus.ATTO_DA_INVIARE.value,
             ClaimStatus.ESITO_COMUNICATO.value,
@@ -1603,7 +1620,10 @@ class PortalService:
             "chat_enabled": True,
             "document_upload_enabled": True,
             "act_signature_enabled": True,
-            "inspection_scheduling_enabled": claim.stato_corrente == ClaimStatus.SOPRALLUOGO.value,
+            "inspection_scheduling_enabled": claim.stato_corrente in {
+                ClaimStatus.SOPRALLUOGO.value,
+                ClaimStatus.VIDEOPERIZIA.value,
+            },
             "requested_amount": PortalService._amount_to_float(claim.richiesta),
             "liquidated_amount": PortalService._amount_to_float(claim.liquidato),
             "estimated_damage_amount": PortalService._amount_to_float(claim.stima_danno),
@@ -1631,6 +1651,8 @@ class PortalService:
             "inspection_preferences_confirmed": "Preferenze sopralluogo inviate",
             "inspection_route_proposed": "Proposta CAT in revisione",
             "inspection_appointment_confirmed": "Sopralluogo confermato",
+            "video_inspection_preferences_confirmed": "Preferenza videoperizia inviata",
+            "video_inspection_appointment_confirmed": "Videoperizia confermata",
         }
         result = await db.execute(
             select(ClaimEvent)
@@ -1727,6 +1749,15 @@ class PortalService:
         claim_id: str | None = None,
     ) -> dict:
         claim, _ = await PortalService.resolve_claim_for_session(db, session, claim_id)
+        if claim.stato_corrente in {
+            ClaimStatus.VIDEOPERIZIA.value,
+            ClaimStatus.DA_GESTIRE_VIDEO.value,
+        }:
+            return await VideoInspectionWorkflowService.get_portal_scheduling_overview(
+                db,
+                session.tenant_id,
+                claim.id,
+            )
         return await InspectionWorkflowService.get_portal_scheduling_overview(
             db,
             session.tenant_id,
@@ -1741,6 +1772,11 @@ class PortalService:
         claim_id: str | None = None,
     ) -> dict:
         claim, _ = await PortalService.resolve_claim_for_session(db, session, claim_id)
+        if claim.stato_corrente in {
+            ClaimStatus.VIDEOPERIZIA.value,
+            ClaimStatus.DA_GESTIRE_VIDEO.value,
+        }:
+            return await PortalService.get_inspection_scheduling_overview(db, session, claim.id)
         await InspectionWorkflowService.upsert_portal_location(
             db,
             session.tenant_id,
@@ -1773,14 +1809,23 @@ class PortalService:
                 )
             )
 
-        await InspectionWorkflowService.submit_portal_preferences(
-            db,
-            session.tenant_id,
-            claim.id,
-            selected_slots=selected_slots,
-            notes=payload.notes,
-            requested_duration_minutes=payload.requested_duration_minutes,
-        )
+        if claim.stato_corrente == ClaimStatus.VIDEOPERIZIA.value:
+            await VideoInspectionWorkflowService.submit_portal_preferences(
+                db,
+                session.tenant_id,
+                claim.id,
+                selected_slots=selected_slots,
+                notes=payload.notes,
+            )
+        else:
+            await InspectionWorkflowService.submit_portal_preferences(
+                db,
+                session.tenant_id,
+                claim.id,
+                selected_slots=selected_slots,
+                notes=payload.notes,
+                requested_duration_minutes=payload.requested_duration_minutes,
+            )
         return await PortalService.get_inspection_scheduling_overview(db, session, claim.id)
 
     @staticmethod
@@ -2684,6 +2729,17 @@ class PortalService:
             await db.commit()
 
     @staticmethod
+    async def _get_tenant_branding(db: AsyncSession, tenant_id: str) -> dict:
+        from app.models.tenant import Tenant
+        result = await db.execute(select(Tenant).where(Tenant.id == tenant_id))
+        tenant = result.scalar_one_or_none()
+        if not tenant:
+            return {}
+        settings = tenant.settings_json or {}
+        branding = settings.get("branding")
+        return branding if isinstance(branding, dict) else {}
+
+    @staticmethod
     async def send_act_to_insured(
         db: AsyncSession,
         *,
@@ -2737,6 +2793,7 @@ class PortalService:
         delivery: dict[str, list[dict]] = {"push": [], "email": [], "whatsapp": []}
 
         # --- PUSH (sempre se ci sono subscription attive) ---
+        tenant_branding = await PortalService._get_tenant_branding(db, tenant_id)
         if "push" in channels:
             subs = await PortalService.list_active_push_subscriptions_for_claim(
                 db, tenant_id, claim_id
@@ -2750,7 +2807,12 @@ class PortalService:
                     body="L'atto è disponibile sul portale. Tocca per firmarlo.",
                     url=deeplink,
                     tag=f"atto-{claim_id}",
-                    data={"claim_id": claim_id, "kind": "atto_pronto"},
+                    data={
+                        "claim_id": claim_id,
+                        "kind": "atto_pronto",
+                        "icon": tenant_branding.get("icon_data_url"),
+                        "badge": tenant_branding.get("badge_data_url"),
+                    },
                 )
                 if result.gone:
                     sub.status = "revoked"

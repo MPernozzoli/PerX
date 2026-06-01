@@ -17,7 +17,7 @@ MACRO_STATE_CONFIG = {
     "inspection": {
         "states": {
             ClaimStatus.DA_GESTIRE_TRADIZIONALE.value,
-            ClaimStatus.VIDEOPERIZIA_DA_ESEGUIRE.value,
+            ClaimStatus.VIDEOPERIZIA.value,
             ClaimStatus.DA_GESTIRE_NO_RESIDUI.value,
             ClaimStatus.DA_GESTIRE_DOCUMENTALE.value,
             ClaimStatus.SOPRALLUOGO.value,

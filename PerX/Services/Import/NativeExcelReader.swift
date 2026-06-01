@@ -7,17 +7,7 @@ class NativeExcelReader {
     private init() {}
     
     static var isRunningInSandbox: Bool {
-        #if DEBUG
         return false
-        #else
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/bin/echo")
-        p.arguments = ["test"]
-        p.standardOutput = FileHandle.nullDevice
-        p.standardError = FileHandle.nullDevice
-        do { try p.run(); p.waitUntilExit(); return p.terminationStatus != 0 }
-        catch { return true }
-        #endif
     }
     
     func readExcelFile(at url: URL) throws -> ImportService.ImportData {
@@ -142,30 +132,7 @@ class NativeExcelReader {
     }
     
     private func extractXLSX(from url: URL) throws -> (sharedStrings: [String], sheets: [String: String]) {
-        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("xlsx_\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempDir) }
-        
-        let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
-        p.arguments = ["-o", "-q", url.path, "-d", tempDir.path]
-        p.standardOutput = FileHandle.nullDevice; p.standardError = FileHandle.nullDevice
-        var unzipOK = false
-        do { try p.run(); p.waitUntilExit(); unzipOK = p.terminationStatus == 0 } catch {}
-        
-        if unzipOK {
-            var ss = ""; var sheets: [String: String] = [:]
-            let ssPath = tempDir.appendingPathComponent("xl/sharedStrings.xml")
-            if FileManager.default.fileExists(atPath: ssPath.path) { ss = (try? String(contentsOf: ssPath)) ?? "" }
-            let wsDir = tempDir.appendingPathComponent("xl/worksheets")
-            if let files = try? FileManager.default.contentsOfDirectory(atPath: wsDir.path) {
-                for f in files where f.hasSuffix(".xml") {
-                    sheets["xl/worksheets/\(f)"] = (try? String(contentsOf: wsDir.appendingPathComponent(f))) ?? ""
-                }
-            }
-            return (parseSharedStrings(from: ss), sheets)
-        } else {
-            return try readZIPDirectly(from: url)
-        }
+        try readZIPDirectly(from: url)
     }
     
     private func readZIPDirectly(from url: URL) throws -> ([String], [String: String]) {

@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		79A1000A2F50000000900001 /* PerX Local Agent.xpc in Embed XPC Services */ = {isa = PBXBuildFile; fileRef = 79A100012F50000000900001 /* PerX Local Agent.xpc */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		7803956C2CE509550093FAB4 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -49,7 +53,28 @@
 			remoteGlobalIDString = 78EFBA232F318CE800720EFF;
 			remoteInfo = "PerX per iPad";
 		};
+		79A1000B2F50000000900001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7803954D2CE509530093FAB4 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 79A100082F50000000900001;
+			remoteInfo = "PerX Local Agent";
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		79A100092F50000000900001 /* Embed XPC Services */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 16;
+			files = (
+				79A1000A2F50000000900001 /* PerX Local Agent.xpc in Embed XPC Services */,
+			);
+			name = "Embed XPC Services";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		780395552CE509530093FAB4 /* PerX.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PerX.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -61,6 +86,7 @@
 		78EFBA242F318CE800720EFF /* PerX per iPad.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "PerX per iPad.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		78EFBA372F318CEA00720EFF /* PerX per iPadTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "PerX per iPadTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		78EFBA412F318CEA00720EFF /* PerX per iPadUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "PerX per iPadUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		79A100012F50000000900001 /* PerX Local Agent.xpc */ = {isa = PBXFileReference; explicitFileType = "wrapper.xpc-service"; includeInIndex = 0; path = "PerX Local Agent.xpc"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -91,6 +117,13 @@
 				PerX.xcdatamodeld,
 			);
 			target = 78EFBA232F318CE800720EFF /* PerX per iPad */;
+		};
+		79A100042F50000000900001 /* Exceptions for "PerXLocalAgentService" folder in "PerX Local Agent" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 79A100082F50000000900001 /* PerX Local Agent */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -148,6 +181,19 @@
 		78EFBA442F318CEA00720EFF /* PerX per iPadUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = "PerX per iPadUITests";
+			sourceTree = "<group>";
+		};
+		79A100022F50000000900001 /* PerXLocalAgentShared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = PerXLocalAgentShared;
+			sourceTree = "<group>";
+		};
+		79A100032F50000000900001 /* PerXLocalAgentService */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				79A100042F50000000900001 /* Exceptions for "PerXLocalAgentService" folder in "PerX Local Agent" target */,
+			);
+			path = PerXLocalAgentService;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -216,6 +262,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		79A100062F50000000900001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -231,6 +284,8 @@
 				78EFBA252F318CE900720EFF /* PerX per iPad */,
 				78EFBA3A2F318CEA00720EFF /* PerX per iPadTests */,
 				78EFBA442F318CEA00720EFF /* PerX per iPadUITests */,
+				79A100022F50000000900001 /* PerXLocalAgentShared */,
+				79A100032F50000000900001 /* PerXLocalAgentService */,
 				780395562CE509530093FAB4 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -247,6 +302,7 @@
 				78EFBA242F318CE800720EFF /* PerX per iPad.app */,
 				78EFBA372F318CEA00720EFF /* PerX per iPadTests.xctest */,
 				78EFBA412F318CEA00720EFF /* PerX per iPadUITests.xctest */,
+				79A100012F50000000900001 /* PerX Local Agent.xpc */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -261,13 +317,16 @@
 				780395512CE509530093FAB4 /* Sources */,
 				780395522CE509530093FAB4 /* Frameworks */,
 				780395532CE509530093FAB4 /* Resources */,
+				79A100092F50000000900001 /* Embed XPC Services */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				79A1000C2F50000000900001 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				780395572CE509530093FAB4 /* PerX */,
+				79A100022F50000000900001 /* PerXLocalAgentShared */,
 			);
 			name = PerX;
 			packageProductDependencies = (
@@ -458,6 +517,29 @@
 			productReference = 78EFBA412F318CEA00720EFF /* PerX per iPadUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		79A100082F50000000900001 /* PerX Local Agent */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 79A1000F2F50000000900001 /* Build configuration list for PBXNativeTarget "PerX Local Agent" */;
+			buildPhases = (
+				79A100052F50000000900001 /* Sources */,
+				79A100062F50000000900001 /* Frameworks */,
+				79A100072F50000000900001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				79A100022F50000000900001 /* PerXLocalAgentShared */,
+				79A100032F50000000900001 /* PerXLocalAgentService */,
+			);
+			name = "PerX Local Agent";
+			packageProductDependencies = (
+			);
+			productName = "PerX Local Agent";
+			productReference = 79A100012F50000000900001 /* PerX Local Agent.xpc */;
+			productType = "com.apple.product-type.xpc-service";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -501,6 +583,9 @@
 						CreatedOnToolsVersion = 26.2;
 						TestTargetID = 78EFBA232F318CE800720EFF;
 					};
+					79A100082F50000000900001 = {
+						CreatedOnToolsVersion = 26.5;
+					};
 				};
 			};
 			buildConfigurationList = 780395502CE509530093FAB4 /* Build configuration list for PBXProject "PerX" */;
@@ -527,6 +612,7 @@
 				78EFBA232F318CE800720EFF /* PerX per iPad */,
 				78EFBA362F318CEA00720EFF /* PerX per iPadTests */,
 				78EFBA402F318CEA00720EFF /* PerX per iPadUITests */,
+				79A100082F50000000900001 /* PerX Local Agent */,
 			);
 		};
 /* End PBXProject section */
@@ -589,6 +675,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		78EFBA3F2F318CEA00720EFF /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		79A100072F50000000900001 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -661,6 +754,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		79A100052F50000000900001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -693,6 +793,11 @@
 			isa = PBXTargetDependency;
 			target = 78EFBA232F318CE800720EFF /* PerX per iPad */;
 			targetProxy = 78EFBA422F318CEA00720EFF /* PBXContainerItemProxy */;
+		};
+		79A1000C2F50000000900001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 79A100082F50000000900001 /* PerX Local Agent */;
+			targetProxy = 79A1000B2F50000000900001 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -836,7 +941,7 @@
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"PerX/Preview Content\"";
 				DEVELOPMENT_TEAM = G48384PHQK;
-				ENABLE_APP_SANDBOX = YES;
+				ENABLE_APP_SANDBOX = NO;
 				ENABLE_FILE_ACCESS_DOWNLOADS_FOLDER = readwrite;
 				ENABLE_FILE_ACCESS_MOVIES_FOLDER = readwrite;
 				ENABLE_FILE_ACCESS_MUSIC_FOLDER = readwrite;
@@ -848,7 +953,7 @@
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
 				ENABLE_RESOURCE_ACCESS_BLUETOOTH = NO;
 				ENABLE_RESOURCE_ACCESS_CALENDARS = YES;
-				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = YES;
 				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
 				ENABLE_RESOURCE_ACCESS_LOCATION = YES;
 				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = YES;
@@ -872,6 +977,7 @@
 				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = YES;
 				RUNTIME_EXCEPTION_ALLOW_JIT = YES;
 				RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY = YES;
+				RUNTIME_EXCEPTION_DEBUGGING_TOOL = NO;
 				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = YES;
 				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
@@ -879,7 +985,6 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "2,7";
-				"com.apple.security.temporary-exception.child-process.path-in-bundle" = true;
 			};
 			name = Debug;
 		};
@@ -896,7 +1001,7 @@
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"PerX/Preview Content\"";
 				DEVELOPMENT_TEAM = G48384PHQK;
-				ENABLE_APP_SANDBOX = YES;
+				ENABLE_APP_SANDBOX = NO;
 				ENABLE_FILE_ACCESS_DOWNLOADS_FOLDER = readwrite;
 				ENABLE_FILE_ACCESS_MOVIES_FOLDER = readwrite;
 				ENABLE_FILE_ACCESS_MUSIC_FOLDER = readwrite;
@@ -908,7 +1013,7 @@
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
 				ENABLE_RESOURCE_ACCESS_BLUETOOTH = NO;
 				ENABLE_RESOURCE_ACCESS_CALENDARS = YES;
-				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = YES;
 				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
 				ENABLE_RESOURCE_ACCESS_LOCATION = YES;
 				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = YES;
@@ -932,6 +1037,7 @@
 				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = YES;
 				RUNTIME_EXCEPTION_ALLOW_JIT = YES;
 				RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY = YES;
+				RUNTIME_EXCEPTION_DEBUGGING_TOOL = NO;
 				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = YES;
 				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
@@ -939,7 +1045,6 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "2,7";
-				"com.apple.security.temporary-exception.child-process.path-in-bundle" = true;
 			};
 			name = Release;
 		};
@@ -1351,6 +1456,54 @@
 			};
 			name = Release;
 		};
+		79A1000D2F50000000900001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = G48384PHQK;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PerXLocalAgentService/Info.plist;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = it.pernozzoli.PerX.LocalAgent;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		79A1000E2F50000000900001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = G48384PHQK;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PerXLocalAgentService/Info.plist;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = it.pernozzoli.PerX.LocalAgent;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -1440,6 +1593,15 @@
 			buildConfigurations = (
 				78EFBA4D2F318CEA00720EFF /* Debug */,
 				78EFBA4E2F318CEA00720EFF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		79A1000F2F50000000900001 /* Build configuration list for PBXNativeTarget "PerX Local Agent" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				79A1000D2F50000000900001 /* Debug */,
+				79A1000E2F50000000900001 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

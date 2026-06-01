@@ -28,6 +28,7 @@ from app.models.document_version import DocumentVersion
 from app.models.email import Email, EmailClaimLink
 from app.models.user import User
 from app.services.resend_email_service import ResendEmailMessage, ResendEmailService
+from app.services.email_routing_service import EmailRoutingService
 from app.services.vault_storage_service import VaultStorageService
 
 router = APIRouter()
@@ -804,7 +805,8 @@ async def compat_associate_email(
             link_type="primary",
             created_by="hub_compat",
         ))
-        await db.commit()
+    await EmailRoutingService.reroute_disabled_user_email(db, email, claim_ids=[claim.id])
+    await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -1006,5 +1008,4 @@ async def compat_internal_events(
     since: float = Query(0.0),
 ):
     return []
-
 

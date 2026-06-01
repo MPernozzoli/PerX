@@ -164,185 +164,42 @@ class ExcelReaderService {
     // MARK: - Python Implementation (per sviluppo)
     
     private func readExcelFileWithPython(at url: URL) async throws -> [String: Any] {
-        // Esegui tutte le operazioni I/O pesanti in background
-        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[String: Any], Error>) in
-            Task.detached(priority: .userInitiated) {
-                await self.runPythonProcess(url: url, continuation: continuation)
-            }
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            throw NSError(
+                domain: "ExcelReaderError",
+                code: 4,
+                userInfo: [NSLocalizedDescriptionKey: "File Excel non trovato"]
+            )
         }
-    }
-    
-    private func runPythonProcess(url: URL, continuation: CheckedContinuation<[String: Any], Error>) async {
-        // Verifica che Python sia installato prima di procedere
-        let pythonInstalled = await DependencyManager.shared.isDependencyInstalled(.python)
-        if !pythonInstalled {
-            continuation.resume(throwing: NSError(domain: "ExcelReaderError", code: 6,
-                                                 userInfo: [NSLocalizedDescriptionKey: "Python non disponibile"]))
-            return
-        }
-        
-        // Il resto del codice Python originale...
-        await runPythonProcessInternal(url: url, continuation: continuation)
-    }
-    
-    private func runPythonProcessInternal(url: URL, continuation: CheckedContinuation<[String: Any], Error>) async {
-        // Attiva i permessi security-scoped per accedere al file
-        let filePath = url.path
-        var securityScopedURL: URL?
-        var tempExcelURL: URL?
-        
-        // Prova ad attivare i permessi per accedere al file originale
-        if let bookmarkData = UserDefaults.standard.data(forKey: "MainDirectoryBookmark") {
-            var isStale = false
-            if let bookmarkURL = try? URL(resolvingBookmarkData: bookmarkData,
-                                         options: .withSecurityScope,
-                                         relativeTo: nil,
-                                         bookmarkDataIsStale: &isStale),
-               !isStale {
-                let mainPath = bookmarkURL.path
-                if filePath.hasPrefix(mainPath) {
-                    if bookmarkURL.startAccessingSecurityScopedResource() {
-                        securityScopedURL = bookmarkURL
-                    }
-                }
-            }
-        }
-        
-        defer {
-            securityScopedURL?.stopAccessingSecurityScopedResource()
-        }
-        
-        guard FileManager.default.fileExists(atPath: filePath) else {
-            continuation.resume(throwing: NSError(domain: "ExcelReaderError", code: 4,
-                                                 userInfo: [NSLocalizedDescriptionKey: "File Excel non trovato"]))
-            return
-        }
-        
         let tempDir = FileManager.default.temporaryDirectory
-        let tempExcelPath = tempDir.appendingPathComponent("\(UUID().uuidString).xlsm")
-        
-        do {
-            if securityScopedURL != nil {
-                try FileManager.default.copyItem(at: url, to: tempExcelPath)
-                tempExcelURL = tempExcelPath
-            } else {
-                tempExcelURL = url
-            }
-        } catch {
-            tempExcelURL = url
+        let scriptURL = tempDir.appendingPathComponent("\(UUID().uuidString)-read-excel.py")
+        try pythonScript.write(to: scriptURL, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: scriptURL) }
+
+        let processResult = try await PerXLocalAgent.shared.runPythonScript(
+            scriptPath: scriptURL.path,
+            arguments: [url.path],
+            environment: [:],
+            standardInput: nil,
+            timeout: 30
+        )
+        guard processResult.exitCode == 0,
+              let jsonData = processResult.output.data(using: .utf8),
+              let result = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
+            throw NSError(
+                domain: "ExcelReaderError",
+                code: Int(processResult.exitCode),
+                userInfo: [NSLocalizedDescriptionKey: processResult.combinedOutput]
+            )
         }
-        
-        guard let excelURLToRead = tempExcelURL else {
-            continuation.resume(throwing: NSError(domain: "ExcelReaderError", code: 3,
-                                                 userInfo: [NSLocalizedDescriptionKey: "Impossibile accedere al file Excel"]))
-            return
+        if let error = result["error"] as? String {
+            throw NSError(
+                domain: "ExcelReaderError",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: error]
+            )
         }
-        
-        let scriptURL = tempDir.appendingPathComponent("read_excel.py")
-        do {
-            try pythonScript.write(to: scriptURL, atomically: true, encoding: .utf8)
-            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
-        } catch {
-            continuation.resume(throwing: error)
-            return
-        }
-        
-        // Trova Python
-        let pythonPaths = [
-            "/usr/local/bin/python3",
-            "/opt/homebrew/bin/python3",
-            "/usr/bin/python3",
-            "\(NSHomeDirectory())/.local/bin/python3"
-        ]
-        
-        var pythonPath: String?
-        for path in pythonPaths {
-            if FileManager.default.fileExists(atPath: path) {
-                pythonPath = path
-                break
-            }
-        }
-        
-        guard let python = pythonPath else {
-            continuation.resume(throwing: NSError(domain: "ExcelReaderError", code: 7,
-                                                 userInfo: [NSLocalizedDescriptionKey: "Python 3 non trovato"]))
-            return
-        }
-        
-        // Crea wrapper script
-        let wrapperScript = """
-        #!/bin/bash
-        export DEVELOPER_DIR=""
-        export XCODE_DEVELOPER_DIR_PATH=""
-        unset DEVELOPER_DIR
-        unset XCODE_DEVELOPER_DIR_PATH
-        exec "\(python)" "\(scriptURL.path)" "\(excelURLToRead.path)"
-        """
-        
-        let wrapperURL = tempDir.appendingPathComponent("python_wrapper_\(UUID().uuidString).sh")
-        
-        do {
-            try wrapperScript.write(to: wrapperURL, atomically: true, encoding: .utf8)
-            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: wrapperURL.path)
-        } catch {
-            continuation.resume(throwing: error)
-            return
-        }
-        
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/bash")
-        process.arguments = [wrapperURL.path]
-        
-        var env: [String: String] = [:]
-        env["PATH"] = "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-        env["PYTHONIOENCODING"] = "utf-8"
-        env["LANG"] = "en_US.UTF-8"
-        env["HOME"] = NSHomeDirectory()
-        env["DEVELOPER_DIR"] = ""
-        env["XCODE_DEVELOPER_DIR_PATH"] = ""
-        process.environment = env
-        
-        let outputPipe = Pipe()
-        let errorPipe = Pipe()
-        process.standardOutput = outputPipe
-        process.standardError = errorPipe
-        
-        let tempFileToRemove = tempExcelURL
-        let wrapperToRemove = wrapperURL
-        
-        process.terminationHandler = { process in
-            let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
-            
-            if let tempFile = tempFileToRemove, tempFile != url {
-                try? FileManager.default.removeItem(at: tempFile)
-            }
-            try? FileManager.default.removeItem(at: wrapperToRemove)
-            
-            if let output = String(data: outputData, encoding: .utf8),
-               let jsonData = output.data(using: .utf8),
-               let result = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
-                
-                if let error = result["error"] as? String {
-                    continuation.resume(throwing: NSError(domain: "ExcelReaderError", code: 1,
-                                                          userInfo: [NSLocalizedDescriptionKey: error]))
-                    return
-                }
-                
-                continuation.resume(returning: self.convertToSwiftFormat(result))
-            } else {
-                continuation.resume(throwing: NSError(domain: "ExcelReaderError", code: 2,
-                                                      userInfo: [NSLocalizedDescriptionKey: "Nessun dato letto"]))
-            }
-        }
-        
-        do {
-            try process.run()
-        } catch {
-            if let tempFile = tempExcelURL, tempFile != url {
-                try? FileManager.default.removeItem(at: tempFile)
-            }
-            continuation.resume(throwing: error)
-        }
+        return convertToSwiftFormat(result)
     }
     
     /// Converte una stringa in Title Case (iniziali maiuscole)
@@ -512,4 +369,4 @@ class ExcelReaderService {
         print(json.dumps({"error": str(e)}))
         sys.exit(1)
     """#
-} 
+}

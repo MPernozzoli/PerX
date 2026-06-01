@@ -124,10 +124,10 @@ export function ClaimDashboard() {
                 inspectionSummary.emphasis ? " dashboard-focus-card--emphasis" : ""
               }`}
             >
-              <p className="dashboard-focus-card__eyebrow">Sopralluogo</p>
+              <p className="dashboard-focus-card__eyebrow">{inspectionSummary.modeLabel}</p>
               <h2>{inspectionSummary.title}</h2>
               <p>{inspectionSummary.description}</p>
-              <span>Apri sezione sopralluogo</span>
+              <span>Apri sezione {inspectionSummary.modeLabel.toLowerCase()}</span>
             </Link>
 
             <Link
