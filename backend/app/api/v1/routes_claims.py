@@ -14,9 +14,10 @@ from app.services.claim_service import ClaimService
 from app.services.portal_service import PortalService
 from app.services.state_service import StateService
 from app.schemas.claim import (
-    ClaimCreate, ClaimUpdate, ClaimResponse, ClaimListResponse,
+    ClaimActorInput, ClaimCreate, ClaimUpdate, ClaimResponse, ClaimListResponse,
     ClaimStateTransitionRequest, ClaimAssignmentRequest, ClaimEventResponse
 )
+from app.services.actor_service import ActorService
 
 
 AttoChannel = Literal["push", "email", "whatsapp"]
@@ -126,6 +127,90 @@ async def update_claim(
     except Exception:
         pass
     return response
+
+
+class ClaimActorsPatchRequest(BaseModel):
+    """Aggiornamento mirato dei soli riferimenti ad anagrafica del sinistro.
+    Non richiede `version` perché non tocca i campi business; serve a
+    collegare/scollegare attori e agenzia/compagnia in modo atomico."""
+    contraente: Optional[ClaimActorInput] = None
+    assicurato: Optional[ClaimActorInput] = None
+    danneggiato: Optional[ClaimActorInput] = None
+    agency_id: Optional[str] = None
+    compagnia_id: Optional[str] = None
+
+
+@router.patch("/{claim_id}/actors", response_model=ClaimResponse)
+async def patch_claim_actors(
+    claim_id: str,
+    payload: ClaimActorsPatchRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Aggiorna soltanto i riferimenti agli Actor (e agency/compagnia) del
+    sinistro. Ogni ruolo passato viene risolto via `_resolve_actor_input`:
+    se l'input contiene `actor_id` si usa quello, se contiene `actor_data`
+    viene fatto upsert per CF/PIVA. Gli indici cross-sinistro vengono
+    aggiornati di conseguenza."""
+    claim = await ClaimService.get_claim(db, current_user.tenant_id, claim_id)
+    if claim is None:
+        raise HTTPException(status_code=404, detail="Claim not found")
+
+    agency_changed = False
+    compagnia_changed = False
+    if payload.agency_id is not None and claim.agency_id != payload.agency_id:
+        claim.agency_id = payload.agency_id or None
+        agency_changed = True
+    if payload.compagnia_id is not None and claim.compagnia_id != payload.compagnia_id:
+        claim.compagnia_id = payload.compagnia_id or None
+        compagnia_changed = True
+
+    for role, role_payload in (
+        ("contraente", payload.contraente),
+        ("assicurato", payload.assicurato),
+        ("danneggiato", payload.danneggiato),
+    ):
+        if role_payload is None:
+            continue
+        aid, addr_snap, iban_snap = await ClaimService._resolve_actor_input(
+            db, current_user.tenant_id, role_payload
+        )
+        setattr(claim, f"{role}_id", aid)
+        setattr(
+            claim,
+            f"{role}_address_snapshot",
+            addr_snap.model_dump() if addr_snap else None,
+        )
+        if role == "danneggiato" and iban_snap is not None:
+            claim.iban_snapshot = iban_snap.model_dump()
+
+    if agency_changed or compagnia_changed:
+        actor_ids = {a for a in (claim.contraente_id, claim.assicurato_id, claim.danneggiato_id) if a}
+        for aid in actor_ids:
+            if claim.agency_id:
+                await ActorService.touch_agency_link(
+                    db, current_user.tenant_id, aid, claim.agency_id, claim.id
+                )
+            if claim.compagnia_id:
+                await ActorService.touch_company_link(
+                    db, current_user.tenant_id, aid, claim.compagnia_id, claim.id
+                )
+
+    claim.version += 1
+    await db.commit()
+    await db.refresh(claim)
+
+    try:
+        from app.api.v1.routes_realtime import sse_manager
+        await sse_manager.broadcast(
+            current_user.tenant_id,
+            "claim_updated",
+            {"claim_id": claim.id, "updated_by": current_user.id, "kind": "actors"},
+        )
+    except Exception:
+        pass
+
+    return ClaimResponse.model_validate(claim)
 
 
 @router.delete("/{claim_id}", status_code=status.HTTP_204_NO_CONTENT)

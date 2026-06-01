@@ -476,6 +476,52 @@ final class HubAPIAdapterClient {
     func listActorCompanies(actorId: String) async throws -> [CloudActorCompanyLink] {
         try await cloudGet("/api/v1/actors/\(actorId)/companies")
     }
+
+    // MARK: - Claim actor refs (PATCH dedicato)
+
+    /// Aggiorna i riferimenti attori (contraente/assicurato/danneggiato +
+    /// agency/compagnia) di un sinistro senza dover spedire l'intero ClaimUpdate.
+    func patchClaimActors(
+        claimId: String,
+        payload: CloudClaimActorsPatch
+    ) async throws -> CloudClaimResponse {
+        guard let url = URL(string: "\(cloudBaseURL)/api/v1/claims/\(claimId)/actors") else {
+            throw HubClientError.invalidURL
+        }
+        var request = try await authorizedCloudRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.httpBody = try encoder.encode(payload)
+
+        let (data, response) = try await session.data(for: request)
+        try validateResponse(response)
+        return try decoder.decode(CloudClaimResponse.self, from: data)
+    }
+}
+
+// MARK: - Claim actor patch payload (lives here to keep DTOs colocated)
+
+struct CloudClaimActorsPatch: Codable {
+    let contraente: CloudClaimActorInput?
+    let assicurato: CloudClaimActorInput?
+    let danneggiato: CloudClaimActorInput?
+    let agency_id: String?
+    let compagnia_id: String?
+
+    init(
+        contraente: CloudClaimActorInput? = nil,
+        assicurato: CloudClaimActorInput? = nil,
+        danneggiato: CloudClaimActorInput? = nil,
+        agency_id: String? = nil,
+        compagnia_id: String? = nil
+    ) {
+        self.contraente = contraente
+        self.assicurato = assicurato
+        self.danneggiato = danneggiato
+        self.agency_id = agency_id
+        self.compagnia_id = compagnia_id
+    }
 }
 
 // MARK: - Types

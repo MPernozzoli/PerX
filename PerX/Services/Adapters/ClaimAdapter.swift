@@ -192,6 +192,48 @@ final class ClaimAdapter: ObservableObject {
         }
     }
     
+    // MARK: - Actor refs (PATCH dedicato)
+
+    /// Aggiorna i riferimenti agli attori (e agency/compagnia) per un sinistro
+    /// sia sul backend che nella copia locale Core Data. Restituisce l'ID
+    /// backend del sinistro (utile per chiamate successive).
+    func updateActorRefs(
+        riferimento: String,
+        contraenteId: String?,
+        assicuratoId: String?,
+        danneggiatoId: String?,
+        agencyId: String? = nil,
+        compagniaId: String? = nil
+    ) async throws -> CloudClaimResponse {
+        let payload = CloudClaimActorsPatch(
+            contraente: contraenteId.map { CloudClaimActorInput(actor_id: $0, actor_data: nil, address_id: nil, iban_id: nil) },
+            assicurato: assicuratoId.map { CloudClaimActorInput(actor_id: $0, actor_data: nil, address_id: nil, iban_id: nil) },
+            danneggiato: danneggiatoId.map { CloudClaimActorInput(actor_id: $0, actor_data: nil, address_id: nil, iban_id: nil) },
+            agency_id: agencyId,
+            compagnia_id: compagniaId
+        )
+        // L'endpoint richiede l'id backend; per il client iOS usiamo
+        // `riferimento` come chiave naturale tramite il route /claims/{id_or_ref}
+        // (il backend `get_claim` cerca per id o external_ref).
+        let response = try await hubClient.patchClaimActors(claimId: riferimento, payload: payload)
+        await applyToLocal(response: response, riferimento: riferimento)
+        return response
+    }
+
+    /// Applica i riferimenti attori a un Sinistro Core Data se presente.
+    private func applyToLocal(response: CloudClaimResponse, riferimento: String) async {
+        let context = PersistenceController.shared.container.viewContext
+        await context.perform {
+            let request = NSFetchRequest<Sinistro>(entityName: "Sinistro")
+            request.predicate = NSPredicate(format: "riferimento == %@", riferimento)
+            request.fetchLimit = 1
+            guard let sinistro = try? context.fetch(request).first else { return }
+            sinistro.applyActorCloudRefs(from: response)
+            sinistro.markAsLocallyModified()
+            try? context.save()
+        }
+    }
+
     private func changeStateLocally(
         riferimento: String,
         newState: StatoSinistro,

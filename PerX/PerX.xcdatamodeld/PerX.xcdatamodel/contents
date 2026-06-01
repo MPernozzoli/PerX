@@ -112,6 +112,15 @@
         <attribute name="tipoMittenteSollecitoMax" optional="YES" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
         <attribute name="sollecitiRicevutiJSON" optional="YES" attributeType="String"/>
         <attribute name="cicliControlloJSON" optional="YES" attributeType="String"/>
+        <attribute name="contraenteCloudId" optional="YES" attributeType="String"/>
+        <attribute name="assicuratoCloudId" optional="YES" attributeType="String"/>
+        <attribute name="danneggiatoCloudId" optional="YES" attributeType="String"/>
+        <attribute name="agencyCloudId" optional="YES" attributeType="String"/>
+        <attribute name="compagniaCloudId" optional="YES" attributeType="String"/>
+        <attribute name="contraenteAddressSnapshotJSON" optional="YES" attributeType="String"/>
+        <attribute name="assicuratoAddressSnapshotJSON" optional="YES" attributeType="String"/>
+        <attribute name="danneggiatoAddressSnapshotJSON" optional="YES" attributeType="String"/>
+        <attribute name="ibanSnapshotJSON" optional="YES" attributeType="String"/>
         <relationship name="tags" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="Tag" inverseName="sinistri" inverseEntity="Tag"/>
         <relationship name="emailThreads" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="SinistroEmailThread" inverseName="sinistro" inverseEntity="SinistroEmailThread"/>
         <relationship name="whatsAppThreads" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="SinistroWhatsAppThread" inverseName="sinistro" inverseEntity="SinistroWhatsAppThread"/>

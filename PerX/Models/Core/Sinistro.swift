@@ -235,7 +235,24 @@ public class Sinistro: NSManagedObject, Identifiable {
     // MARK: - Cicli di Controllo/Autorizzazione
     /// JSON storage per i cicli di controllo (array di CicloControllo)
     @NSManaged private var cicliControlloJSON: String?
-    
+
+    // MARK: - Riferimenti ad anagrafica unificata (backend Actor)
+    // ID del CloudActorResponse corrispondente ai 3 ruoli. Convivono coi
+    // campi piatti `nomeContraente`/`nomeAssicurato`/`nomeDanneggiato` finché
+    // tutti i flussi non sono migrati.
+    @NSManaged public var contraenteCloudId: String?
+    @NSManaged public var assicuratoCloudId: String?
+    @NSManaged public var danneggiatoCloudId: String?
+    @NSManaged public var agencyCloudId: String?
+    @NSManaged public var compagniaCloudId: String?
+
+    // Snapshot JSON degli indirizzi/IBAN al momento dell'uso sul sinistro.
+    // Serializzati come stringhe JSON (encoder/decoder negli helper sotto).
+    @NSManaged public var contraenteAddressSnapshotJSON: String?
+    @NSManaged public var assicuratoAddressSnapshotJSON: String?
+    @NSManaged public var danneggiatoAddressSnapshotJSON: String?
+    @NSManaged public var ibanSnapshotJSON: String?
+
     // MARK: - Computed Properties derivate dalla Definizione
     
     /// Indica se il sinistro prevede una liquidazione (indennizzo)

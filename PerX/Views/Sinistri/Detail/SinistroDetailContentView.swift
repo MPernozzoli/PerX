@@ -23,8 +23,11 @@ struct SinistroDetailContentView: View {
                 // SEZIONE 2: Stato
                 StatoSectionView(sinistro: sinistro)
                 
-                // SEZIONE 3: Polizza e Attori
+                // SEZIONE 3: Polizza e Attori (vecchio flusso, campi piatti)
                 PolizzaAttoriSectionView(sinistro: sinistro)
+
+                // SEZIONE 3-bis: Anagrafica unificata (nuovo flusso backend)
+                AnagraficaAttoriSectionView(sinistro: sinistro)
                 
                 // Layout a due colonne per le altre GroupBox
                 HStack(alignment: .top, spacing: 16) {
