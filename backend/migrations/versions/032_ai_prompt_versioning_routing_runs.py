@@ -24,11 +24,7 @@ import sqlalchemy as sa
 
 
 revision = "032_ai_prompt_versioning"
-# NOTA: down_revision punta a "029" perche al momento di scrivere questa
-# migration ci sono altre 030_* / 031_* in flight (portal_gdpr, videoperizia,
-# ...) di cui non si conosce l'ordering finale. Da rebasare in catena lineare
-# al merge.
-down_revision = "029"
+down_revision = "032"
 branch_labels = None
 depends_on = None
 

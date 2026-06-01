@@ -166,6 +166,58 @@ final class HubAPIAdapterClient {
         try await performCloudRequest(path: path, method: "PUT", body: body)
     }
 
+    /// POST multipart/form-data al backend cloud. `fields` finisce come form
+    /// fields semplici; `file` come parte binaria con `filename` e `mimeType`.
+    /// Usato per upload media (es. frame videoperizia → POST .../session/{sid}/media).
+    func cloudPostMultipart<T: Decodable>(
+        _ path: String,
+        fileData: Data,
+        fileFieldName: String,
+        fileName: String,
+        mimeType: String,
+        fields: [String: String] = [:]
+    ) async throws -> T {
+        guard let url = URL(string: "\(cloudBaseURL)\(path)") else {
+            throw HubClientError.invalidURL
+        }
+
+        let boundary = "perx-\(UUID().uuidString)"
+        var body = Data()
+        let lineBreak = "\r\n"
+
+        for (key, value) in fields {
+            body.append("--\(boundary)\(lineBreak)".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"\(key)\"\(lineBreak)\(lineBreak)".data(using: .utf8)!)
+            body.append("\(value)\(lineBreak)".data(using: .utf8)!)
+        }
+        body.append("--\(boundary)\(lineBreak)".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"\(fileFieldName)\"; filename=\"\(fileName)\"\(lineBreak)".data(using: .utf8)!)
+        body.append("Content-Type: \(mimeType)\(lineBreak)\(lineBreak)".data(using: .utf8)!)
+        body.append(fileData)
+        body.append("\(lineBreak)--\(boundary)--\(lineBreak)".data(using: .utf8)!)
+
+        var request = try await authorizedCloudRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.httpBody = body
+
+        let (data, response) = try await session.upload(for: request, from: body)
+        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 401 {
+            try await loginToCloud(forceRefresh: true)
+            var retry = try await authorizedCloudRequest(url: url)
+            retry.httpMethod = "POST"
+            retry.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+            retry.setValue("application/json", forHTTPHeaderField: "Accept")
+            retry.httpBody = body
+            let (retryData, retryResponse) = try await session.upload(for: retry, from: body)
+            try validateResponse(retryResponse)
+            return try decoder.decode(T.self, from: retryData)
+        }
+        try validateResponse(response)
+        return try decoder.decode(T.self, from: data)
+    }
+
     func cloudDelete(_ path: String) async throws {
         guard let url = URL(string: "\(cloudBaseURL)\(path)") else {
             throw HubClientError.invalidURL

@@ -1,10 +1,21 @@
 export const PORTAL_SUBDOMAIN = "assicurati";
 
+// Host che servono il portale assicurati sotto path-slug `/assicurati` invece
+// che come sotto-dominio `assicurati.<dominio>`.
+export const PATH_SLUG_PORTAL_HOSTS = new Set<string>(["demo.perx.it"]);
+export const PORTAL_PATH_SLUG = "assicurati";
+
 export type PortalTenantContext = {
   host: string | null;
   tenantDomain: string | null;
   themeId: string;
+  pathSlug: boolean;
 };
+
+export function isPathSlugPortalHost(host?: string | null): boolean {
+  const normalized = normalizePortalHost(host);
+  return !!normalized && PATH_SLUG_PORTAL_HOSTS.has(normalized);
+}
 
 export function normalizePortalHost(value?: string | null): string | null {
   if (!value) {
@@ -37,6 +48,10 @@ export function getTenantDomainFromHost(host?: string | null): string | null {
     return null;
   }
 
+  if (PATH_SLUG_PORTAL_HOSTS.has(normalizedHost)) {
+    return normalizedHost;
+  }
+
   const prefix = `${PORTAL_SUBDOMAIN}.`;
   return normalizedHost.startsWith(prefix) ? normalizedHost.slice(prefix.length) || null : null;
 }
@@ -57,7 +72,8 @@ export function getPortalTenantContext(host?: string | null): PortalTenantContex
   return {
     host: normalizedHost,
     tenantDomain,
-    themeId: getThemeIdFromTenantDomain(tenantDomain)
+    themeId: getThemeIdFromTenantDomain(tenantDomain),
+    pathSlug: isPathSlugPortalHost(normalizedHost)
   };
 }
 

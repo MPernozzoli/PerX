@@ -503,6 +503,16 @@ class PortalService:
         base_url = settings.PORTAL_APP_URL.rstrip("/")
         return f"{base_url}/access/{token}"
 
+    # Host che servono il portale assicurati sotto path-slug `/assicurati`
+    # invece che come sotto-dominio `assicurati.<dominio>`.
+    PATH_SLUG_PORTAL_HOSTS: set[str] = {"demo.perx.it"}
+    PORTAL_PATH_SLUG: str = "assicurati"
+
+    @staticmethod
+    def is_path_slug_portal_host(host: str | None) -> bool:
+        normalized = PortalService.normalize_portal_host(host)
+        return bool(normalized and normalized in PortalService.PATH_SLUG_PORTAL_HOSTS)
+
     @staticmethod
     def normalize_portal_host(value: str | None) -> str | None:
         if not value:
@@ -521,6 +531,8 @@ class PortalService:
         normalized = PortalService.normalize_portal_host(host)
         if not normalized:
             return None
+        if normalized in PortalService.PATH_SLUG_PORTAL_HOSTS:
+            return normalized
         prefix = f"{PortalService.PORTAL_SUBDOMAIN}."
         if normalized.startswith(prefix):
             tenant_domain = normalized[len(prefix):]
@@ -537,6 +549,8 @@ class PortalService:
         normalized = PortalService.normalize_portal_host(host)
         if not normalized or PortalService._is_local_portal_host(normalized):
             return False
+        if normalized in PortalService.PATH_SLUG_PORTAL_HOSTS:
+            return True
         return normalized.startswith(f"{PortalService.PORTAL_SUBDOMAIN}.")
 
     @staticmethod
@@ -571,7 +585,12 @@ class PortalService:
             scheme = "https"
             if settings.PORTAL_APP_URL.startswith("http://"):
                 scheme = "http"
-            return f"{scheme}://{normalized_host}/access/{token}"
+            path_prefix = (
+                f"/{PortalService.PORTAL_PATH_SLUG}"
+                if normalized_host in PortalService.PATH_SLUG_PORTAL_HOSTS
+                else ""
+            )
+            return f"{scheme}://{normalized_host}{path_prefix}/access/{token}"
 
         result = await db.execute(
             select(TenantPortalDomain)
@@ -586,6 +605,9 @@ class PortalService:
         configured_domain = PortalService.normalize_portal_host(domain.domain)
         if not configured_domain:
             return PortalService.build_magic_link_url(token)
+
+        if configured_domain in PortalService.PATH_SLUG_PORTAL_HOSTS:
+            return f"https://{configured_domain}/{PortalService.PORTAL_PATH_SLUG}/access/{token}"
 
         host = (
             configured_domain

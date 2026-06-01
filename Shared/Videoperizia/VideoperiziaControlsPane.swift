@@ -6,6 +6,7 @@ import SwiftUI
 ///   - cattura: scatta foto / registra clip (frame-grab arriva nel 5d)
 @MainActor
 struct VideoperiziaControlsPane: View {
+    let claimId: String
     @ObservedObject var model: VideoperiziaTabModel
 
     var body: some View {
@@ -50,13 +51,19 @@ struct VideoperiziaControlsPane: View {
                 Text("Cattura").font(.subheadline).foregroundStyle(.secondary)
                 HStack(spacing: 10) {
                     Button {
-                        Task { await model.notifyCaptureImminent() }
+                        Task { await model.captureAndUploadPhoto(claimId: claimId) }
                     } label: {
-                        Label("Scatta foto", systemImage: "camera.fill")
+                        if model.isCapturingPhoto {
+                            ProgressView()
+                        } else {
+                            Label("Scatta foto", systemImage: "camera.fill")
+                        }
                     }
                     .buttonStyle(.borderedProminent)
+                    .disabled(model.isCapturingPhoto)
                     Button {
-                        // Registrazione clip: arriva in 5d con il vero capture pipeline.
+                        // Registrazione clip: arriva in un commit successivo con
+                        // un VideoRecorder che salva H264 lato perito.
                     } label: {
                         Label("Registra clip", systemImage: "record.circle")
                     }

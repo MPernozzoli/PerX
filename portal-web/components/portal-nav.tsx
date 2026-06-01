@@ -5,7 +5,12 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { getPortalTenantBranding, type PortalTenantBranding } from "@/lib/api";
-import { getBrowserPortalHost, getTenantDomainFromHost } from "@/lib/tenant";
+import {
+  getBrowserPortalHost,
+  getTenantDomainFromHost,
+  isPathSlugPortalHost,
+  PORTAL_PATH_SLUG
+} from "@/lib/tenant";
 
 const NAV_ITEMS = [
   { href: "/claim", label: "Panoramica" },
@@ -60,10 +65,14 @@ export function PortalNav() {
       .catch(() => undefined);
   }, []);
 
-  const tenantDomain =
-    typeof window !== "undefined"
-      ? (getTenantDomainFromHost(getBrowserPortalHost()) ?? null)
-      : null;
+  const browserHost = typeof window !== "undefined" ? getBrowserPortalHost() : null;
+  const tenantDomain = browserHost ? (getTenantDomainFromHost(browserHost) ?? null) : null;
+  const pathSlugHost = isPathSlugPortalHost(browserHost);
+  const portalDisplayDomain = tenantDomain
+    ? pathSlugHost
+      ? `${tenantDomain}/${PORTAL_PATH_SLUG}`
+      : `assicurati.${tenantDomain}`
+    : null;
 
   return (
     <header className="topbar">
@@ -79,8 +88,8 @@ export function PortalNav() {
               PerX{" "}
               <span style={{ color: "var(--ink-3)", fontWeight: 300 }}>Assicurati</span>
             </div>
-            {tenantDomain ? (
-              <div className="brand__sub">assicurati.{tenantDomain}</div>
+            {portalDisplayDomain ? (
+              <div className="brand__sub">{portalDisplayDomain}</div>
             ) : null}
           </div>
         </Link>

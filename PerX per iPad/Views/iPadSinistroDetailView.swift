@@ -221,22 +221,11 @@ struct iPadSinistroDetailView: View {
         case .perizia:
             periziaContent
         case .videoperizia:
-            // TODO: porting iPad. I file `Videoperizia*.swift` vivono in PerX/
-            // (target macOS) e dipendono da `HubAPIAdapterClient` che non è
-            // ancora condiviso. Sub-tab visibile per UX consistency ma rinvia
-            // alla videocall placeholder.
-            VStack(spacing: 12) {
-                Image(systemName: "video.circle")
-                    .resizable().scaledToFit().frame(width: 72, height: 72)
-                    .foregroundStyle(.tint)
-                Text("Videoperizia (in arrivo su iPad)")
-                    .font(.headline)
-                Text("Per ora la sub-tab è gestita dall'app PerX su macOS.")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding()
+            VideoperiziaTabContent(
+                claimId: sinistro.id,
+                claimReferenceLabel: sinistro.riferimento,
+                claimAddress: fullData?.indirizzoAssicurato
+            )
         }
     }
     

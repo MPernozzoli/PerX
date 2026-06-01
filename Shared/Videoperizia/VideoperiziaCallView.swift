@@ -240,12 +240,19 @@ private struct LiveKitRoomStage: View {
     var tabModel: VideoperiziaTabModel?
 
     @StateObject private var room = Room()
+    /// Frame grabber attaccato al primo `RemoteVideoTrack` camera disponibile.
+    /// Riusato per tutta la sessione: serve uno solo, l'attach idempotente è
+    /// gestito in `attachGrabberIfNeeded`.
+    @State private var frameGrabber = VideoperiziaFrameGrabber()
+    @State private var attachedTrackId: String?
 
     var body: some View {
         ZStack {
             if let track = firstRemoteCameraTrack {
                 SwiftUIVideoView(track)
                     .background(Color.black)
+                    .onAppear { attachGrabberIfNeeded(to: track) }
+                    .onChange(of: track.id) { _, _ in attachGrabberIfNeeded(to: track) }
             } else {
                 VStack(spacing: 8) {
                     ProgressView()
@@ -261,6 +268,7 @@ private struct LiveKitRoomStage: View {
             // Bridge: il VideoperiziaTabModel ottiene le 3 closure per usare la
             // stessa Room senza importare LiveKit nel suo file (cosi' il model
             // resta link-free e l'enum di RemoteCommand resta pulito).
+            let grabber = frameGrabber
             tabModel?.bindLiveKitRoom(
                 publishData: { data in
                     try? await room.localParticipant.publish(
@@ -273,6 +281,9 @@ private struct LiveKitRoomStage: View {
                 },
                 setMicrophone: { enabled in
                     try? await room.localParticipant.setMicrophone(enabled: enabled)
+                },
+                captureFrameJPEG: {
+                    grabber.snapshotJPEG()
                 }
             )
             do {
@@ -299,6 +310,12 @@ private struct LiveKitRoomStage: View {
         room.remoteParticipants.values
             .compactMap { $0.firstCameraVideoTrack }
             .first
+    }
+
+    private func attachGrabberIfNeeded(to track: VideoTrack) {
+        guard attachedTrackId != track.id else { return }
+        track.add(videoRenderer: frameGrabber)
+        attachedTrackId = track.id
     }
 }
 #else

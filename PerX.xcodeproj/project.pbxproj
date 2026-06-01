@@ -216,6 +216,11 @@
 			path = PerXLocalAgentService;
 			sourceTree = "<group>";
 		};
+		A1B2C3D4E5F60000000000F0 /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Shared;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -308,6 +313,7 @@
 				78EFBA442F318CEA00720EFF /* PerX per iPadUITests */,
 				79A100022F50000000900001 /* PerXLocalAgentShared */,
 				79A100032F50000000900001 /* PerXLocalAgentService */,
+				A1B2C3D4E5F60000000000F0 /* Shared */,
 				780395562CE509530093FAB4 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -349,6 +355,7 @@
 			fileSystemSynchronizedGroups = (
 				780395572CE509530093FAB4 /* PerX */,
 				79A100022F50000000900001 /* PerXLocalAgentShared */,
+				A1B2C3D4E5F60000000000F0 /* Shared */,
 			);
 			name = PerX;
 			packageProductDependencies = (
@@ -486,6 +493,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				78EFBA252F318CE900720EFF /* PerX per iPad */,
+				A1B2C3D4E5F60000000000F0 /* Shared */,
 			);
 			name = "PerX per iPad";
 			packageProductDependencies = (

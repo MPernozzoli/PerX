@@ -5,19 +5,23 @@ struct VerificheSectionView: View {
     @ObservedObject var sinistro: Sinistro
     @Environment(\.managedObjectContext) private var viewContext
     @StateObject private var fileTagManager = FileTagManager.shared
-    
+
     @State private var isEditing = false
-    
+
     // Snapshot per annullare modifiche
     @State private var snapshotFulminazione: String = ""
     @State private var snapshotSopralluogo: Bool = false
     @State private var snapshotIban: Bool = false
     @State private var snapshotRegolaritaOverride: Bool = false
-    
+
     // Stato giustificativi da file-tag
     @State private var hasFattura: Bool = false
     @State private var hasPreventivo: Bool = false
     @State private var sinistroPathExists: Bool = false
+
+    // Cambio tipo perizia (videoperizia / sopralluogo)
+    @State private var pendingTipoAction: TipoPeriziaAction?
+    @State private var keepAssignmentOnTipoChange: Bool = false
     
     var body: some View {
         GroupBox {
@@ -105,8 +109,7 @@ struct VerificheSectionView: View {
                             .frame(maxWidth: 200)
                         } else {
                             if sinistroPathExists {
-                                Text(sinistro.sopralluogo ? "Tradizionale" : "Documentale")
-                                    .foregroundColor(.primary)
+                                tipoPeriziaControl
                             } else {
                                 Text("Non nota")
                                     .foregroundColor(.secondary)
@@ -196,6 +199,179 @@ struct VerificheSectionView: View {
         .onChange(of: sinistro.riferimento) { _ in
             checkSinistroPath()
             loadGiustificativiFromTags()
+        }
+        .sheet(item: $pendingTipoAction) { action in
+            CambioTipoPeriziaDialog(
+                action: action,
+                tipoCorrente: tipoPeriziaCorrente,
+                keepAssignment: $keepAssignmentOnTipoChange,
+                onConfirm: {
+                    let captured = action
+                    let keep = keepAssignmentOnTipoChange
+                    pendingTipoAction = nil
+                    Task { await applyTipoPeriziaAction(captured, keepAssignment: keep) }
+                },
+                onCancel: { pendingTipoAction = nil }
+            )
+        }
+    }
+
+    // MARK: - Tipo Perizia (Documentale / Tradizionale / Videoperizia)
+
+    fileprivate enum TipoPerizia: String {
+        case documentale = "Documentale"
+        case tradizionale = "Tradizionale"
+        case videoperizia = "Videoperizia"
+    }
+
+    fileprivate enum TipoPeriziaAction: String, Identifiable {
+        case richiediVideoperizia
+        case richiediSopralluogo
+
+        var id: String { rawValue }
+
+        var titolo: String {
+            switch self {
+            case .richiediVideoperizia: return "Richiedi videoperizia"
+            case .richiediSopralluogo: return "Richiedi sopralluogo"
+            }
+        }
+
+        var icon: String {
+            switch self {
+            case .richiediVideoperizia: return "video.badge.plus"
+            case .richiediSopralluogo: return "calendar.badge.clock"
+            }
+        }
+
+        var nuovoStato: StatoManager.StatoSinistro {
+            switch self {
+            case .richiediVideoperizia: return .videoperiziaDaFissare
+            case .richiediSopralluogo: return .sopralluogoDaFissare
+            }
+        }
+
+        var nuovoSopralluogoFlag: Bool {
+            switch self {
+            case .richiediVideoperizia: return false
+            case .richiediSopralluogo: return true
+            }
+        }
+
+        var diarioTitolo: String {
+            switch self {
+            case .richiediVideoperizia: return "Videoperizia richiesta"
+            case .richiediSopralluogo: return "Sopralluogo richiesto"
+            }
+        }
+    }
+
+    private var tipoPeriziaCorrente: TipoPerizia {
+        if let descrizione = sinistro.stato,
+           let statoId = StatoManager.shared.getStatoId(fromDescrizione: descrizione),
+           let stato = StatoManager.StatoSinistro(rawValue: statoId),
+           stato.stateGroup == .videoperizia || stato.variant == .videoperizia {
+            return .videoperizia
+        }
+        return sinistro.sopralluogo ? .tradizionale : .documentale
+    }
+
+    private var azioniTipoDisponibili: [TipoPeriziaAction] {
+        switch tipoPeriziaCorrente {
+        case .documentale: return [.richiediVideoperizia, .richiediSopralluogo]
+        case .videoperizia: return [.richiediSopralluogo]
+        case .tradizionale: return []
+        }
+    }
+
+    @ViewBuilder
+    private var tipoPeriziaControl: some View {
+        if azioniTipoDisponibili.isEmpty {
+            Text(tipoPeriziaCorrente.rawValue)
+                .foregroundColor(.primary)
+        } else {
+            Menu {
+                ForEach(azioniTipoDisponibili) { action in
+                    Button {
+                        keepAssignmentOnTipoChange = false
+                        pendingTipoAction = action
+                    } label: {
+                        Label(action.titolo, systemImage: action.icon)
+                    }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Text(tipoPeriziaCorrente.rawValue)
+                        .foregroundColor(.primary)
+                    Image(systemName: "chevron.down.circle.fill")
+                        .font(.caption)
+                        .foregroundColor(.blue)
+                }
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help("Cambia tipo di perizia")
+        }
+    }
+
+    private func applyTipoPeriziaAction(_ action: TipoPeriziaAction, keepAssignment: Bool) async {
+        let nuovoStato = action.nuovoStato
+        let descrizioneNuova = nuovoStato.descrizione
+        let oggi = Date()
+
+        let tipoPrecedente = tipoPeriziaCorrente.rawValue
+        let previousOwnerName = sinistro.assignedToUserName
+            ?? sinistro.assignedToUserEmail
+            ?? sinistro.ownerEmail
+            ?? "—"
+        let userName = UserProfileService.shared.currentProfile?.displayName
+            ?? CurrentUserService.shared.currentUsername
+            ?? "Utente"
+
+        await viewContext.perform {
+            sinistro.stato = descrizioneNuova
+            sinistro.sopralluogo = action.nuovoSopralluogoFlag
+
+            if !keepAssignment {
+                sinistro.assignedToUserEmail = nil
+                sinistro.assignedToUserName = nil
+                sinistro.dataAssegnazione = nil
+            }
+
+            let assegnazioneNota = keepAssignment
+                ? "Assegnazione mantenuta a \(previousOwnerName)."
+                : "Assegnazione rimossa: il sinistro è stato rimandato nel pool."
+
+            let entry = DiarioEntry(
+                timestamp: oggi,
+                tipo: .sistema,
+                titolo: action.diarioTitolo,
+                riassunto: "\(userName) ha richiesto: \(action.titolo.lowercased())",
+                contenutoCompleto: """
+                Azione: \(action.titolo)
+                Tipo precedente: \(tipoPrecedente)
+                Nuovo stato: \(descrizioneNuova)
+                \(assegnazioneNota)
+                Data: \(DateUtils.formatDetail(oggi))
+                """
+            )
+            sinistro.addDiarioEntry(entry)
+            sinistro.markAsLocallyModified()
+            try? viewContext.save()
+        }
+
+        // Propaga la transizione di stato al backend: il server si occupa di
+        // notificare l'assicurato, generare le pagine portale e aggiornare i
+        // substati (videoperizia_da_fissare / sopralluogo_da_fissare).
+        do {
+            try await ClaimAdapter.shared.changeState(
+                riferimento: sinistro.riferimento ?? "",
+                newState: nuovoStato,
+                reason: action.titolo,
+                changedBy: CurrentUserService.shared.currentUsername ?? "ipad"
+            )
+        } catch {
+            print("[VerificheSectionView] ⚠️ changeState fallita: \(error.localizedDescription)")
         }
     }
     
@@ -304,5 +480,79 @@ struct VerificheSectionView: View {
     private func saveChanges() {
         sinistro.markAsLocallyModified()
         try? viewContext.save()
+    }
+}
+
+// MARK: - Dialog conferma cambio tipo perizia
+
+private struct CambioTipoPeriziaDialog: View {
+    let action: VerificheSectionView.TipoPeriziaAction
+    let tipoCorrente: String
+    @Binding var keepAssignment: Bool
+    let onConfirm: () -> Void
+    let onCancel: () -> Void
+
+    init(
+        action: VerificheSectionView.TipoPeriziaAction,
+        tipoCorrente: VerificheSectionView.TipoPerizia,
+        keepAssignment: Binding<Bool>,
+        onConfirm: @escaping () -> Void,
+        onCancel: @escaping () -> Void
+    ) {
+        self.action = action
+        self.tipoCorrente = tipoCorrente.rawValue
+        self._keepAssignment = keepAssignment
+        self.onConfirm = onConfirm
+        self.onCancel = onCancel
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 10) {
+                Image(systemName: action.icon)
+                    .font(.title2)
+                    .foregroundColor(.blue)
+                Text(action.titolo)
+                    .font(.headline)
+            }
+
+            Text(messaggio)
+                .font(.body)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Toggle(isOn: $keepAssignment) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Mantieni assegnazione")
+                        .font(.subheadline.weight(.medium))
+                    Text("Se disattivato, il sinistro torna nel pool senza perito.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .toggleStyle(.switch)
+
+            HStack {
+                Spacer()
+                Button("Annulla", role: .cancel, action: onCancel)
+                    .keyboardShortcut(.cancelAction)
+                Button(action.titolo, action: onConfirm)
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(20)
+        .frame(width: 420)
+    }
+
+    private var messaggio: String {
+        switch action {
+        case .richiediVideoperizia:
+            return "Il sinistro passerà da \(tipoCorrente) a Videoperizia da fissare. " +
+                   "L'assicurato riceverà la richiesta di scelta dello slot e verranno create le pagine portale dedicate."
+        case .richiediSopralluogo:
+            return "Il sinistro passerà da \(tipoCorrente) a Sopralluogo da fissare. " +
+                   "Verrà avviato il flusso di pianificazione del sopralluogo e aggiornata la pratica come Tradizionale."
+        }
     }
 }

@@ -11,7 +11,12 @@ import CoreData
 @main
 struct PerX_iPadApp: App {
     @StateObject private var sessionCoordinator = SessionCoordinator.shared
-    
+
+    init() {
+        // Registra il transport HTTP del Videoperizia service (iPad → HubAPIClient).
+        VideoperiziaService.configure(transport: HubAPIClient.shared)
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()

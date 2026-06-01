@@ -31,6 +31,7 @@ struct VideoperiziaTabContent: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             VideoperiziaSidePanel(
+                claimId: claimId,
                 claimAddressCoordinate: claimAddressCoordinate,
                 model: model
             )
@@ -61,6 +62,7 @@ struct VideoperiziaTabContent: View {
 // MARK: - Side panel layout
 
 private struct VideoperiziaSidePanel: View {
+    let claimId: String
     let claimAddressCoordinate: CLLocationCoordinate2D?
     @ObservedObject var model: VideoperiziaTabModel
 
@@ -72,7 +74,7 @@ private struct VideoperiziaSidePanel: View {
                     insuredCoordinate: model.lastInsuredCoordinate,
                     distanceMeters: model.distanceFromAddress(claimAddressCoordinate)
                 )
-                VideoperiziaControlsPane(model: model)
+                VideoperiziaControlsPane(claimId: claimId, model: model)
                 VideoperiziaGalleryPane(media: model.media)
             }
             .padding(.trailing, 4)

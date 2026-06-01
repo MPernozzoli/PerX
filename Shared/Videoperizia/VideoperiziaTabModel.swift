@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import CoreLocation
 import SwiftUI
 
@@ -40,6 +41,12 @@ final class VideoperiziaTabModel: ObservableObject {
     private var liveKitPublishData: ((Data) async -> Void)?
     private var liveKitSetCamera: ((Bool) async -> Void)?
     private var liveKitSetMicrophone: ((Bool) async -> Void)?
+    /// Sync, eseguito sul main per coerenza con SwiftUI; il pixel buffer è
+    /// piccolo e l'estrazione JPEG non blocca percettibilmente.
+    private var liveKitCaptureFrameJPEG: (() -> Data?)?
+
+    // Stato cattura corrente (mostrato dalla UI)
+    @Published private(set) var isCapturingPhoto = false
 
     // Polling task
     private var pollingTask: Task<Void, Never>?
@@ -137,16 +144,55 @@ final class VideoperiziaTabModel: ObservableObject {
     func bindLiveKitRoom(
         publishData: @escaping (Data) async -> Void,
         setCamera: @escaping (Bool) async -> Void,
-        setMicrophone: @escaping (Bool) async -> Void
+        setMicrophone: @escaping (Bool) async -> Void,
+        captureFrameJPEG: @escaping () -> Data?
     ) {
         self.liveKitPublishData = publishData
         self.liveKitSetCamera = setCamera
         self.liveKitSetMicrophone = setMicrophone
+        self.liveKitCaptureFrameJPEG = captureFrameJPEG
     }
 
     func unbindLiveKitRoom() {
         self.liveKitPublishData = nil
         self.liveKitSetCamera = nil
         self.liveKitSetMicrophone = nil
+        self.liveKitCaptureFrameJPEG = nil
+    }
+
+    // MARK: - Capture foto
+
+    /// Cattura un frame del remote video, lo carica al backend (che salva su
+    /// Supabase e accoda il job perxHUB), poi rinfresca la galleria.
+    func captureAndUploadPhoto(claimId: String) async {
+        guard let session, let capture = liveKitCaptureFrameJPEG else {
+            errorMessage = "Videoperizia non attiva."
+            return
+        }
+        isCapturingPhoto = true
+        defer { isCapturingPhoto = false }
+
+        // Preavviso peer-to-peer: l'assicurato vede "il perito sta scattando"
+        await sendRemote(.captureNotice)
+
+        guard let jpegData = capture(), !jpegData.isEmpty else {
+            errorMessage = "Nessun frame video disponibile."
+            return
+        }
+
+        let fileName = "frame-\(Int(Date().timeIntervalSince1970)).jpg"
+        do {
+            _ = try await VideoperiziaService.shared.uploadMedia(
+                claimId: claimId,
+                sessionId: session.id,
+                kind: "frame",
+                data: jpegData,
+                fileName: fileName,
+                mimeType: "image/jpeg"
+            )
+            await refreshSidePanel(claimId: claimId, sessionId: session.id)
+        } catch {
+            errorMessage = "Upload foto fallito: \(error.localizedDescription)"
+        }
     }
 }

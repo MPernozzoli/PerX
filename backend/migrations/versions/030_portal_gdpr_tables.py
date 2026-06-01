@@ -14,7 +14,7 @@ import sqlalchemy as sa
 
 
 revision = "030_portal_gdpr"
-down_revision = "029"
+down_revision = "033_seed_sinistri_ai"
 branch_labels = None
 depends_on = None
 

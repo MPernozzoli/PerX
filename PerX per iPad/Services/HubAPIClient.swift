@@ -25,6 +25,32 @@ class HubAPIClient: ObservableObject {
     private let decoder = JSONDecoder()
     private let keychainService = "com.perx.ipad.cloudapi"
 
+    // MARK: - Esposizione internal per extensions cloud (es. Videoperizia)
+
+    /// Sessione URLSession riusabile dalle extensions interne.
+    var cloudSession: URLSession { session }
+    /// Decoder JSON ISO8601 configurato.
+    var cloudDecoder: JSONDecoder { decoder }
+    /// Encoder JSON ISO8601 configurato.
+    var cloudEncoder: JSONEncoder { encoder }
+
+    /// Costruisce un URL sotto `fixedCloudAPIBaseURL` per path arbitrari
+    /// (`/api/v1/...`, `/portal/...`) — diverso da `url(path:)` che è
+    /// hub-compat (`/api/v1/hub/...`).
+    func cloudURL(_ path: String) throws -> URL {
+        let trimmed = path.hasPrefix("/") ? path : "/" + path
+        guard let url = URL(string: Self.fixedCloudAPIBaseURL + trimmed) else {
+            throw HubAPIError.invalidURL
+        }
+        return url
+    }
+
+    /// URLRequest pronta con bearer token applicato. Stessa logica di
+    /// `authorizedRequest(url:)` privato ma esposta per le extensions.
+    func authorizedCloudRequest(url: URL) -> URLRequest {
+        authorizedRequest(url: url)
+    }
+
     private var _cloudAPIBaseURL: String = HubAPIClient.fixedCloudAPIBaseURL
     var cloudAPIBaseURL: String {
         get { Self.fixedCloudAPIBaseURL }

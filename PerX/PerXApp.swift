@@ -18,6 +18,12 @@ struct PerXApp: App {
     let persistenceController = PersistenceController.shared
     @State private var showWhatsNew = false
     @State private var showOnboarding = false
+
+    init() {
+        // Registra il transport HTTP del Videoperizia service sulla piattaforma
+        // corrente (macOS PerX → HubAPIAdapterClient).
+        VideoperiziaService.configure(transport: HubAPIAdapterClient.shared)
+    }
     
     var body: some Scene {
         WindowGroup {
