@@ -1,6 +1,7 @@
 """
 Process job queue routes for API-created jobs and local Mac mini workers.
 """
+import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
@@ -15,6 +16,7 @@ from app.models.claim_event import ClaimEvent
 from app.models.claim_photo_analysis import ClaimPhotoAnalysis
 from app.models.process_job import ProcessJob
 from app.models.user import User
+from app.models.videoperizia import VideoperiziaMedia
 from app.schemas.process_jobs import (
     ProcessJobClaimResponse,
     ProcessJobCompleteRequest,
@@ -154,6 +156,9 @@ async def complete_process_job(
     if job.job_type == "ai_asset_photo_analysis" and job.claim_id and payload.result_json:
         await _apply_photo_analysis_result(db, job, now)
 
+    if job.job_type == "videoperizia_media_ai" and job.claim_id:
+        await _apply_videoperizia_media_result(db, job, payload.result_json, status="done")
+
     await db.commit()
     return {"status": "completed", "job_id": job.id}
 
@@ -191,6 +196,10 @@ async def fail_process_job(
         job.status = "failed"
         job.completed_at = now
         await ProcessJobService.record_failure(db, job)
+        if job.job_type == "videoperizia_media_ai" and job.claim_id:
+            await _apply_videoperizia_media_result(
+                db, job, payload.result_json, status="failed"
+            )
 
     await db.commit()
     return {"status": job.status, "job_id": job.id, "retry_count": job.retry_count}
@@ -385,3 +394,44 @@ async def _apply_photo_analysis_result(
                 "status": "pending_review",
             }
             claim.metadata_json = existing_meta
+
+
+async def _apply_videoperizia_media_result(
+    db: AsyncSession,
+    job: ProcessJob,
+    result_json: dict | None,
+    *,
+    status: str,
+) -> None:
+    """
+    Apply the AI pipeline result coming back from perxHUB to the
+    `videoperizia_media` row referenced by the job. Status is either
+    "done" (completion) or "failed" (after retries exhausted).
+
+    The result_json shape is opaque server-side: perxHUB owns the schema and
+    the expert app renders whatever fields are present (detected items,
+    serials, confidence). We only persist + flip status.
+    """
+    media_id = (job.input_json or {}).get("media_id")
+    if not media_id:
+        return
+    media = await db.get(VideoperiziaMedia, media_id)
+    if media is None or media.tenant_id != job.tenant_id:
+        return
+    media.processing_status = status
+    if result_json is not None:
+        media.hub_result_json = result_json
+    db.add(
+        ClaimEvent(
+            id=str(uuid.uuid4()),
+            tenant_id=job.tenant_id,
+            claim_id=job.claim_id,
+            event_type=(
+                "videoperizia_media_result_ready"
+                if status == "done"
+                else "videoperizia_media_processing_failed"
+            ),
+            data_json={"media_id": media_id, "job_id": job.id},
+            source="local_worker",
+        )
+    )

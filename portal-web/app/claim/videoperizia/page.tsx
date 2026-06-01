@@ -1,5 +1,5 @@
-import { ClaimInspectionPage } from "@/components/claim-inspection-page";
+import { ClaimVideoperiziaCallPage } from "@/components/claim-videoperizia-call";
 
 export default function ClaimVideoperiziaRoute() {
-  return <ClaimInspectionPage />;
+  return <ClaimVideoperiziaCallPage />;
 }

@@ -2004,3 +2004,126 @@ main.canvas {
   .claim-progress__desktop { display: block; }
   .claim-progress__mobile { display: none; }
 }
+
+/* ----------------------------------------------------------------- */
+/* Videoperizia                                                       */
+/* ----------------------------------------------------------------- */
+
+.claim-section--videoperizia {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.videoperizia-pre,
+.videoperizia-lobby,
+.videoperizia-ended {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.videoperizia-lobby__status {
+  font-weight: 600;
+}
+
+.videoperizia-prep {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--ink-2, #4a5160);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.videoperizia-prep li + li { margin-top: 4px; }
+
+.videoperizia-call {
+  position: relative;
+  width: 100%;
+  min-height: 60vh;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #0b0f14;
+}
+
+.videoperizia-call [data-lk-theme="default"] { height: 100%; min-height: 60vh; }
+
+/* Flash request overlay */
+.videoperizia-flash-alert {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: grid;
+  place-items: center;
+  z-index: 20;
+  padding: 16px;
+}
+
+.videoperizia-flash-alert__inner {
+  background: var(--paper, #fff);
+  color: var(--ink, #11151c);
+  border-radius: 14px;
+  padding: 22px 22px 18px;
+  max-width: 360px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+}
+
+.videoperizia-flash-alert__title {
+  font-weight: 700;
+  font-size: 17px;
+  margin: 0;
+}
+
+.videoperizia-flash-alert__body {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--ink-2, #4a5160);
+}
+
+/* Capture notice toast */
+.videoperizia-capture-notice {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  border-radius: 999px;
+  font-size: 13px;
+  z-index: 25;
+  pointer-events: none;
+  animation: vp-fade-in 160ms ease-out;
+}
+
+@keyframes vp-fade-in {
+  from { opacity: 0; transform: translate(-50%, -6px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* GPS consent banner shown above the lobby/live area */
+.videoperizia-gps-consent {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 14px;
+  background: #fff7e6;
+  border: 1px solid #f3d99a;
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.videoperizia-gps-consent__text { flex: 1 1 220px; line-height: 1.4; }
+
+.videoperizia-gps-consent__status--denied { color: #b3261e; font-weight: 600; }
+.videoperizia-gps-consent__status--active { color: #1f7a1f; font-weight: 600; }

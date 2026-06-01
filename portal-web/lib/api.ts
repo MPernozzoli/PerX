@@ -37,7 +37,9 @@ import type {
   PortalSignatureConfirmation,
   PortalSignatureRequest,
   PortalTimelineEvent,
-  PortalUploadIntent
+  PortalUploadIntent,
+  PortalVideoperiziaSession,
+  PortalVideoperiziaToken
 } from "@/lib/types";
 import { getBrowserPortalHost } from "@/lib/tenant";
 
@@ -846,6 +848,63 @@ export async function revokePortalMeSession(
   await request<void>(
     `/me/sessions/${encodeURIComponent(sessionId)}`,
     { method: "DELETE" },
+    session
+  );
+}
+
+// --- Videoperizia (live video-inspection) -----------------------------------
+
+export async function getVideoperiziaSession(
+  session: PortalSession
+): Promise<PortalVideoperiziaSession | null> {
+  const result = await request<{ session: PortalVideoperiziaSession | null }>(
+    "/claim/videoperizia/session",
+    undefined,
+    session
+  );
+  return result.session;
+}
+
+export async function joinVideoperiziaLobby(
+  session: PortalSession,
+  clientMeta?: Record<string, unknown>
+): Promise<PortalVideoperiziaSession> {
+  const result = await request<{ session: PortalVideoperiziaSession }>(
+    "/claim/videoperizia/lobby",
+    {
+      method: "POST",
+      body: JSON.stringify({ client_meta: clientMeta ?? null })
+    },
+    session
+  );
+  return result.session;
+}
+
+export async function mintVideoperiziaToken(
+  session: PortalSession
+): Promise<PortalVideoperiziaToken> {
+  return request<PortalVideoperiziaToken>(
+    "/claim/videoperizia/token",
+    { method: "POST", body: JSON.stringify({}) },
+    session
+  );
+}
+
+export async function publishVideoperiziaLocationPing(
+  session: PortalSession,
+  ping: {
+    latitude: number;
+    longitude: number;
+    accuracy_m?: number | null;
+    altitude_m?: number | null;
+    speed_mps?: number | null;
+    heading_deg?: number | null;
+    recorded_at?: string;
+  }
+): Promise<void> {
+  await request<unknown>(
+    "/claim/videoperizia/location-ping",
+    { method: "POST", body: JSON.stringify(ping) },
     session
   );
 }

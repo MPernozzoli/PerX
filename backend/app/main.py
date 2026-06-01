@@ -22,6 +22,7 @@ from app.api.v1 import (
     routes_emails,
     routes_internal_chat,
     routes_inspections,
+    routes_videoperizia,
     routes_hub_compat,
     routes_ai_chat,
     routes_ai_prompts,
@@ -104,6 +105,7 @@ app.include_router(routes_ai_chat.router, prefix="/api/v1/ai-chat", tags=["ai-ch
 app.include_router(routes_ai_prompts.router, prefix="/api/v1/ai-prompts", tags=["ai-prompts"])
 app.include_router(routes_ai_routing.router, prefix="/api/v1/ai-routing", tags=["ai-routing"])
 app.include_router(routes_inspections.router, prefix="/api/v1", tags=["inspections"])
+app.include_router(routes_videoperizia.router, prefix="/api/v1", tags=["videoperizia"])
 app.include_router(routes_planning.router, prefix="/api/v1", tags=["planning"])
 app.include_router(routes_portal.router, prefix="/api/v1/portal", tags=["portal"])
 app.include_router(routes_portal_me.router, prefix="/api/v1/portal/me", tags=["portal-me"])

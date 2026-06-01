@@ -211,6 +211,43 @@ export type PortalDocument = {
   uploaded_at: string;
 };
 
+export type PortalVideoperiziaSession = {
+  id: string;
+  claim_id: string;
+  livekit_room_name: string;
+  state: "scheduled" | "lobby_open" | "live" | "ended" | "aborted";
+  lobby_joined_at?: string | null;
+  started_at?: string | null;
+  ended_at?: string | null;
+  perito_user_id?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PortalVideoperiziaLocationPing = {
+  id: string;
+  session_id: string;
+  recorded_at: string;
+  latitude: number;
+  longitude: number;
+  accuracy_m?: number | null;
+  altitude_m?: number | null;
+  speed_mps?: number | null;
+  heading_deg?: number | null;
+  source: string;
+};
+
+export type PortalVideoperiziaToken = {
+  token: string;
+  livekit_url: string;
+  room_name: string;
+  identity: string;
+  expires_at: string;
+  can_publish: boolean;
+  can_subscribe: boolean;
+  session: PortalVideoperiziaSession;
+};
+
 export type PortalUploadIntent = {
   document_id: string;
   upload_mode: string;

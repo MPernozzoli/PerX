@@ -1,5 +1,4 @@
 import SwiftUI
-import PerXCore
 
 // ============================================================================
 // MARK: - AIPromptSettingsCard

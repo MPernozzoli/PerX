@@ -24,7 +24,8 @@ struct iPadSinistroDetailView: View {
         case cartella = "Cartella"
         case comunicazioni = "Comunicazioni"
         case perizia = "Perizia"
-        
+        case videoperizia = "Videoperizia"
+
         var icon: String {
             switch self {
             case .dettaglio: return "info.circle"
@@ -32,8 +33,23 @@ struct iPadSinistroDetailView: View {
             case .cartella: return "folder"
             case .comunicazioni: return "envelope"
             case .perizia: return "doc.text"
+            case .videoperizia: return "video.circle"
             }
         }
+    }
+
+    /// Tabs effettivamente visibili. `.videoperizia` compare solo se il sinistro
+    /// è nel gruppo videoperizia.
+    private var visibleTabs: [DetailTab] {
+        DetailTab.allCases.filter { tab in
+            if tab != .videoperizia { return true }
+            return showsVideoperiziaTab
+        }
+    }
+
+    private var showsVideoperiziaTab: Bool {
+        guard let stato = StatoSinistro.from(descrizione: sinistro.stato) else { return false }
+        return stato.stateGroup == .videoperizia
     }
     
     var body: some View {
@@ -154,7 +170,7 @@ struct iPadSinistroDetailView: View {
     private var tabBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 0) {
-                ForEach(DetailTab.allCases, id: \.self) { tab in
+                ForEach(visibleTabs, id: \.self) { tab in
                     Button {
                         withAnimation(.easeInOut(duration: 0.2)) {
                             selectedTab = tab
@@ -204,6 +220,23 @@ struct iPadSinistroDetailView: View {
             comunicazioniContent
         case .perizia:
             periziaContent
+        case .videoperizia:
+            // TODO: porting iPad. I file `Videoperizia*.swift` vivono in PerX/
+            // (target macOS) e dipendono da `HubAPIAdapterClient` che non è
+            // ancora condiviso. Sub-tab visibile per UX consistency ma rinvia
+            // alla videocall placeholder.
+            VStack(spacing: 12) {
+                Image(systemName: "video.circle")
+                    .resizable().scaledToFit().frame(width: 72, height: 72)
+                    .foregroundStyle(.tint)
+                Text("Videoperizia (in arrivo su iPad)")
+                    .font(.headline)
+                Text("Per ora la sub-tab è gestita dall'app PerX su macOS.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding()
         }
     }
     

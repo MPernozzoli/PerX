@@ -51,5 +51,10 @@
     
     <key>GMSApiKey</key>
     <string>AIzaSyCjIke3sCl8DZsOjToocpG8CZLkZG3GkBM</string>
+
+    <key>NSCameraUsageDescription</key>
+    <string>PerX usa la fotocamera durante la videoperizia per condividere il video con l'assicurato.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>PerX usa il microfono durante la videoperizia per la conversazione con l'assicurato.</string>
 </dict>
 </plist> 

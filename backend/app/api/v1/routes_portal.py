@@ -55,7 +55,20 @@ from app.schemas.portal import (
     PortalUploadIntentCreate,
     PortalUploadIntentResponse,
 )
+from app.schemas.videoperizia import (
+    VideoperiziaLobbyJoinRequest,
+    VideoperiziaLocationPingCreate,
+    VideoperiziaLocationPingResponse,
+    VideoperiziaSessionResponse,
+    VideoperiziaTokenResponse,
+)
+from app.services.livekit_token_service import (
+    LiveKitGrant,
+    LiveKitNotConfiguredError,
+    LiveKitTokenService,
+)
 from app.services.portal_service import PortalService
+from app.services.videoperizia_session_service import VideoperiziaSessionService
 
 router = APIRouter()
 
@@ -274,6 +287,104 @@ async def update_claim_inspection_preferences(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return PortalInspectionSchedulingOverviewResponse.model_validate(overview)
+
+
+@router.get("/claim/videoperizia/session")
+async def get_current_videoperizia_session(
+    session: PortalSessionContext = Depends(get_current_portal_session),
+    db: AsyncSession = Depends(get_db),
+):
+    vp = await VideoperiziaSessionService._active_for_claim(db, session.tenant_id, session.claim_id)
+    if vp is None:
+        return {"session": None}
+    return {"session": VideoperiziaSessionResponse.model_validate(vp).model_dump(mode="json")}
+
+
+@router.post("/claim/videoperizia/lobby")
+async def join_videoperizia_lobby(
+    payload: VideoperiziaLobbyJoinRequest | None = None,
+    session: PortalSessionContext = Depends(get_current_portal_session),
+    db: AsyncSession = Depends(get_db),
+):
+    body = payload or VideoperiziaLobbyJoinRequest()
+    try:
+        vp = await VideoperiziaSessionService.mark_lobby_joined(
+            db, session.tenant_id, session.claim_id,
+            client_meta=body.client_meta,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"session": VideoperiziaSessionResponse.model_validate(vp).model_dump(mode="json")}
+
+
+@router.post("/claim/videoperizia/token", response_model=VideoperiziaTokenResponse)
+async def mint_insured_videoperizia_token(
+    session: PortalSessionContext = Depends(get_current_portal_session),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Mint a LiveKit token for the insured. While in the lobby (state="lobby_open")
+    publish is denied — the insured just sees prep instructions and waits. Once
+    the perito presses Avvia (state="live"), publish is granted so the call
+    actually starts for both sides.
+    """
+    vp = await VideoperiziaSessionService._active_for_claim(db, session.tenant_id, session.claim_id)
+    if vp is None:
+        raise HTTPException(status_code=404, detail="No active videoperizia session")
+    if vp.state in ("ended", "aborted"):
+        raise HTTPException(status_code=400, detail="Session is closed")
+
+    can_publish = vp.state == "live"
+    grant = LiveKitGrant(can_subscribe=True, can_publish=can_publish, can_publish_data=True)
+    try:
+        minted = LiveKitTokenService.mint(
+            identity=f"insured:{session.claim_id}",
+            room_name=vp.livekit_room_name,
+            grant=grant,
+            display_name="Assicurato",
+            metadata={"role": "insured", "claim_id": session.claim_id, "session_id": vp.id},
+        )
+    except LiveKitNotConfiguredError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+    return VideoperiziaTokenResponse(
+        token=minted.token,
+        livekit_url=minted.livekit_url,
+        room_name=minted.room_name,
+        identity=minted.identity,
+        expires_at=minted.expires_at,
+        can_publish=can_publish,
+        can_subscribe=True,
+        session=VideoperiziaSessionResponse.model_validate(vp),
+    )
+
+
+@router.post("/claim/videoperizia/location-ping", response_model=VideoperiziaLocationPingResponse)
+async def publish_videoperizia_location_ping(
+    payload: VideoperiziaLocationPingCreate,
+    session: PortalSessionContext = Depends(get_current_portal_session),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Insured device streams a GPS reading. Persisted in the per-session timeline.
+    Portal should stop emitting once the session enters 'ended' to avoid trash
+    data — backend already rejects pings when no active session is present.
+    """
+    try:
+        ping = await VideoperiziaSessionService.record_location_ping(
+            db, session.tenant_id, session.claim_id,
+            latitude=payload.latitude,
+            longitude=payload.longitude,
+            accuracy_m=payload.accuracy_m,
+            altitude_m=payload.altitude_m,
+            speed_mps=payload.speed_mps,
+            heading_deg=payload.heading_deg,
+            recorded_at=payload.recorded_at,
+            source="portal",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return VideoperiziaLocationPingResponse.model_validate(ping)
 
 
 @router.get("/claim/timeline", response_model=list[PortalTimelineEventResponse])

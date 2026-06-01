@@ -1,18 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { SessionMissingState } from "@/components/claim-page-primitives";
 import { SectionCard } from "@/components/section-card";
 import {
-  acceptPortalMeConsent,
   cancelDeletionRequest,
   createDeletionRequest,
   getActiveDeletionRequest,
   getPortalMeNotifications,
   getPortalMePolicy,
   getPortalMeProfile,
-  listPortalMeConsents,
   listPortalMeSessions,
   revokePortalMeSession,
   updatePortalMeNotifications,
@@ -20,7 +18,6 @@ import {
 } from "@/lib/api";
 import { getStoredPortalSession } from "@/lib/session";
 import type {
-  PortalMeConsent,
   PortalMeDeletionRequest,
   PortalMeNotificationChannel,
   PortalMeNotificationPrefs,
@@ -34,7 +31,7 @@ type SectionKey = "dati" | "privacy" | "comunicazioni" | "sicurezza";
 
 const SECTIONS: { key: SectionKey; label: string }[] = [
   { key: "dati", label: "I tuoi dati" },
-  { key: "privacy", label: "Privacy" },
+  { key: "privacy", label: "Informativa" },
   { key: "comunicazioni", label: "Comunicazioni" },
   { key: "sicurezza", label: "Sicurezza" }
 ];
@@ -225,7 +222,6 @@ function PrivacySection({
 }) {
   const [policy, setPolicy] = useState<PortalMePolicy | null>(null);
   const [policyError, setPolicyError] = useState<string | null>(null);
-  const [consents, setConsents] = useState<PortalMeConsent[]>([]);
   const [deletion, setDeletion] = useState<PortalMeDeletionRequest | null>(null);
   const [showDeletionForm, setShowDeletionForm] = useState(false);
   const [deletionReason, setDeletionReason] = useState("");
@@ -233,18 +229,16 @@ function PrivacySection({
 
   const load = useCallback(async () => {
     try {
-      const [p, c, d] = await Promise.allSettled([
+      const [p, d] = await Promise.allSettled([
         getPortalMePolicy(session),
-        listPortalMeConsents(session),
         getActiveDeletionRequest(session)
       ]);
       if (p.status === "fulfilled") {
         setPolicy(p.value);
         setPolicyError(null);
       } else {
-        setPolicyError("Privacy policy non ancora pubblicata dallo studio.");
+        setPolicyError("Informativa privacy non ancora pubblicata dallo studio.");
       }
-      if (c.status === "fulfilled") setConsents(c.value);
       if (d.status === "fulfilled") setDeletion(d.value);
     } catch (e) {
       setError((e as Error).message);
@@ -254,21 +248,6 @@ function PrivacySection({
   useEffect(() => {
     void load();
   }, [load]);
-
-  const hasAcceptedCurrent = useMemo(() => {
-    if (!policy) return false;
-    return consents.some((c) => c.policy_id === policy.id && c.consent_type === "privacy");
-  }, [consents, policy]);
-
-  const acceptCurrent = async () => {
-    if (!policy) return;
-    try {
-      const consent = await acceptPortalMeConsent(session, { policyId: policy.id });
-      setConsents((prev) => [consent, ...prev]);
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  };
 
   const submitDeletion = async () => {
     try {
@@ -293,7 +272,21 @@ function PrivacySection({
 
   return (
     <>
-      <SectionCard title="Privacy policy" eyebrow="Documento integrale dello studio">
+      <SectionCard title="Base giuridica del trattamento" eyebrow="GDPR art. 6">
+        <p style={{ fontSize: 14 }}>
+          Trattiamo i tuoi dati personali per <strong>conto della compagnia assicurativa</strong>{" "}
+          al fine di gestire il sinistro coperto dalla tua polizza. La base giuridica è
+          l'<strong>esecuzione del contratto</strong> di cui sei parte (art. 6(1)(b) GDPR) ed eventuali{" "}
+          <strong>obblighi di legge</strong> applicabili al processo peritale (art. 6(1)(c) GDPR).
+        </p>
+        <p style={{ fontSize: 14, marginTop: 8 }}>
+          Per questo motivo <strong>non è richiesto il tuo consenso</strong>: il trattamento è
+          necessario per espletare la pratica. Hai comunque il diritto di essere informato su
+          come trattiamo i tuoi dati: l'informativa completa è disponibile qui sotto.
+        </p>
+      </SectionCard>
+
+      <SectionCard title="Informativa privacy" eyebrow="Documento integrale dello studio">
         {policyError ? (
           <p className="feedback feedback--warn">{policyError}</p>
         ) : policy ? (
@@ -310,34 +303,10 @@ function PrivacySection({
               <button type="button" className="btn" onClick={() => setPolicyExpanded((v) => !v)}>
                 {policyExpanded ? "Riduci" : "Espandi tutto"}
               </button>
-              {!hasAcceptedCurrent && (
-                <button type="button" className="btn btn--primary" onClick={acceptCurrent}>
-                  Accetto la privacy policy
-                </button>
-              )}
             </div>
           </>
         ) : (
-          <p className="feedback">Caricamento policy…</p>
-        )}
-      </SectionCard>
-
-      <SectionCard title="Cronologia consensi" eyebrow="Ogni accettazione resta tracciata">
-        {consents.length === 0 ? (
-          <p>Nessun consenso registrato ancora.</p>
-        ) : (
-          <ul style={{ listStyle: "none", padding: 0, display: "grid", gap: 8 }}>
-            {consents.map((c) => (
-              <li key={c.id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", border: "1px solid var(--border, #e5e5e5)", borderRadius: 6 }}>
-                <span>
-                  <strong>{c.consent_type}</strong> · versione {c.policy_version}
-                </span>
-                <span style={{ color: "var(--text-muted, #666)" }}>
-                  {new Date(c.accepted_at).toLocaleString("it-IT")}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <p className="feedback">Caricamento informativa…</p>
         )}
       </SectionCard>
 

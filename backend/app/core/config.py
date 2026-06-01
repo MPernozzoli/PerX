@@ -45,6 +45,14 @@ class Settings(BaseSettings):
     PORTAL_VAPID_SUBJECT: str = "mailto:info@perx.it"
     ROUTING_RESOLVE_SECRET: Optional[str] = None
 
+    # LiveKit videocall provider for videoperizia. URL is the wss:// signaling
+    # endpoint (e.g. wss://<project>.livekit.cloud). API key/secret sign client
+    # tokens server-side — never expose the secret to clients.
+    LIVEKIT_URL: Optional[str] = None
+    LIVEKIT_API_KEY: Optional[str] = None
+    LIVEKIT_API_SECRET: Optional[str] = None
+    LIVEKIT_TOKEN_TTL_SECONDS: int = 3600
+
     # Platform admin / multi-tenant bootstrap
     APP_ADMIN_EMAIL: str = "info@pynkstudio.it"
     APP_ADMIN_FULL_NAME: str = "Pynk Studio Admin"

@@ -1,5 +1,4 @@
 import Foundation
-import PerXCore
 
 // ============================================================================
 // MARK: - AIRouter
@@ -49,6 +48,11 @@ final class AIRouter {
         let latencyMs: Int
         let status: AIRunStatus
         let errorMessage: String?
+    }
+
+    private enum Attempt {
+        case success(String)
+        case failure(String)
     }
 
     // MARK: Public API
@@ -154,7 +158,7 @@ final class AIRouter {
         additionalParameters: [String: AnyCodable],
         taskType: AITaskType,
         priority: AITaskPriority
-    ) async -> Result<String, String> {
+    ) async -> Attempt {
         var params: [String: AnyCodable] = additionalParameters
         params["prompt"] = AnyCodable(renderedPrompt)
         if let sp = systemPrompt { params["systemPrompt"] = AnyCodable(sp) }

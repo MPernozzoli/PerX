@@ -13,6 +13,24 @@ enum AIRoutingTrigger: String, Codable {
     case regenerate = "regenerate"
 }
 
+enum AIRunStatus: String, Codable {
+    case success
+    case error
+    case fallback
+}
+
+struct AIRenderPromptRequestDTO: Codable {
+    let phase: String
+    let variables: [String: String]
+    let version_id: String?
+}
+
+struct AIRenderPromptResponseDTO: Codable {
+    let phase: String
+    let body_rendered: String
+    let version_id: String?
+}
+
 struct AIRoutingPolicyDTO: Codable {
     let tenant_id: String?
     let phase: String
@@ -39,6 +57,14 @@ struct AIAnalysisRunRequestDTO: Codable {
 
 struct AIAnalysisRunResponseDTO: Codable {
     let id: String
+}
+
+enum AISinistroPhase {
+    static let tagging = "sinistri.tagging"
+    static let fase1Approfondita = "sinistri.fase1_approfondita"
+    static let parseDenuncia = "sinistri.parse_denuncia"
+    static let raggruppamento = "sinistri.raggruppamento"
+    static let relazione = "sinistri.relazione"
 }
 
 // ============================================================================

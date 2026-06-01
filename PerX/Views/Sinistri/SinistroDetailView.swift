@@ -20,7 +20,27 @@ struct SinistroDetailView: View {
     
     @StateObject private var claimSyncService = ClaimSyncService.shared
     
-    private let tabs = ["Dettagli", "Diario", "Fulminazione", "Cartella", "Perizia"]
+    private let allTabs = ["Dettagli", "Diario", "Fulminazione", "Cartella", "Perizia", "Videoperizia"]
+
+    /// Tab visibili per il sinistro corrente. La tab "Videoperizia" appare solo
+    /// quando il sinistro è del gruppo videoperizia (variant videoperizia o
+    /// substato dedicato).
+    private var tabs: [String] {
+        allTabs.filter { name in
+            if name != "Videoperizia" { return true }
+            return showsVideoperiziaTab
+        }
+    }
+
+    /// True se lo stato del sinistro è nel gruppo videoperizia.
+    private var showsVideoperiziaTab: Bool {
+        guard let descrizione = sinistro.stato,
+              let statoId = StatoManager.shared.getStatoId(fromDescrizione: descrizione),
+              let stato = StatoManager.StatoSinistro(rawValue: statoId) else {
+            return false
+        }
+        return stato.stateGroup == .videoperizia || stato.variant == .videoperizia
+    }
     
     // Stato locale sincronizzato con TabInfo
     @State private var currentTab: String = "Dettagli"
@@ -213,6 +233,12 @@ struct SinistroDetailView: View {
                 CartellaView(sinistro: sinistro)
             case "Perizia":
                 PeriziaView(sinistro: sinistro)
+            case "Videoperizia":
+                VideoperiziaTabContent(
+                    claimId: sinistro.id,
+                    claimReferenceLabel: sinistro.riferimentoVisualizzato,
+                    claimAddress: sinistro.indirizzoAssicurato
+                )
             default:
                 EmptyView()
             }

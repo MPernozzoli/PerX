@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		79A1000A2F50000000900001 /* PerX Local Agent.xpc in Embed XPC Services */ = {isa = PBXBuildFile; fileRef = 79A100012F50000000900001 /* PerX Local Agent.xpc */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		A1B2C3D4E5F600000000000D /* LiveKit in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F600000000000B /* LiveKit */; };
+		A1B2C3D4E5F600000000000E /* LiveKit in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F600000000000C /* LiveKit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -66,8 +68,8 @@
 		79A100092F50000000900001 /* Embed XPC Services */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 16;
+			dstPath = Contents/XPCServices;
+			dstSubfolderSpec = 1;
 			files = (
 				79A1000A2F50000000900001 /* PerX Local Agent.xpc in Embed XPC Services */,
 			);
@@ -125,12 +127,30 @@
 			);
 			target = 79A100082F50000000900001 /* PerX Local Agent */;
 		};
+		79B200042F50000000900001 /* Exceptions for "PerX" folder in "PerX" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				"Services/CloudKit/CloudKitDatabaseExtensions 2.swift",
+				"Services/CloudKit/CloudKitFolderPackagerService 2.swift",
+				"Services/CloudKit/CloudKitKeychainSyncService 2.swift",
+				"Services/CloudKit/CloudKitProcessedEmailSyncService 2.swift",
+				"Services/CloudKit/CloudKitSharedUserDefaultsSyncService 2.swift",
+				"Services/CloudKit/CloudKitSinistroSyncService 2.swift",
+				"Services/CloudKit/CloudKitSyncService 2.swift",
+				"Services/CloudKit/CloudKitTasksSyncService 2.swift",
+				"Services/CloudKit/CloudKitUserDefaultsSyncService 2.swift",
+				"Services/CloudKit/CloudKitWhatsAppSyncService 2.swift",
+				"Views/Settings/CloudSettingsView 2.swift",
+			);
+			target = 780395542CE509530093FAB4 /* PerX */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		780395572CE509530093FAB4 /* PerX */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
+				79B200042F50000000900001 /* Exceptions for "PerX" folder in "PerX" target */,
 				78EFBA722F318D7300720EFF /* Exceptions for "PerX" folder in "PerX Lite" target */,
 				78EFBA732F318D7300720EFF /* Exceptions for "PerX" folder in "PerX per iPad" target */,
 			);
@@ -203,6 +223,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1B2C3D4E5F600000000000D /* LiveKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -245,6 +266,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1B2C3D4E5F600000000000E /* LiveKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -330,6 +352,7 @@
 			);
 			name = PerX;
 			packageProductDependencies = (
+				A1B2C3D4E5F600000000000B /* LiveKit */,
 			);
 			productName = PerX;
 			productReference = 780395552CE509530093FAB4 /* PerX.app */;
@@ -466,6 +489,7 @@
 			);
 			name = "PerX per iPad";
 			packageProductDependencies = (
+				A1B2C3D4E5F600000000000C /* LiveKit */,
 			);
 			productName = "PerX per iPad";
 			productReference = 78EFBA242F318CE800720EFF /* PerX per iPad.app */;
@@ -599,6 +623,9 @@
 			mainGroup = 7803954C2CE509530093FAB4;
 			minimizedProjectReferenceProxies = 1;
 			preferredProjectObjectVersion = 77;
+			packageReferences = (
+				A1B2C3D4E5F600000000000A /* XCRemoteSwiftPackageReference "client-sdk-swift" */,
+			);
 			productRefGroup = 780395562CE509530093FAB4 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -800,6 +827,30 @@
 			targetProxy = 79A1000B2F50000000900001 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A1B2C3D4E5F600000000000A /* XCRemoteSwiftPackageReference "client-sdk-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/livekit/client-sdk-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A1B2C3D4E5F600000000000B /* LiveKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A1B2C3D4E5F600000000000A /* XCRemoteSwiftPackageReference "client-sdk-swift" */;
+			productName = LiveKit;
+		};
+		A1B2C3D4E5F600000000000C /* LiveKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A1B2C3D4E5F600000000000A /* XCRemoteSwiftPackageReference "client-sdk-swift" */;
+			productName = LiveKit;
+		};
+/* End XCSwiftPackageProductDependency section */
 
 /* Begin XCBuildConfiguration section */
 		7803957D2CE509550093FAB4 /* Debug */ = {

@@ -172,28 +172,6 @@ async def seed_tenant_and_users(pool: asyncpg.Pool):
         admin_password_hash = get_password_hash("admin123")
         perito_password_hash = get_password_hash("perito123")
         cat_password_hash = get_password_hash("cat123")
-        
-        await conn.execute("""
-            INSERT INTO users (id, tenant_id, email, full_name, password_hash, is_active, is_platform_admin, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            ON CONFLICT (email) DO UPDATE
-            SET tenant_id = EXCLUDED.tenant_id,
-                full_name = EXCLUDED.full_name,
-                password_hash = EXCLUDED.password_hash,
-                is_active = EXCLUDED.is_active,
-                is_platform_admin = EXCLUDED.is_platform_admin
-        """, admin_user_id, tenant_id, "admin@demo.com", "Admin Demo", admin_password_hash, True, False, datetime.utcnow())
-        
-        await conn.execute("""
-            INSERT INTO users (id, tenant_id, email, full_name, password_hash, is_active, is_platform_admin, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            ON CONFLICT (email) DO UPDATE
-            SET tenant_id = EXCLUDED.tenant_id,
-                full_name = EXCLUDED.full_name,
-                password_hash = EXCLUDED.password_hash,
-                is_active = EXCLUDED.is_active,
-                is_platform_admin = EXCLUDED.is_platform_admin
-        """, perito_user_id, tenant_id, "perito@demo.com", "Perito Demo", perito_password_hash, True, False, datetime.utcnow())
 
         await conn.execute("""
             INSERT INTO users (id, tenant_id, email, full_name, password_hash, is_active, is_platform_admin, created_at)
@@ -204,25 +182,56 @@ async def seed_tenant_and_users(pool: asyncpg.Pool):
                 password_hash = EXCLUDED.password_hash,
                 is_active = EXCLUDED.is_active,
                 is_platform_admin = EXCLUDED.is_platform_admin
-        """, cat_user_id, tenant_id, "cat@demo.com", "CAT Demo", cat_password_hash, True, False, datetime.utcnow())
+        """, admin_user_id, tenant_id, "admin@perx.it", "Admin PerX", admin_password_hash, True, False, datetime.utcnow())
+
+        await conn.execute("""
+            INSERT INTO users (id, tenant_id, email, full_name, password_hash, is_active, is_platform_admin, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT (email) DO UPDATE
+            SET tenant_id = EXCLUDED.tenant_id,
+                full_name = EXCLUDED.full_name,
+                password_hash = EXCLUDED.password_hash,
+                is_active = EXCLUDED.is_active,
+                is_platform_admin = EXCLUDED.is_platform_admin
+        """, perito_user_id, tenant_id, "perito@perx.it", "Perito PerX", perito_password_hash, True, False, datetime.utcnow())
+
+        await conn.execute("""
+            INSERT INTO users (id, tenant_id, email, full_name, password_hash, is_active, is_platform_admin, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT (email) DO UPDATE
+            SET tenant_id = EXCLUDED.tenant_id,
+                full_name = EXCLUDED.full_name,
+                password_hash = EXCLUDED.password_hash,
+                is_active = EXCLUDED.is_active,
+                is_platform_admin = EXCLUDED.is_platform_admin
+        """, cat_user_id, tenant_id, "cat@perx.it", "CAT PerX", cat_password_hash, True, False, datetime.utcnow())
 
         existing_admin_user_id = await conn.fetchval("""
             SELECT id FROM users WHERE email = $1
-        """, "admin@demo.com")
+        """, "admin@perx.it")
         if existing_admin_user_id:
             admin_user_id = existing_admin_user_id
 
         existing_perito_user_id = await conn.fetchval("""
             SELECT id FROM users WHERE email = $1
-        """, "perito@demo.com")
+        """, "perito@perx.it")
         if existing_perito_user_id:
             perito_user_id = existing_perito_user_id
 
         existing_cat_user_id = await conn.fetchval("""
             SELECT id FROM users WHERE email = $1
-        """, "cat@demo.com")
+        """, "cat@perx.it")
         if existing_cat_user_id:
             cat_user_id = existing_cat_user_id
+
+        # Portal domain for assicurati portal: assicurati.demo.perx.it → resolves via demo.perx.it
+        await conn.execute("""
+            INSERT INTO tenant_portal_domains (id, tenant_id, domain, is_primary, created_at)
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (domain) DO UPDATE
+            SET tenant_id = EXCLUDED.tenant_id,
+                is_primary = EXCLUDED.is_primary
+        """, str(uuid.uuid4()), tenant_id, "demo.perx.it", True, datetime.utcnow())
         
         # Assegna ruoli
         await conn.execute("""
@@ -255,8 +264,8 @@ async def seed_tenant_and_users(pool: asyncpg.Pool):
             "technicians": [
                 {
                     "id": "cat-demo-modena",
-                    "display_name": "CAT Demo",
-                    "email": "cat@demo.com",
+                    "display_name": "CAT PerX",
+                    "email": "cat@perx.it",
                     "latitude": 44.6471,
                     "longitude": 10.9252,
                     "comune": "Modena",
@@ -274,7 +283,7 @@ async def seed_tenant_and_users(pool: asyncpg.Pool):
                     "regione": "Emilia-Romagna",
                     "latitude": 44.6471,
                     "longitude": 10.9252,
-                    "assigned_cat_emails": ["cat@demo.com"],
+                    "assigned_cat_emails": ["cat@perx.it"],
                     "priority": 1,
                 },
                 {
@@ -284,7 +293,7 @@ async def seed_tenant_and_users(pool: asyncpg.Pool):
                     "regione": "Emilia-Romagna",
                     "latitude": 44.7824,
                     "longitude": 10.8777,
-                    "assigned_cat_emails": ["cat@demo.com"],
+                    "assigned_cat_emails": ["cat@perx.it"],
                     "priority": 1,
                 },
                 {
@@ -294,7 +303,7 @@ async def seed_tenant_and_users(pool: asyncpg.Pool):
                     "regione": "Emilia-Romagna",
                     "latitude": 44.5432,
                     "longitude": 10.7841,
-                    "assigned_cat_emails": ["cat@demo.com"],
+                    "assigned_cat_emails": ["cat@perx.it"],
                     "priority": 2,
                 },
                 {
@@ -304,7 +313,7 @@ async def seed_tenant_and_users(pool: asyncpg.Pool):
                     "regione": "Emilia-Romagna",
                     "latitude": 44.6511,
                     "longitude": 10.7812,
-                    "assigned_cat_emails": ["cat@demo.com"],
+                    "assigned_cat_emails": ["cat@perx.it"],
                     "priority": 2,
                 },
             ],
@@ -362,19 +371,19 @@ async def seed_tenant_and_users(pool: asyncpg.Pool):
             )
         
         print(f"✅ Creato/aggiornato admin piattaforma: {settings.APP_ADMIN_EMAIL} / {settings.APP_ADMIN_DEFAULT_PASSWORD}")
-        print(f"✅ Creato tenant: {tenant_id}")
-        print(f"   Admin: admin@demo.com / admin123")
-        print(f"   Perito: perito@demo.com / perito123")
-        print(f"   CAT: cat@demo.com / cat123")
+        print(f"✅ Creato tenant: {tenant_id} (portal: demo.perx.it)")
+        print(f"   Admin: admin@perx.it / admin123")
+        print(f"   Perito: perito@perx.it / perito123")
+        print(f"   CAT: cat@perx.it / cat123")
 
         await ensure_supabase_auth_user(
             settings.APP_ADMIN_EMAIL,
             settings.APP_ADMIN_DEFAULT_PASSWORD,
             settings.APP_ADMIN_FULL_NAME,
         )
-        await ensure_supabase_auth_user("admin@demo.com", "admin123", "Admin Demo")
-        await ensure_supabase_auth_user("perito@demo.com", "perito123", "Perito Demo")
-        await ensure_supabase_auth_user("cat@demo.com", "cat123", "CAT Demo")
+        await ensure_supabase_auth_user("admin@perx.it", "admin123", "Admin PerX")
+        await ensure_supabase_auth_user("perito@perx.it", "perito123", "Perito PerX")
+        await ensure_supabase_auth_user("cat@perx.it", "cat123", "CAT PerX")
         
         return tenant_id, admin_user_id, perito_user_id, cat_user_id
 
@@ -1134,8 +1143,10 @@ def build_claim_record(
     fulminazione: str,
     company_profile: dict,
     rng: random.Random,
+    company_progressive: int | None = None,
 ) -> dict:
-    riferimento = f"{year_prefix}{index:05d}"
+    progressive = company_progressive if company_progressive is not None else index
+    riferimento = f"{company_profile['agenzia_prefix']}-{year_prefix}{progressive:05d}"
     person = person_record(index, rng)
     contraente = person_record(index + 37, rng)
     danneggiato = person if rng.random() < 0.82 else person_record(index + 71, rng)
@@ -1147,7 +1158,15 @@ def build_claim_record(
     state_path = final_state_path(state_id, mode, definition)
 
     minimum_age_days = max(7, len(state_path) * 6 + 4)
-    created_at = datetime.utcnow() - timedelta(days=rng.randint(minimum_age_days, minimum_age_days + 160), hours=rng.randint(0, 23))
+    # Ancora la data al year_prefix del riferimento (es. "26" -> 2026)
+    ref_year = 2000 + int(year_prefix)
+    year_anchor_start = datetime(ref_year, 1, 15)
+    year_anchor_end = datetime(ref_year, 12, 15)
+    span_days = (year_anchor_end - year_anchor_start).days
+    created_at = year_anchor_start + timedelta(days=rng.randint(0, span_days), hours=rng.randint(0, 23))
+    # Per gli stati lunghi, garantiamo un minimo di "età" della pratica spostando indietro la data
+    if (datetime.utcnow() - created_at).days < minimum_age_days:
+        created_at = created_at - timedelta(days=minimum_age_days)
     data_sinistro = created_at - timedelta(days=rng.randint(0, 4), hours=rng.randint(1, 12))
     data_denuncia = data_sinistro + timedelta(days=rng.randint(0, 2), hours=rng.randint(2, 10))
     data_incarico = data_denuncia + timedelta(hours=rng.randint(4, 36))
@@ -1187,7 +1206,7 @@ def build_claim_record(
         "id": claim_id,
         "tenant_id": tenant_id,
         "external_ref": riferimento,
-        "numero_sinistro": f"{company_profile['agenzia_prefix']}/{year_prefix}/{index:05d}",
+        "numero_sinistro": riferimento,
         "compagnia": company_profile["compagnia"],
         "stato_corrente": _slug_for_legacy_state(state_id),
         "stato_substati": _substati_for_legacy_state(state_id),
@@ -1486,7 +1505,8 @@ async def seed_sample_claims(
     """Crea circa cento sinistri demo Fenomeno Elettrico per il tenant demo."""
 
     rng = random.Random(2600001)
-    year_prefix = f"{datetime.utcnow().year % 100:02d}"
+    # Distribuiamo i sinistri su 25, 26, 27 (anno di riferimento del numero sinistro)
+    year_pool = shuffled_distribution(rng, ["25"] * 20 + ["26"] * 60 + ["27"] * 20)
 
     goods_distribution = shuffled_distribution(
         rng,
@@ -1510,12 +1530,30 @@ async def seed_sample_claims(
     state_distribution = shuffled_distribution(rng, STATE_DISTRIBUTION)
 
     users = {
-        "admin": {"id": admin_user_id, "email": "admin@demo.com"},
-        "perito": {"id": perito_user_id, "email": "perito@demo.com"},
-        "cat": {"id": cat_user_id, "email": "cat@demo.com"},
+        "admin": {"id": admin_user_id, "email": "admin@perx.it"},
+        "perito": {"id": perito_user_id, "email": "perito@perx.it"},
+        "cat": {"id": cat_user_id, "email": "cat@perx.it"},
     }
 
-    external_refs = [f"{year_prefix}{index:05d}" for index in range(1, DEMO_CLAIM_COUNT + 1)]
+    # Pre-compute per-claim assignments (company + per-company progressive + year)
+    per_company_counters: dict[tuple[str, str], int] = {}
+    claim_specs: list[dict] = []
+    for index in range(1, DEMO_CLAIM_COUNT + 1):
+        company = COMPANY_PROFILES[(index - 1) % len(COMPANY_PROFILES)]
+        year_prefix = str(year_pool[index - 1])
+        key = (company["agenzia_prefix"], year_prefix)
+        per_company_counters[key] = per_company_counters.get(key, 0) + 1
+        progressive = per_company_counters[key]
+        external_ref = f"{company['agenzia_prefix']}-{year_prefix}{progressive:05d}"
+        claim_specs.append({
+            "index": index,
+            "company": company,
+            "year_prefix": year_prefix,
+            "progressive": progressive,
+            "external_ref": external_ref,
+        })
+
+    external_refs = [spec["external_ref"] for spec in claim_specs]
 
     async with pool.acquire() as conn:
         available_tables = {
@@ -1537,15 +1575,16 @@ async def seed_sample_claims(
         existing_ids = {row["external_ref"]: row["id"] for row in existing_rows}
 
         claims = []
-        for index in range(1, DEMO_CLAIM_COUNT + 1):
-            claim_id = existing_ids.get(external_refs[index - 1]) or str(
-                uuid.uuid5(DEMO_NAMESPACE, f"demo-claim:{tenant_id}:{external_refs[index - 1]}")
+        for spec in claim_specs:
+            index = spec["index"]
+            external_ref = spec["external_ref"]
+            claim_id = existing_ids.get(external_ref) or str(
+                uuid.uuid5(DEMO_NAMESPACE, f"demo-claim:{tenant_id}:{external_ref}")
             )
-            company_profile = COMPANY_PROFILES[(index - 1) % len(COMPANY_PROFILES)]
             claims.append(
                 build_claim_record(
                     index=index,
-                    year_prefix=year_prefix,
+                    year_prefix=spec["year_prefix"],
                     claim_id=claim_id,
                     tenant_id=tenant_id,
                     users=users,
@@ -1553,8 +1592,9 @@ async def seed_sample_claims(
                     base_level=complexity_distribution[index - 1],
                     goods_count=int(goods_distribution[index - 1]),
                     fulminazione=str(fulminazione_distribution[index - 1]),
-                    company_profile=company_profile,
+                    company_profile=spec["company"],
                     rng=rng,
+                    company_progressive=spec["progressive"],
                 )
             )
 
