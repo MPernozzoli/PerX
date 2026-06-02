@@ -192,6 +192,7 @@ struct VerificheSectionView: View {
         .onAppear {
             checkSinistroPath()
             loadGiustificativiFromTags()
+            backfillTipoPeriziaIfNeeded()
         }
         .onChange(of: fileTagManager.fileTags) { _ in
             loadGiustificativiFromTags()
@@ -222,6 +223,23 @@ struct VerificheSectionView: View {
         case documentale = "Documentale"
         case tradizionale = "Tradizionale"
         case videoperizia = "Videoperizia"
+
+        var storageValue: String {
+            switch self {
+            case .documentale: return "documentale"
+            case .tradizionale: return "tradizionale"
+            case .videoperizia: return "videoperizia"
+            }
+        }
+
+        static func fromStorage(_ raw: String?) -> TipoPerizia? {
+            switch raw?.lowercased() {
+            case "documentale": return .documentale
+            case "tradizionale": return .tradizionale
+            case "videoperizia": return .videoperizia
+            default: return nil
+            }
+        }
     }
 
     fileprivate enum TipoPeriziaAction: String, Identifiable {
@@ -267,6 +285,17 @@ struct VerificheSectionView: View {
     }
 
     private var tipoPeriziaCorrente: TipoPerizia {
+        if let persisted = TipoPerizia.fromStorage(sinistro.tipoPeriziaEffettuata) {
+            return persisted
+        }
+        return tipoPeriziaDerivato
+    }
+
+    /// Derivazione dallo stato corrente, usata solo come fallback quando
+    /// `tipoPeriziaEffettuata` non è ancora stato valorizzato (sinistri
+    /// pre-esistenti). Una volta scritto, il campo persistito sopravvive
+    /// anche dopo la chiusura del sinistro.
+    private var tipoPeriziaDerivato: TipoPerizia {
         if let descrizione = sinistro.stato,
            let statoId = StatoManager.shared.getStatoId(fromDescrizione: descrizione),
            let stato = StatoManager.StatoSinistro(rawValue: statoId),
@@ -328,9 +357,12 @@ struct VerificheSectionView: View {
             ?? CurrentUserService.shared.currentUsername
             ?? "Utente"
 
+        let nuovoTipo: TipoPerizia = (action == .richiediVideoperizia) ? .videoperizia : .tradizionale
+
         await viewContext.perform {
             sinistro.stato = descrizioneNuova
             sinistro.sopralluogo = action.nuovoSopralluogoFlag
+            sinistro.tipoPeriziaEffettuata = nuovoTipo.storageValue
 
             if !keepAssignment {
                 sinistro.assignedToUserEmail = nil
@@ -478,7 +510,22 @@ struct VerificheSectionView: View {
     }
     
     private func saveChanges() {
+        // Se l'utente ha cambiato Documentale/Tradizionale dal picker editing,
+        // persisti il tipo: la videoperizia si imposta solo dal flusso dialog.
+        if TipoPerizia.fromStorage(sinistro.tipoPeriziaEffettuata) != .videoperizia {
+            let tipo: TipoPerizia = sinistro.sopralluogo ? .tradizionale : .documentale
+            sinistro.tipoPeriziaEffettuata = tipo.storageValue
+        }
         sinistro.markAsLocallyModified()
+        try? viewContext.save()
+    }
+
+    /// Backfill: per sinistri preesistenti senza il campo persistito, salviamo
+    /// la derivazione corrente così sopravvive a stati terminali successivi.
+    private func backfillTipoPeriziaIfNeeded() {
+        guard sinistroPathExists,
+              (sinistro.tipoPeriziaEffettuata ?? "").isEmpty else { return }
+        sinistro.tipoPeriziaEffettuata = tipoPeriziaDerivato.storageValue
         try? viewContext.save()
     }
 }

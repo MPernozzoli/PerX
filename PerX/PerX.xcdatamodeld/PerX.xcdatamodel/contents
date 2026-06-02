@@ -91,6 +91,7 @@
         <attribute name="riferimento" optional="YES" attributeType="String"/>
         <attribute name="sinistroCollegato" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
         <attribute name="sopralluogo" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
+        <attribute name="tipoPeriziaEffettuata" optional="YES" attributeType="String"/>
         <attribute name="stato" optional="YES" attributeType="String"/>
         <attribute name="telefonoAgenzia" optional="YES" attributeType="String"/>
         <attribute name="telefonoAssicurato" optional="YES" attributeType="String"/>
