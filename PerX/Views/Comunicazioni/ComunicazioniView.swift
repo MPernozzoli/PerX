@@ -71,7 +71,10 @@ struct ComunicazioniView: View {
         case .telegram:
             placeholderView(for: "Telegram")
         case .chiamate:
-            TelefonoCommunicationView()
+            TelefonoCommunicationView(
+                myExtension: UserProfileService.shared.currentProfile?.extensionNumber,
+                myExtensionEnabled: UserProfileService.shared.currentProfile?.extensionEnabled ?? false
+            )
         case .ibrida:
             placeholderView(for: "Ibrida")
         case .rubrica:

@@ -107,6 +107,24 @@ async def supabase_password_login(email: str, password: str) -> dict:
     )
 
 
+async def supabase_refresh_token(refresh_token: str) -> dict:
+    if not is_supabase_auth_enabled():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Supabase auth is not enabled",
+        )
+
+    return await _supabase_http_request(
+        "POST",
+        "/auth/v1/token?grant_type=refresh_token",
+        headers={
+            "apikey": settings.SUPABASE_ANON_KEY,
+            "Accept": "application/json",
+        },
+        payload={"refresh_token": refresh_token},
+    )
+
+
 async def get_supabase_user(token: str) -> dict:
     if not is_supabase_auth_enabled():
         raise HTTPException(

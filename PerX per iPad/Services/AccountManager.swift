@@ -68,9 +68,9 @@ class AccountManager: ObservableObject {
     }
 
     private static let demoAccounts: [DemoAccountDefinition] = [
-        DemoAccountDefinition(email: "cat@demo.com", displayName: "CAT Demo", password: "cat123"),
-        DemoAccountDefinition(email: "admin@demo.com", displayName: "Admin Demo", password: "admin123"),
-        DemoAccountDefinition(email: "perito@demo.com", displayName: "Perito Demo", password: "perito123"),
+        DemoAccountDefinition(email: "cat@perx.it", displayName: "CAT PerX", password: "cat123"),
+        DemoAccountDefinition(email: "admin@perx.it", displayName: "Admin PerX", password: "admin123"),
+        DemoAccountDefinition(email: "perito@perx.it", displayName: "Perito PerX", password: "perito123"),
         DemoAccountDefinition(email: "info@pynkstudio.it", displayName: "Pynk Studio Admin", password: "change-me-now")
     ]
     

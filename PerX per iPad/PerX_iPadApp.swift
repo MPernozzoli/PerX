@@ -56,38 +56,34 @@ struct iPadContentView: View {
     enum NavigationSection: String, CaseIterable, Identifiable, Hashable {
         case dashboard = "Dashboard"
         case sinistri = "Sinistri"
-        case mail = "Email"
-        case whatsapp = "WhatsApp"
-        case chat = "Chat AI"
+        case comunicazioni = "Comunicazioni"
         case consuntivo = "Consuntivo"
         case programmazione = "Programmazione"
         case routes = "Route"
         case impostazioni = "Impostazioni"
-        
+
         var id: String { rawValue }
-        
+
         var icon: String {
             switch self {
             case .dashboard: return "gauge.with.dots.needle.bottom.50percent"
             case .sinistri: return "folder.fill"
-            case .mail: return "envelope.fill"
-            case .whatsapp: return "message.fill"
-            case .chat: return "bubble.left.and.bubble.right.fill"
+            case .comunicazioni: return "bubble.left.and.bubble.right.fill"
             case .consuntivo: return "chart.bar.fill"
             case .programmazione: return "calendar.badge.clock"
             case .routes: return "point.topleft.down.curvedto.point.bottomright.up"
             case .impostazioni: return "gear"
             }
         }
-        
+
         var isSettings: Bool { self == .impostazioni }
     }
 
     private var availableSections: [NavigationSection] {
         if session.isCATUser {
-            return [.dashboard, .programmazione, .routes, .impostazioni]
+            return [.dashboard, .comunicazioni, .programmazione, .routes, .impostazioni]
         }
-        return [.dashboard, .sinistri, .mail, .whatsapp, .chat, .consuntivo, .programmazione, .impostazioni]
+        return [.dashboard, .sinistri, .comunicazioni, .consuntivo, .programmazione, .impostazioni]
     }
     
     var body: some View {
@@ -156,12 +152,8 @@ struct iPadContentView: View {
             }
         case .sinistri:
             SinistriListView()
-        case .mail:
-            iPadMailView()
-        case .whatsapp:
-            iPadWhatsAppView()
-        case .chat:
-            ChatListView()
+        case .comunicazioni:
+            ComunicazioniListView()
         case .consuntivo:
             iPadConsuntivoView()
         case .programmazione:

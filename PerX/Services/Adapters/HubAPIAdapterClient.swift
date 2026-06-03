@@ -276,11 +276,11 @@ final class HubAPIAdapterClient {
                 retry.httpBody = try encoder.encode(body)
             }
             let (retryData, retryResponse) = try await session.data(for: retry)
-            try validateResponse(retryResponse)
+            try validateResponse(retryResponse, data: retryData)
             return try decoder.decode(T.self, from: retryData)
         }
 
-        try validateResponse(response)
+        try validateResponse(response, data: data)
         return try decoder.decode(T.self, from: data)
     }
 
@@ -391,11 +391,11 @@ final class HubAPIAdapterClient {
     
     // MARK: - Helpers
     
-    private func validateResponse(_ response: URLResponse) throws {
+    private func validateResponse(_ response: URLResponse, data: Data? = nil) throws {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw HubClientError.invalidResponse
         }
-        
+
         switch httpResponse.statusCode {
         case 200..<300:
             return // OK
@@ -404,10 +404,26 @@ final class HubAPIAdapterClient {
         case 404:
             throw HubClientError.notFound
         case 500..<600:
+            if let detail = Self.extractErrorDetail(from: data) {
+                throw HubClientError.serverErrorDetail(httpResponse.statusCode, detail)
+            }
             throw HubClientError.serverError(httpResponse.statusCode)
         default:
+            if let detail = Self.extractErrorDetail(from: data) {
+                throw HubClientError.httpErrorDetail(httpResponse.statusCode, detail)
+            }
             throw HubClientError.httpError(httpResponse.statusCode)
         }
+    }
+
+    private static func extractErrorDetail(from data: Data?) -> String? {
+        guard let data, !data.isEmpty else { return nil }
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            if let detail = json["detail"] as? String { return detail }
+            if let detail = json["detail"] { return String(describing: detail) }
+            if let message = json["message"] as? String { return message }
+        }
+        return String(data: data, encoding: .utf8)
     }
 
     private func saveToKeychain(token: String, forKey key: String) {
@@ -597,7 +613,7 @@ final class HubAPIAdapterClient {
 
 extension HubAPIAdapterClient: CommunicationHTTPTransport {
     func communicationPost<T: Decodable, B: Encodable>(_ path: String, body: B) async throws -> T {
-        try await post(path, body: body)
+        try await cloudPost(path, body: body)
     }
 }
 
@@ -637,9 +653,11 @@ enum HubClientError: Error, LocalizedError {
     case unauthorized
     case notFound
     case serverError(Int)
+    case serverErrorDetail(Int, String)
     case httpError(Int)
+    case httpErrorDetail(Int, String)
     case decodingError(String)
-    
+
     var errorDescription: String? {
         switch self {
         case .invalidURL: return "URL non valido"
@@ -647,7 +665,9 @@ enum HubClientError: Error, LocalizedError {
         case .unauthorized: return "Non autorizzato"
         case .notFound: return "Risorsa non trovata"
         case .serverError(let code): return "Errore server: \(code)"
+        case .serverErrorDetail(let code, let detail): return "Errore server (\(code)): \(detail)"
         case .httpError(let code): return "Errore HTTP: \(code)"
+        case .httpErrorDetail(let code, let detail): return "Errore HTTP (\(code)): \(detail)"
         case .decodingError(let msg): return "Errore decodifica: \(msg)"
         }
     }

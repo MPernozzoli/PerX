@@ -196,3 +196,15 @@ struct CallHistoryListDTO: Decodable {
     let items: [CallHistoryDTO]
     let total: Int
 }
+
+// MARK: - Profilo utente corrente
+
+struct MeProfileDTO: Decodable, Hashable {
+    let id: String
+    let email: String
+    let first_name: String?
+    let last_name: String?
+    let extension_number: String?
+    let extension_enabled: Bool?
+    let extension_display_name: String?
+}

@@ -257,7 +257,7 @@ class StudioCommunicationHandler: BaseEmailHandler {
         return CommunicationAnalysisResult(
             intent: .noAction,
             urgency: .normal,
-            context: CommunicationContext(
+            context: MailAnalysisContext(
                 senderType: determineSenderType(email: email),
                 originalSender: nil,
                 isForwarded: false,

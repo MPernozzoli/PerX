@@ -177,7 +177,7 @@ struct UserProfile: Codable, Equatable, Identifiable {
     }
 
     var isTenantAdmin: Bool {
-        roles.contains(.admin) || email.lowercased() == "admin@demo.com"
+        roles.contains(.admin) || email.lowercased() == "admin@perx.it"
     }
 
     var canManageTenantSettings: Bool {

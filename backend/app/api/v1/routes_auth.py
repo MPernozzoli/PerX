@@ -8,16 +8,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.core.database import get_db
+from jose import JWTError, jwt
+
+from app.core.config import settings
 from app.core.security import (
     verify_password,
     create_access_token,
     get_current_active_user,
     is_supabase_auth_enabled,
     supabase_password_login,
+    supabase_refresh_token,
 )
 from app.models.role import Role, user_roles
 from app.models.user import User
-from app.schemas.auth import LoginRequest, Token, UserResponse
+from app.schemas.auth import LoginRequest, RefreshRequest, Token, UserResponse
 from app.services.user_email_service import ensure_personal_email, ensure_professional_email, get_user_aliases
 
 router = APIRouter()
@@ -113,6 +117,61 @@ async def login(
         "access_token": access_token,
         "refresh_token": refresh_token,
         "token_type": "bearer"
+    }
+
+
+@router.post("/refresh", response_model=Token)
+async def refresh(
+    payload: RefreshRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Scambia un refresh_token con una nuova coppia di token."""
+    if is_supabase_auth_enabled():
+        token_response = await supabase_refresh_token(payload.refresh_token)
+        return {
+            "access_token": token_response["access_token"],
+            "refresh_token": token_response.get("refresh_token", payload.refresh_token),
+            "token_type": token_response.get("token_type", "bearer"),
+        }
+
+    invalid = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid refresh token",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        claims = jwt.decode(
+            payload.refresh_token,
+            settings.SECRET_KEY,
+            algorithms=[settings.ALGORITHM],
+        )
+    except JWTError:
+        raise invalid
+
+    if claims.get("type") != "refresh":
+        raise invalid
+    user_id = claims.get("sub")
+    if not user_id:
+        raise invalid
+
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user or not user.is_active:
+        raise invalid
+
+    access_token = create_access_token(
+        data={
+            "sub": user.id,
+            "tenant_id": user.tenant_id,
+            "is_platform_admin": user.is_platform_admin,
+        }
+    )
+    new_refresh = create_access_token(
+        data={"sub": user.id, "type": "refresh"}, expires_delta=None
+    )
+    return {
+        "access_token": access_token,
+        "refresh_token": new_refresh,
+        "token_type": "bearer",
     }
 
 

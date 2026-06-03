@@ -119,7 +119,10 @@ async def resolve_destination(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    tenant_id = payload.context.tenant_id or current_user.tenant_id
+    ctx_tenant = payload.context.tenant_id
+    if ctx_tenant in (None, "", "default"):
+        ctx_tenant = current_user.tenant_id
+    tenant_id = ctx_tenant
     if tenant_id != current_user.tenant_id:
         # TODO(inter-tenant): replace with explicit cross-tenant invitation auth.
         raise HTTPException(status_code=403, detail="Cross-tenant communication is not enabled")
@@ -137,6 +140,11 @@ async def start_communication(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
+    # Client UI seeds destination.tenant_id as the placeholder "default" because it
+    # doesn't know the authenticated user's real tenant. Normalize that case to the
+    # current user's tenant rather than rejecting as cross-tenant.
+    if payload.destination.tenant_id in (None, "", "default"):
+        payload.destination.tenant_id = current_user.tenant_id
     if payload.destination.tenant_id != current_user.tenant_id:
         # TODO(inter-tenant): future LiveKit federation must require explicit grants,
         # tenant-separated audit, and no implicit user discovery.

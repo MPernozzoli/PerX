@@ -32,6 +32,25 @@ struct ProfileView: View {
             List {
                 Section("Account") {
                     LabeledContent("Email", value: auth.email ?? "—")
+                    if let name = auth.displayName, !name.isEmpty {
+                        LabeledContent("Nome", value: name)
+                    }
+                    if let ext = auth.myExtension, !ext.isEmpty {
+                        LabeledContent("Interno PerX") {
+                            HStack(spacing: 6) {
+                                Text(ext)
+                                    .font(.body.monospaced().weight(.semibold))
+                                if !auth.myExtensionEnabled {
+                                    Text("non attivo")
+                                        .font(.caption2)
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 1)
+                                        .background(Color.orange.opacity(0.18), in: Capsule())
+                                        .foregroundStyle(.orange)
+                                }
+                            }
+                        }
+                    }
                     LabeledContent("Server", value: APIClient.shared.baseURL)
                 }
                 Section("Stato realtime") {

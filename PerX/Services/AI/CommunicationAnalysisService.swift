@@ -4,7 +4,7 @@ import Foundation
 struct CommunicationAnalysisResult {
     var intent: CommunicationIntent
     var urgency: UrgencyLevel
-    var context: CommunicationContext
+    var context: MailAnalysisContext
     var extractedData: ExtractedData
     var requiresAction: Bool
     var suggestedActions: [SuggestedAction]
@@ -38,8 +38,8 @@ enum UrgencyLevel: String, Codable {
     case urgent = "urgent"
 }
 
-/// Contesto della comunicazione
-struct CommunicationContext: Codable {
+/// Contesto della comunicazione (analisi email)
+struct MailAnalysisContext: Codable {
     var senderType: SenderType
     var originalSender: String? // Mittente originale se inoltrata
     var isForwarded: Bool
@@ -554,7 +554,7 @@ class CommunicationAnalysisService {
         senderEmail: String,
         body: String,
         text: String
-    ) -> CommunicationContext {
+    ) -> MailAnalysisContext {
         let lowercasedEmail = senderEmail.lowercased()
         let lowercasedText = text.lowercased()
         
@@ -607,7 +607,7 @@ class CommunicationAnalysisService {
         
         let domain = senderEmail.components(separatedBy: "@").last
         
-        return CommunicationContext(
+        return MailAnalysisContext(
             senderType: senderType,
             originalSender: originalSender,
             isForwarded: isForwarded,
@@ -743,7 +743,7 @@ class CommunicationAnalysisService {
         intent: CommunicationIntent,
         extractedData: ExtractedData,
         urgency: UrgencyLevel,
-        context: CommunicationContext,
+        context: MailAnalysisContext,
         sinistroID: String?
     ) -> [SuggestedAction] {
         var actions: [SuggestedAction] = []

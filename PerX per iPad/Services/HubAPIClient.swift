@@ -820,10 +820,33 @@ extension HubAPIClient: CommunicationHTTPTransport {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try cloudEncoder.encode(body)
         let (data, response) = try await cloudSession.data(for: request)
-        guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode else {
+        guard let http = response as? HTTPURLResponse else {
             throw HubAPIError.invalidResponse
         }
+        guard 200..<300 ~= http.statusCode else {
+            let detail = Self.extractErrorDetail(from: data) ?? "HTTP \(http.statusCode)"
+            #if DEBUG
+            print("[communicationPost] \(path) failed: \(http.statusCode) - \(detail)")
+            #endif
+            switch http.statusCode {
+            case 401: throw HubAPIError.unauthorized
+            case 404: throw HubAPIError.notFound
+            case 400: throw HubAPIError.communicationFailed(status: 400, detail: detail)
+            case 500..<600: throw HubAPIError.communicationFailed(status: http.statusCode, detail: detail)
+            default: throw HubAPIError.communicationFailed(status: http.statusCode, detail: detail)
+            }
+        }
         return try cloudDecoder.decode(T.self, from: data)
+    }
+
+    private static func extractErrorDetail(from data: Data) -> String? {
+        guard !data.isEmpty else { return nil }
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            if let detail = json["detail"] as? String { return detail }
+            if let detail = json["detail"] { return String(describing: detail) }
+            if let message = json["message"] as? String { return message }
+        }
+        return String(data: data, encoding: .utf8)
     }
 }
 
@@ -838,7 +861,8 @@ enum HubAPIError: Error, LocalizedError {
     case notFound
     case serverError(Int)
     case httpError(Int)
-    
+    case communicationFailed(status: Int, detail: String)
+
     var errorDescription: String? {
         switch self {
         case .notConfigured:
@@ -857,6 +881,8 @@ enum HubAPIError: Error, LocalizedError {
             return "Errore server (\(code))"
         case .httpError(let code):
             return "Errore HTTP (\(code))"
+        case .communicationFailed(let status, let detail):
+            return "Errore comunicazione (\(status)): \(detail)"
         }
     }
 }

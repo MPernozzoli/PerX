@@ -239,7 +239,7 @@ final class StudioNewsService: ObservableObject {
         let senderEmail = email.sender.email.lowercased()
         let isInternalSender = senderEmail.contains("@actsrl.it") ||
         senderEmail.contains("@allconsulting.org") ||
-        [.companyGeneric, .partner, .teamLeader, .secretary, .colleague].contains(analysis.context.senderType)
+        ([SenderType.companyGeneric, .partner, .teamLeader, .secretary, .colleague]).contains(analysis.context.senderType)
         
         let recipientsCount = email.recipients.count + (email.cc?.count ?? 0)
         let hasSinistroRef = !(email.claimNumber?.isEmpty ?? true)

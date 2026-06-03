@@ -49,7 +49,7 @@ final class CurrentUserService: ObservableObject {
         if UserProfileService.shared.currentProfile?.isTenantAdmin == true {
             return true
         }
-        return currentEmail == "admin@demo.com"
+        return currentEmail == "admin@perx.it"
     }
 
     var canManageTenantSettings: Bool {

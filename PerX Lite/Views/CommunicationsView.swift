@@ -21,11 +21,37 @@ final class CommunicationsViewModel: ObservableObject {
 }
 
 struct CommunicationsView: View {
+    @EnvironmentObject private var auth: AuthStore
     @StateObject private var vm = CommunicationsViewModel()
 
     var body: some View {
         NavigationStack {
             List {
+                if let ext = auth.myExtension, !ext.isEmpty {
+                    Section {
+                        HStack(spacing: 10) {
+                            Image(systemName: "number.circle.fill")
+                                .foregroundStyle(auth.myExtensionEnabled ? Color.accentColor : .secondary)
+                                .font(.title3)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("Tuo interno")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Text(ext)
+                                    .font(.headline.monospaced())
+                            }
+                            Spacer()
+                            if !auth.myExtensionEnabled {
+                                Text("non attivo")
+                                    .font(.caption2.weight(.semibold))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.orange.opacity(0.18), in: Capsule())
+                                    .foregroundStyle(.orange)
+                            }
+                        }
+                    }
+                }
                 Section {
                     NavigationLink {
                         CallListView()
@@ -54,8 +80,14 @@ struct CommunicationsView: View {
             }
             .listStyle(.insetGrouped)
             .navigationTitle("Comunicazioni")
-            .refreshable { await vm.load() }
-            .task { await vm.load() }
+            .refreshable {
+                await vm.load()
+                await auth.refreshProfile()
+            }
+            .task {
+                await vm.load()
+                await auth.refreshProfile()
+            }
             .alert("Errore", isPresented: .constant(vm.errorMessage != nil), actions: {
                 Button("OK") { vm.errorMessage = nil }
             }, message: {

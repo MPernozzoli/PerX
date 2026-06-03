@@ -16,45 +16,84 @@ struct ComunicazioniListView: View {
         case telefono = "Telefono"
         case email = "Email"
         case whatsapp = "WhatsApp"
-        
+        case messaggi = "Messaggi interni"
+
         var icon: String {
             switch self {
             case .outbox: return "tray.and.arrow.up.fill"
             case .telefono: return "phone.fill"
             case .email: return "envelope.fill"
             case .whatsapp: return "message.fill"
+            case .messaggi: return "bubble.left.and.bubble.right.fill"
             }
         }
     }
-    
+
     var body: some View {
-        NavigationSplitView {
-            // Sidebar con tabs
-            List {
-                ForEach(ComunicazioniTab.allCases, id: \.self) { tab in
+        VStack(spacing: 0) {
+            ComunicazioniTabBar(selected: $selectedTab)
+            Divider()
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .background(Color(.systemGroupedBackground))
+        .navigationTitle("Comunicazioni")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch selectedTab {
+        case .outbox:
+            OutboxListView()
+        case .telefono:
+            TelefonoCommunicationView()
+        case .email:
+            iPadMailView()
+        case .whatsapp:
+            iPadWhatsAppView()
+        case .messaggi:
+            ChatListView()
+        }
+    }
+}
+
+// MARK: - Top Tab Bar
+
+private struct ComunicazioniTabBar: View {
+    @Binding var selected: ComunicazioniListView.ComunicazioniTab
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(ComunicazioniListView.ComunicazioniTab.allCases, id: \.self) { tab in
                     Button {
-                        selectedTab = tab
+                        selected = tab
                     } label: {
-                        Label(tab.rawValue, systemImage: tab.icon)
+                        HStack(spacing: 6) {
+                            Image(systemName: tab.icon)
+                                .font(.callout)
+                            Text(tab.rawValue)
+                                .font(.subheadline.weight(.medium))
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(
+                            Capsule().fill(
+                                selected == tab
+                                    ? Color.accentColor.opacity(0.18)
+                                    : Color(.tertiarySystemFill)
+                            )
+                        )
+                        .foregroundStyle(selected == tab ? Color.accentColor : .primary)
                     }
-                    .listRowBackground(selectedTab == tab ? Color.accentColor.opacity(0.2) : Color.clear)
+                    .buttonStyle(.plain)
                 }
             }
-            .listStyle(.sidebar)
-            .navigationTitle("Comunicazioni")
-        } detail: {
-            switch selectedTab {
-            case .outbox:
-                OutboxListView()
-            case .telefono:
-                TelefonoCommunicationView()
-            case .email:
-                iPadEmailListView()
-            case .whatsapp:
-                iPadWhatsAppListView()
-            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
         }
-        .navigationSplitViewStyle(.balanced)
+        .background(.regularMaterial)
     }
 }
 

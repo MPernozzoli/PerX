@@ -2,7 +2,6 @@ import SwiftUI
 
 struct TelefonoCommunicationView: View {
     @State private var selectedFilter: CallFilter = .recenti
-    @State private var keypadValue = ""
     @State private var searchText = ""
     @State private var resolution = CommunicationResolution(selected: nil, candidates: [], isAmbiguous: false)
     @State private var callState: CommunicationCallState = .pending
@@ -10,22 +9,38 @@ struct TelefonoCommunicationView: View {
     @State private var activeLiveKitToken: CommunicationLiveKitToken?
     @State private var errorMessage: String?
     @State private var recentCalls = TelefonoCommunicationView.seedCalls
+    @State private var showKeypad = false
+    @FocusState private var searchFocused: Bool
+
+    private var isTouchIdiom: Bool {
+        #if os(macOS)
+        return false
+        #else
+        return true
+        #endif
+    }
 
     private let resolver: CommunicationDestinationResolving
     private let context: CommunicationContext
     private let suggestions: [CommunicationContactSuggestion]
     private let frequentContacts: [CommunicationContactSuggestion]
+    private let myExtension: String?
+    private let myExtensionEnabled: Bool
 
     init(
         resolver: CommunicationDestinationResolving = CommunicationDestinationResolver(),
         context: CommunicationContext = CommunicationContext(tenantId: "default", claimId: nil, claimReference: nil, source: "telefono-ui"),
         suggestions: [CommunicationContactSuggestion] = TelefonoCommunicationView.seedSuggestions,
-        frequentContacts: [CommunicationContactSuggestion] = TelefonoCommunicationView.seedFrequentContacts
+        frequentContacts: [CommunicationContactSuggestion] = TelefonoCommunicationView.seedFrequentContacts,
+        myExtension: String? = nil,
+        myExtensionEnabled: Bool = true
     ) {
         self.resolver = resolver
         self.context = context
         self.suggestions = suggestions
         self.frequentContacts = frequentContacts
+        self.myExtension = myExtension
+        self.myExtensionEnabled = myExtensionEnabled
     }
 
     var body: some View {
@@ -42,11 +57,8 @@ struct TelefonoCommunicationView: View {
             }
         }
         .navigationTitle("Telefono")
-        .onChange(of: keypadValue) { _, newValue in
-            resolve(newValue)
-        }
         .onChange(of: searchText) { _, newValue in
-            if !newValue.isEmpty { resolve(newValue) }
+            resolve(newValue)
         }
         .sheet(item: $activeLiveKitToken) { token in
             CommunicationLiveKitCallView(token: token, displayName: activeCall?.displayName ?? "Chiamata PerX") {
@@ -66,13 +78,17 @@ struct TelefonoCommunicationView: View {
 
     private var callList: some View {
         VStack(spacing: 0) {
-            Picker("Filtro chiamate", selection: $selectedFilter) {
+            Picker("", selection: $selectedFilter) {
                 ForEach(CallFilter.allCases, id: \.self) { filter in
                     Text(filter.rawValue).tag(filter)
                 }
             }
+            .labelsHidden()
             .pickerStyle(.segmented)
-            .padding()
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+
+            Divider()
 
             List(filteredCalls) { call in
                 callRow(call)
@@ -86,8 +102,34 @@ struct TelefonoCommunicationView: View {
         }
     }
 
+    @ViewBuilder
+    private var myExtensionBanner: some View {
+        if let myExtension, !myExtension.isEmpty {
+            HStack(spacing: 8) {
+                Image(systemName: myExtensionEnabled ? "number.circle.fill" : "number.circle")
+                    .foregroundStyle(myExtensionEnabled ? Color.accentColor : .secondary)
+                Text("Tuo interno:")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(myExtension)
+                    .font(.caption.monospaced().weight(.semibold))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.accentColor.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                if !myExtensionEnabled {
+                    Text("non attivo")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                }
+                Spacer()
+            }
+        }
+    }
+
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
+            myExtensionBanner
             HStack(spacing: 12) {
                 Image(systemName: activeCall == nil ? "phone.circle.fill" : "phone.connection.fill")
                     .font(.system(size: 36))
@@ -129,11 +171,12 @@ struct TelefonoCommunicationView: View {
     private var dialerAndContacts: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                TextField("Numero, interno, contatto, team o link", text: $searchText)
-                    .textFieldStyle(.roundedBorder)
+                dialInputRow
                     .padding(.top)
 
-                keypad
+                if isTouchIdiom || showKeypad {
+                    keypad
+                }
 
                 if !resolution.candidates.isEmpty {
                     sectionTitle("Destinazioni risolte")
@@ -155,49 +198,77 @@ struct TelefonoCommunicationView: View {
         }
     }
 
-    private var keypad: some View {
-        VStack(spacing: 12) {
-            Text(keypadValue.isEmpty ? " " : keypadValue)
-                .font(.system(size: 32, weight: .semibold, design: .rounded))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .background(Color.secondary.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+    private var dialInputRow: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            TextField("Numero, interno, contatto, team o link", text: $searchText)
+                .textFieldStyle(.plain)
+                .focused($searchFocused)
+                #if os(macOS)
+                .onSubmit {
+                    Task { await callSelectedDestination() }
+                }
+                #endif
 
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                    resolution = CommunicationResolution(selected: nil, candidates: [], isAmbiguous: false)
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+            }
+
+            if !isTouchIdiom {
+                Button {
+                    showKeypad.toggle()
+                } label: {
+                    Image(systemName: showKeypad ? "circle.grid.3x3.fill" : "circle.grid.3x3")
+                        .foregroundStyle(showKeypad ? Color.accentColor : .secondary)
+                }
+                .buttonStyle(.plain)
+                .help(showKeypad ? "Nascondi tastierino" : "Mostra tastierino")
+            }
+
+            Button {
+                Task { await callSelectedDestination() }
+            } label: {
+                Label("Chiama", systemImage: "phone.fill")
+                    .labelStyle(.titleAndIcon)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.regular)
+            .disabled(callableDestination == nil)
+            .keyboardShortcut(.return, modifiers: [.command])
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color.secondary.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    private var keypad: some View {
+        let buttonSize: CGFloat = isTouchIdiom ? 56 : 38
+        let buttonFont: Font = isTouchIdiom ? .title2.bold() : .body.weight(.semibold)
+        let spacing: CGFloat = isTouchIdiom ? 10 : 6
+
+        return VStack(spacing: spacing) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: spacing), count: 3), spacing: spacing) {
                 ForEach(["1", "2", "3", "4", "5", "6", "7", "8", "9", "+", "0", "#"], id: \.self) { value in
                     Button {
-                        keypadValue.append(value)
-                        searchText = keypadValue
+                        searchText.append(value)
                     } label: {
                         Text(value)
-                            .font(.title2.bold())
-                            .frame(maxWidth: .infinity, minHeight: 48)
+                            .font(buttonFont)
+                            .frame(maxWidth: .infinity, minHeight: buttonSize)
                     }
                     .buttonStyle(.bordered)
                 }
             }
-
-            HStack {
-                Button {
-                    keypadValue = ""
-                    searchText = ""
-                    resolution = CommunicationResolution(selected: nil, candidates: [], isAmbiguous: false)
-                } label: {
-                    Label("Cancella", systemImage: "delete.left")
-                }
-
-                Spacer()
-
-                Button {
-                    Task { await callSelectedDestination() }
-                } label: {
-                    Label("Chiama", systemImage: "phone.fill")
-                        .font(.headline)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(callableDestination == nil)
-            }
+            .frame(maxWidth: isTouchIdiom ? .infinity : 320, alignment: .leading)
         }
     }
 
@@ -205,9 +276,7 @@ struct TelefonoCommunicationView: View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 10)], spacing: 10) {
             ForEach(contacts) { contact in
                 Button {
-                    keypadValue = contact.rawDestination
                     searchText = contact.rawDestination
-                    resolve(contact.rawDestination)
                 } label: {
                     HStack(spacing: 10) {
                         Image(systemName: icon(for: contact.destinationTypeHint ?? .externalPhone))
@@ -443,15 +512,16 @@ private extension TelefonoCommunicationView {
     ]
 
     static let seedFrequentContacts: [CommunicationContactSuggestion] = [
-        CommunicationContactSuggestion(id: "massimo", displayName: "Massimo", detail: "Interno 101", rawDestination: "101", destinationTypeHint: .internalExtension),
-        CommunicationContactSuggestion(id: "sami", displayName: "Sami", detail: "Interno 102", rawDestination: "102", destinationTypeHint: .internalExtension),
+        CommunicationContactSuggestion(id: "perito-perx", displayName: "Perito PerX", detail: "Interno 101 - perito@perx.it", rawDestination: "101", destinationTypeHint: .internalExtension),
+        CommunicationContactSuggestion(id: "admin-perx", displayName: "Admin PerX", detail: "Interno 102 - admin@perx.it", rawDestination: "102", destinationTypeHint: .internalExtension),
+        CommunicationContactSuggestion(id: "cat-perx", displayName: "CAT PerX", detail: "Interno 103 - cat@perx.it", rawDestination: "103", destinationTypeHint: .internalExtension),
         CommunicationContactSuggestion(id: "team-periti", displayName: "Team periti", detail: "Routing interno", rawDestination: "team:periti", destinationTypeHint: .internalTeam),
         CommunicationContactSuggestion(id: "queue-triage", displayName: "Coda triage", detail: "Coda PerX", rawDestination: "queue:triage", destinationTypeHint: .queue)
     ]
 
     static let seedCalls: [CommunicationCallLogItem] = [
         CommunicationCallLogItem(displayName: "Mario Rossi", subtitle: "Provider telefonico", direction: .inbound, state: .completed, startedAt: Date().addingTimeInterval(-3600), durationSeconds: 180, destination: CommunicationDestination(destinationType: .externalPhone, transport: .telecomProvider, targetId: "+393331234567", displayName: "Mario Rossi", tenantId: "default", rawValue: "+393331234567"), claimReference: "SX-2026-001", claimId: "claim-1", claimContext: CommunicationClaimContext(claimId: "claim-1", claimReference: "SX-2026-001", claimNumber: "SX-2026-001", claimStatus: "SV012", insuredName: "Mario Rossi")),
-        CommunicationCallLogItem(displayName: "Sami", subtitle: "PerX interno", direction: .outbound, state: .completed, startedAt: Date().addingTimeInterval(-7200), durationSeconds: 96, destination: CommunicationDestination(destinationType: .internalExtension, transport: .livekit, targetId: "user-sami", displayName: "Sami", tenantId: "default", rawValue: "102")),
+        CommunicationCallLogItem(displayName: "Perito PerX", subtitle: "Interno 101 - PerX", direction: .outbound, state: .completed, startedAt: Date().addingTimeInterval(-7200), durationSeconds: 96, destination: CommunicationDestination(destinationType: .internalExtension, transport: .livekit, targetId: "user-perito-perx", displayName: "Perito PerX", tenantId: "default", rawValue: "101")),
         CommunicationCallLogItem(displayName: "Agenzia Milano Centro", subtitle: "Provider telefonico", direction: .missed, state: .missed, startedAt: Date().addingTimeInterval(-10800), destination: CommunicationDestination(destinationType: .externalPhone, transport: .telecomProvider, targetId: "02555010", displayName: "Agenzia Milano Centro", tenantId: "default", rawValue: "02555010"), claimReference: "SX-2026-014", claimId: "claim-14", claimContext: CommunicationClaimContext(claimId: "claim-14", claimReference: "SX-2026-014", claimNumber: "SX-2026-014", claimStatus: "SV020", insuredName: "Luigi Bianchi"))
     ]
 }
