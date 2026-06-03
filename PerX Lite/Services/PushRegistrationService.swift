@@ -9,6 +9,9 @@ final class PushRegistrationService: NSObject {
 
     private var voipRegistry: PKPushRegistry?
 
+    private let apnsTokenKey = "lite_apns_token"
+    private let voipTokenKey = "lite_voip_token"
+
     private override init() { super.init() }
 
     func start() {
@@ -70,9 +73,29 @@ final class PushRegistrationService: NSObject {
         )
         do {
             let _: Response = try await APIClient.shared.post("/api/v1/devices/register", body: body)
+            UserDefaults.standard.set(token, forKey: type == "voip" ? voipTokenKey : apnsTokenKey)
         } catch {
             print("Device token register failed (\(type)): \(error)")
         }
+    }
+
+    /// Removes the currently registered tokens from the backend.
+    /// Call this on logout so the server stops sending push to this device.
+    func unregisterTokens() async {
+        let stored: [String] = [
+            UserDefaults.standard.string(forKey: apnsTokenKey),
+            UserDefaults.standard.string(forKey: voipTokenKey),
+        ].compactMap { $0 }
+
+        for token in stored {
+            do {
+                try await APIClient.shared.delete("/api/v1/devices/\(token)")
+            } catch {
+                print("Device token unregister failed: \(error)")
+            }
+        }
+        UserDefaults.standard.removeObject(forKey: apnsTokenKey)
+        UserDefaults.standard.removeObject(forKey: voipTokenKey)
     }
 }
 

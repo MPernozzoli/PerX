@@ -4,18 +4,21 @@ struct MainTabView: View {
     @EnvironmentObject private var auth: AuthStore
 
     var body: some View {
-        TabView {
-            CommunicationsView()
-                .tabItem { Label("Comunicazioni", systemImage: "phone.fill") }
+        VStack(spacing: 0) {
+            ActiveCallBanner()
+            TabView {
+                CommunicationsView()
+                    .tabItem { Label("Comunicazioni", systemImage: "phone.fill") }
 
-            CalendarView()
-                .tabItem { Label("Calendario", systemImage: "calendar") }
+                CalendarView()
+                    .tabItem { Label("Calendario", systemImage: "calendar") }
 
-            ScheduleView()
-                .tabItem { Label("Programmazione", systemImage: "clock.fill") }
+                ScheduleView()
+                    .tabItem { Label("Programmazione", systemImage: "clock.fill") }
 
-            ProfileView()
-                .tabItem { Label("Profilo", systemImage: "person.crop.circle") }
+                ProfileView()
+                    .tabItem { Label("Profilo", systemImage: "person.crop.circle") }
+            }
         }
     }
 }
@@ -41,7 +44,7 @@ struct ProfileView: View {
                 }
                 Section {
                     Button(role: .destructive) {
-                        auth.logout()
+                        Task { await auth.logout() }
                     } label: {
                         Label("Esci", systemImage: "rectangle.portrait.and.arrow.right")
                     }

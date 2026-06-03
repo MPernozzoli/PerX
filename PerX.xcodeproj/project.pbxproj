@@ -10,6 +10,7 @@
 		79A1000A2F50000000900001 /* PerX Local Agent.xpc in Embed XPC Services */ = {isa = PBXBuildFile; fileRef = 79A100012F50000000900001 /* PerX Local Agent.xpc */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		A1B2C3D4E5F600000000000D /* LiveKit in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F600000000000B /* LiveKit */; };
 		A1B2C3D4E5F600000000000E /* LiveKit in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F600000000000C /* LiveKit */; };
+		A1B2C3D4E5F6000000000010 /* LiveKit in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F600000000000F /* LiveKit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -250,6 +251,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1B2C3D4E5F6000000000010 /* LiveKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -428,6 +430,7 @@
 			);
 			name = "PerX Lite";
 			packageProductDependencies = (
+				A1B2C3D4E5F600000000000F /* LiveKit */,
 			);
 			productName = "PerX Lite";
 			productReference = 78DB5B852F20BBDE006E08CB /* PerX Lite.app */;
@@ -1661,6 +1664,11 @@
 			productName = LiveKit;
 		};
 		A1B2C3D4E5F600000000000C /* LiveKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A1B2C3D4E5F600000000000A /* XCRemoteSwiftPackageReference "client-sdk-swift" */;
+			productName = LiveKit;
+		};
+		A1B2C3D4E5F600000000000F /* LiveKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = A1B2C3D4E5F600000000000A /* XCRemoteSwiftPackageReference "client-sdk-swift" */;
 			productName = LiveKit;

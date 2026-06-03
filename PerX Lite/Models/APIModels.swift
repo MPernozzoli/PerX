@@ -163,3 +163,36 @@ struct CommunicationStartResponseDTO: Decodable {
     let call_id: String
     let state: String
 }
+
+struct LiveKitTokenDTO: Decodable {
+    let token: String
+    let livekit_url: String
+    let room_name: String
+    let identity: String
+    let session_id: String
+    let call_id: String?
+    let display_name: String?
+}
+
+struct CallSessionAction: Encodable {
+    let action_type: String  // "answer" | "answer_and_open_claim" | "end" | "send_to_voicemail_ai_triage" | "open_claim_only"
+}
+
+struct CallHistoryDTO: Decodable, Identifiable, Hashable {
+    let id: String
+    let display_name: String?
+    let state: String
+    let destination_type: String
+    let transport: String
+    let direction: String?
+    let from_value: String?
+    let to_value: String?
+    let claim_id: String?
+    let created_at: Date
+    let ended_at: Date?
+}
+
+struct CallHistoryListDTO: Decodable {
+    let items: [CallHistoryDTO]
+    let total: Int
+}

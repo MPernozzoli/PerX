@@ -3,9 +3,15 @@ Unified communications routes.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from datetime import datetime
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.communication import Call, CallParticipant, CommunicationSession
 
 from app.core.database import get_db
 from app.core.security import get_current_active_user
@@ -38,6 +44,73 @@ from app.services.communication_service import CommunicationService
 from app.services.livekit_token_service import LiveKitNotConfiguredError
 
 router = APIRouter()
+
+
+class CallHistoryItem(BaseModel):
+    id: str
+    display_name: Optional[str] = None
+    state: str
+    destination_type: str
+    transport: str
+    direction: Optional[str] = None
+    from_value: Optional[str] = None
+    to_value: Optional[str] = None
+    claim_id: Optional[str] = None
+    created_at: datetime
+    ended_at: Optional[datetime] = None
+
+
+class CallHistoryListResponse(BaseModel):
+    items: list[CallHistoryItem]
+    total: int
+
+
+@router.get("/sessions", response_model=CallHistoryListResponse)
+async def list_call_sessions(
+    limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Recent communication sessions involving the current user — as caller,
+    callee, or creator. Newest first. Includes ended calls.
+    """
+    query = (
+        select(CommunicationSession, Call)
+        .outerjoin(Call, Call.session_id == CommunicationSession.id)
+        .outerjoin(CallParticipant, CallParticipant.session_id == CommunicationSession.id)
+        .where(
+            CommunicationSession.tenant_id == current_user.tenant_id,
+            or_(
+                CommunicationSession.created_by_user_id == current_user.id,
+                CallParticipant.user_id == current_user.id,
+            ),
+        )
+        .order_by(CommunicationSession.created_at.desc())
+        .limit(limit)
+    )
+    result = await db.execute(query)
+    rows = result.all()
+    seen: set[str] = set()
+    items: list[CallHistoryItem] = []
+    for session, call in rows:
+        if session.id in seen:
+            continue
+        seen.add(session.id)
+        items.append(CallHistoryItem(
+            id=session.id,
+            display_name=session.display_name,
+            state=session.state,
+            destination_type=session.destination_type,
+            transport=session.transport,
+            direction=getattr(call, "direction", None),
+            from_value=getattr(call, "from_value", None),
+            to_value=getattr(call, "to_value", None),
+            claim_id=session.claim_id,
+            created_at=session.created_at,
+            ended_at=session.ended_at,
+        ))
+    return CallHistoryListResponse(items=items, total=len(items))
 
 
 @router.post("/resolve", response_model=CommunicationResolutionResponse)

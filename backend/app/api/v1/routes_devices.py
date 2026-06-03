@@ -87,6 +87,39 @@ async def register_device_token(
     return DeviceTokenResponse.model_validate(device)
 
 
+class DeviceTokenPatchRequest(BaseModel):
+    bundle_id: Optional[str] = None
+    environment: Optional[str] = Field(None, pattern="^(production|sandbox)$")
+    app: Optional[str] = None
+    platform: Optional[str] = None
+
+
+@router.patch("/{token}", response_model=DeviceTokenResponse)
+async def update_device_token(
+    token: str,
+    payload: DeviceTokenPatchRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    result = await db.execute(
+        select(DeviceToken).where(
+            DeviceToken.token == token,
+            DeviceToken.user_id == current_user.id,
+        )
+    )
+    device = result.scalar_one_or_none()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device token not found")
+
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(device, field, value)
+    device.last_used_at = datetime.now(timezone.utc)
+
+    await db.commit()
+    await db.refresh(device)
+    return DeviceTokenResponse.model_validate(device)
+
+
 @router.delete("/{token}", status_code=status.HTTP_204_NO_CONTENT)
 async def unregister_device_token(
     token: str,

@@ -70,12 +70,14 @@ extension CallProvider: CXProviderDelegate {
 
     nonisolated func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
         Task { @MainActor in
-            let sessionId = self.activeSessions[action.callUUID]
-            NotificationCenter.default.post(
-                name: .perxCallAnswered,
-                object: nil,
-                userInfo: ["session_id": sessionId ?? ""]
-            )
+            if let sessionId = self.activeSessions[action.callUUID] {
+                NotificationCenter.default.post(
+                    name: .perxCallAnswered,
+                    object: nil,
+                    userInfo: ["session_id": sessionId]
+                )
+                await CallSessionService.shared.connect(toSessionId: sessionId)
+            }
             action.fulfill()
         }
     }
@@ -83,6 +85,7 @@ extension CallProvider: CXProviderDelegate {
     nonisolated func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
         Task { @MainActor in
             let sessionId = self.activeSessions.removeValue(forKey: action.callUUID)
+            await CallSessionService.shared.endActive()
             NotificationCenter.default.post(
                 name: .perxCallEnded,
                 object: nil,
@@ -93,7 +96,7 @@ extension CallProvider: CXProviderDelegate {
     }
 
     nonisolated func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
-        // LiveKit audio engine should start here once wired in.
+        // LiveKit picks up the active CallKit AVAudioSession automatically.
     }
 
     nonisolated func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {}

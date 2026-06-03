@@ -4,6 +4,7 @@ import Combine
 @MainActor
 final class CallListViewModel: ObservableObject {
     @Published var incoming: [IncomingCallDTO] = []
+    @Published var history: [CallHistoryDTO] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
 
@@ -11,8 +12,10 @@ final class CallListViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
         do {
-            let resp: IncomingCallListDTO = try await APIClient.shared.get("/api/v1/communications/incoming")
-            self.incoming = resp.items
+            async let inc: IncomingCallListDTO = APIClient.shared.get("/api/v1/communications/incoming")
+            async let hist: CallHistoryListDTO = APIClient.shared.get("/api/v1/communications/sessions?limit=50")
+            self.incoming = try await inc.items
+            self.history = try await hist.items
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
@@ -55,10 +58,17 @@ struct CallListView: View {
                         IncomingCallRow(call: call)
                     }
                 }
-            } else if !vm.isLoading {
+            }
+            if !vm.history.isEmpty {
+                Section("Recenti") {
+                    ForEach(vm.history) { call in
+                        HistoryCallRow(call: call)
+                    }
+                }
+            } else if vm.incoming.isEmpty && !vm.isLoading {
                 Section {
                     ContentUnavailableView(
-                        "Nessuna chiamata attiva",
+                        "Nessuna chiamata",
                         systemImage: "phone.down",
                         description: Text("Componi un numero per iniziare una chiamata.")
                     )
@@ -107,6 +117,58 @@ private struct IncomingCallRow: View {
             Text(call.created_at, style: .time)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct HistoryCallRow: View {
+    let call: CallHistoryDTO
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .foregroundStyle(color)
+                .font(.title3)
+                .frame(width: 28)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(call.display_name ?? otherParty ?? "Sconosciuto")
+                    .font(.headline)
+                    .lineLimit(1)
+                Text("\(call.transport.capitalized) · \(call.state)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(call.created_at, style: .date)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text(call.created_at, style: .time)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var otherParty: String? {
+        call.direction == "inbound" ? call.from_value : call.to_value
+    }
+
+    private var icon: String {
+        switch (call.direction ?? "", call.state) {
+        case ("inbound", let s) where s == "missed" || s == "rejected": return "phone.arrow.down.left"
+        case ("inbound", _): return "phone.arrow.down.left.fill"
+        case ("outbound", _): return "phone.arrow.up.right.fill"
+        default: return "phone"
+        }
+    }
+
+    private var color: Color {
+        switch call.state {
+        case "ended", "completed": return .secondary
+        case "missed", "rejected", "failed": return .red
+        case "ringing", "active": return .green
+        default: return .blue
         }
     }
 }
