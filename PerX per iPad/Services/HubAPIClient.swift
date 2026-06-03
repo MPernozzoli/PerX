@@ -621,6 +621,28 @@ class HubAPIClient: ObservableObject {
         return data
     }
 
+    func cloudDelete(endpoint: String) async throws {
+        let base = cloudAPIBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: "\(base)\(endpoint)") else {
+            throw HubAPIError.invalidURL
+        }
+        var request = try await authorizedCloudRequest(url: url)
+        request.httpMethod = "DELETE"
+        let (_, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw HubAPIError.invalidResponse
+        }
+        if httpResponse.statusCode == 401 {
+            _ = try await cloudLogin(forceRefresh: true)
+            var retry = try await authorizedCloudRequest(url: url)
+            retry.httpMethod = "DELETE"
+            let (_, retryResponse) = try await session.data(for: retry)
+            try validateResponse(retryResponse)
+            return
+        }
+        try validateResponse(response)
+    }
+
     func cloudUpload(endpoint: String, data: Data, fileName: String, mimeType: String) async throws -> CloudProfileAssetDTO {
         let base = cloudAPIBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let url = URL(string: "\(base)\(endpoint)") else {

@@ -19,8 +19,8 @@ final class AuthStore: ObservableObject {
     }
 
     func logout() async {
-        await CallSessionService.shared.endActive()
-        await PushRegistrationService.shared.unregisterTokens()
+        await CallSessionShared.shared.endActive()
+        await PushDispatcher.shared.unregisterAll()
         APIClient.shared.clearSession()
         self.email = nil
         self.isAuthenticated = false

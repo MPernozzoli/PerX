@@ -20,6 +20,23 @@ struct PerX_LiteApp: App {
                 break
             }
         }
+
+        PushDispatcher.shared.configure(
+            api: LitePushAPI.shared,
+            bundleId: Bundle.main.bundleIdentifier,
+            appIdentifier: "perx_lite",
+            environment: "production"
+        )
+        CallSessionShared.shared.api = LitePushAPI.shared
+        PushDispatcher.shared.incomingCallHandler = { payload, completion in
+            CallProviderShared.shared.reportIncomingCall(payload) { _ in completion() }
+        }
+        CallProviderShared.shared.onAnswer = { sessionId in
+            await CallSessionShared.shared.connect(toSessionId: sessionId)
+        }
+        CallProviderShared.shared.onEnd = { _ in
+            await CallSessionShared.shared.endActive()
+        }
     }
 
     var body: some Scene {
@@ -29,7 +46,7 @@ struct PerX_LiteApp: App {
                 .onChange(of: auth.isAuthenticated, initial: true) { _, authed in
                     if authed {
                         RealtimeService.shared.start()
-                        PushRegistrationService.shared.start()
+                        PushDispatcher.shared.start()
                     } else {
                         RealtimeService.shared.stop()
                     }

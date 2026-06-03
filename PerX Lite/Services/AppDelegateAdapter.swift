@@ -13,7 +13,7 @@ final class AppDelegateAdapter: NSObject, UIApplicationDelegate {
         didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
     ) {
         Task { @MainActor in
-            PushRegistrationService.shared.didRegisterAPNs(token: deviceToken)
+            PushDispatcher.shared.didRegisterAPNs(token: deviceToken)
         }
     }
 

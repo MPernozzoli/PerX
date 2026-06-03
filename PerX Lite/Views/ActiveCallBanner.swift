@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ActiveCallBanner: View {
-    @ObservedObject private var session = CallSessionService.shared
+    @ObservedObject private var session = CallSessionShared.shared
 
     var body: some View {
         if session.activeSessionId != nil {
