@@ -176,6 +176,7 @@ public class Sinistro: NSManagedObject, Identifiable {
     @NSManaged public var collegamenti: NSObject?
     @NSManaged private var diarioEntries: NSObject?
     @NSManaged public var sopralluogo: Bool
+    @NSManaged public var tipoPeriziaEffettuata: String?
     @NSManaged public var giustificativi: Bool
     @NSManaged public var dataSinistro: Date?
     @NSManaged public var dannoAccertatoNetto: NSDecimalNumber?
