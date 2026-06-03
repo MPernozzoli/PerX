@@ -7,6 +7,8 @@ final class CallListViewModel: ObservableObject {
     @Published var history: [CallHistoryDTO] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
+    /// Set while an outbound call is ringing and waiting for the callee to answer.
+    @Published var pendingOutboundSessionId: String?
 
     func load() async {
         isLoading = true
@@ -42,11 +44,24 @@ final class CallListViewModel: ObservableObject {
                 "/api/v1/communications/start",
                 body: req
             )
+            pendingOutboundSessionId = resp.session_id
             return resp.session_id
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             return nil
         }
+    }
+
+    func cancelOutbound() async {
+        guard let sid = pendingOutboundSessionId else { return }
+        pendingOutboundSessionId = nil
+        RingbackPlayer.shared.stop()
+        struct EndBody: Encodable { let action_type: String }
+        struct EndResp: Decodable { let session_id: String? }
+        _ = try? await APIClient.shared.post(
+            "/api/v1/communications/sessions/\(sid)/actions",
+            body: EndBody(action_type: "end")
+        ) as EndResp
     }
 }
 
@@ -84,6 +99,14 @@ struct CallListView: View {
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationTitle("Chiamate")
         .navigationBarTitleDisplayMode(.large)
+        .safeAreaInset(edge: .top) {
+            if vm.pendingOutboundSessionId != nil {
+                outboundRingingBanner
+            }
+        }
+        .onReceive(CallSessionShared.shared.$activeSessionId) { sid in
+            if sid != nil { vm.pendingOutboundSessionId = nil }
+        }
         .overlay(alignment: .bottomTrailing) {
             Button {
                 showDial = true
@@ -124,6 +147,35 @@ struct CallListView: View {
         .alert("Errore", isPresented: .constant(vm.errorMessage != nil), actions: {
             Button("OK") { vm.errorMessage = nil }
         }, message: { Text(vm.errorMessage ?? "") })
+    }
+
+    // MARK: - Outbound ringing banner
+
+    private var outboundRingingBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "phone.arrow.up.right.fill")
+                .foregroundStyle(.white)
+                .font(.subheadline)
+            Text("In attesa di risposta...")
+                .font(.caption.bold())
+                .foregroundStyle(.white)
+            Spacer()
+            Button {
+                Task { await vm.cancelOutbound() }
+            } label: {
+                Image(systemName: "phone.down.fill")
+                    .foregroundStyle(.white)
+                    .padding(6)
+                    .background(Color.red)
+                    .clipShape(Circle())
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Color.orange.gradient)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .padding(.horizontal, 12)
+        .padding(.top, 4)
     }
 
     // MARK: - Sections

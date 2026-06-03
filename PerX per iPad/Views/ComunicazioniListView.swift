@@ -13,6 +13,7 @@ struct ComunicazioniListView: View {
     @State private var selectedTab: ComunicazioniTab = .outbox
     @State private var incomingCall: CommunicationIncomingCallItem?
     @State private var showIncomingCallAlert = false
+    @State private var activeIncomingToken: CommunicationLiveKitToken?
     
     enum ComunicazioniTab: String, CaseIterable, Hashable {
         case outbox = "In Uscita"
@@ -54,13 +55,40 @@ struct ComunicazioniListView: View {
         ) { item in
             Button("Rispondi") {
                 RingbackPlayer.shared.stop()
-                selectedTab = .telefono
+                Task {
+                    do {
+                        let result = try await CommunicationStartService.shared
+                            .performNotificationAction(sessionId: item.sessionId, actionType: .answer)
+                        if let token = result?.livekitToken {
+                            await MainActor.run { activeIncomingToken = token }
+                        }
+                    } catch {
+                        print("[iPad incoming] answer failed: \(error)")
+                    }
+                }
             }
             Button("Rifiuta", role: .destructive) {
                 RingbackPlayer.shared.stop()
+                Task {
+                    _ = try? await CommunicationStartService.shared
+                        .performNotificationAction(sessionId: item.sessionId, actionType: .end)
+                }
             }
         } message: { item in
             Text(item.displayName ?? "Comunicazione PerX")
+        }
+        .sheet(item: $activeIncomingToken) { token in
+            CommunicationLiveKitCallView(
+                token: token,
+                displayName: incomingCall?.displayName ?? "Chiamata PerX"
+            ) {
+                let sid = token.sessionId
+                activeIncomingToken = nil
+                Task {
+                    _ = try? await CommunicationStartService.shared
+                        .performNotificationAction(sessionId: sid, actionType: .end)
+                }
+            }
         }
     }
 
