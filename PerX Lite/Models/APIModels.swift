@@ -89,3 +89,77 @@ struct IncomingCallDTO: Decodable, Identifiable, Hashable {
 struct IncomingCallListDTO: Decodable {
     let items: [IncomingCallDTO]
 }
+
+// MARK: - Emails
+
+struct EmailDTO: Decodable, Identifiable, Hashable {
+    let id: String
+    let from_address: String
+    let to_addresses: String?
+    let subject: String?
+    let body_text: String?
+    let received_at: Date
+    let status: String
+}
+
+struct EmailListDTO: Decodable {
+    let items: [EmailDTO]
+    let total: Int
+}
+
+// MARK: - Internal chat
+
+struct ChatThreadDTO: Decodable, Identifiable, Hashable {
+    let id: String
+    let claim_id: String?
+    let title: String
+    let thread_type: String
+    let created_at: Date
+}
+
+struct ChatThreadListDTO: Decodable {
+    let items: [ChatThreadDTO]
+    let total: Int
+}
+
+struct ChatMessageDTO: Decodable, Identifiable, Hashable {
+    let id: String
+    let thread_id: String
+    let sender_user_id: String?
+    let body_text: String?
+    let message_type: String
+    let created_at: Date
+}
+
+struct ChatMessageListDTO: Decodable {
+    let items: [ChatMessageDTO]
+    let total: Int
+}
+
+struct ChatMessageCreateDTO: Encodable {
+    let body_text: String
+    let message_type: String
+}
+
+// MARK: - Outbound call
+
+struct CommunicationStartRequestDTO: Encodable {
+    struct Destination: Encodable {
+        let destination_type: String  // "internal_user" | "external_phone"
+        let transport: String         // "livekit" | "telecom_provider"
+        let target_id: String?
+        let raw_value: String
+        let display_name: String?
+    }
+    struct Context: Encodable {
+        let claim_id: String?
+    }
+    let destination: Destination
+    let context: Context
+}
+
+struct CommunicationStartResponseDTO: Decodable {
+    let session_id: String
+    let call_id: String
+    let state: String
+}

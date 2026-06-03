@@ -28,22 +28,26 @@ struct CommunicationsView: View {
             List {
                 Section {
                     NavigationLink {
-                        ComingSoonView(title: "Chiamate", icon: "phone.fill")
-                    } label: { Label("Chiamate", systemImage: "phone.fill") }
-
+                        CallListView()
+                    } label: {
+                        Label("Chiamate", systemImage: "phone.fill")
+                    }
                     NavigationLink {
-                        ComingSoonView(title: "Email", icon: "envelope.fill")
-                    } label: { Label("Email", systemImage: "envelope.fill") }
-
+                        EmailListView()
+                    } label: {
+                        Label("Email", systemImage: "envelope.fill")
+                    }
                     NavigationLink {
-                        ComingSoonView(title: "Messaggi", icon: "message.fill")
-                    } label: { Label("Messaggi", systemImage: "message.fill") }
+                        ChatListView()
+                    } label: {
+                        Label("Messaggi", systemImage: "message.fill")
+                    }
                 }
 
                 if !vm.incoming.isEmpty {
                     Section("Chiamate in arrivo") {
                         ForEach(vm.incoming) { call in
-                            IncomingCallRow(call: call)
+                            IncomingCallSummaryRow(call: call)
                         }
                     }
                 }
@@ -64,7 +68,7 @@ struct CommunicationsView: View {
     }
 }
 
-private struct IncomingCallRow: View {
+private struct IncomingCallSummaryRow: View {
     let call: IncomingCallDTO
 
     var body: some View {
@@ -83,20 +87,5 @@ private struct IncomingCallRow: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-    }
-}
-
-struct ComingSoonView: View {
-    let title: String
-    let icon: String
-
-    var body: some View {
-        ContentUnavailableView(
-            title,
-            systemImage: icon,
-            description: Text("Disponibile a breve in PerX Lite.")
-        )
-        .navigationTitle(title)
-        .navigationBarTitleDisplayMode(.inline)
     }
 }

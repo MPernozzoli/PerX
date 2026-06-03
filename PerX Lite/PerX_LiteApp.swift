@@ -14,6 +14,8 @@ struct PerX_LiteApp: App {
                 NotificationCenter.default.post(name: .perxRealtimeClaimUpdated, object: nil, userInfo: event.payload)
             case "incoming_call":
                 NotificationCenter.default.post(name: .perxRealtimeIncomingCall, object: nil, userInfo: event.payload)
+            case "chat_message":
+                NotificationCenter.default.post(name: .perxRealtimeChatMessage, object: nil, userInfo: event.payload)
             default:
                 break
             }

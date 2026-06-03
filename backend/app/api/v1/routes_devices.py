@@ -2,8 +2,6 @@
 Device token registration for APNs / VoIP push notifications.
 Used by the PerX Lite iOS app.
 """
-from __future__ import annotations
-
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
