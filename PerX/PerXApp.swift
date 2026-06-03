@@ -25,6 +25,7 @@ struct PerXApp: App {
         VideoperiziaService.configure(transport: HubAPIAdapterClient.shared)
         CommunicationStartService.configure(transport: HubAPIAdapterClient.shared)
         CommunicationNotificationService.shared.registerNotificationCategories()
+        IncomingCallPoller.shared.start()
     }
     
     var body: some Scene {

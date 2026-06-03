@@ -813,6 +813,18 @@ class HubAPIClient: ObservableObject {
 }
 
 extension HubAPIClient: CommunicationHTTPTransport {
+    func communicationGet<T: Decodable>(_ path: String) async throws -> T {
+        let url = try cloudURL(path)
+        var request = try await authorizedCloudRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let (data, response) = try await cloudSession.data(for: request)
+        guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode else {
+            throw HubAPIError.invalidResponse
+        }
+        return try cloudDecoder.decode(T.self, from: data)
+    }
+
     func communicationPost<T: Decodable, B: Encodable>(_ path: String, body: B) async throws -> T {
         let url = try cloudURL(path)
         var request = try await authorizedCloudRequest(url: url)

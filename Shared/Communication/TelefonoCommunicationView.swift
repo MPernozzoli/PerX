@@ -60,6 +60,19 @@ struct TelefonoCommunicationView: View {
         .onChange(of: searchText) { _, newValue in
             resolve(newValue)
         }
+        .onChange(of: callState) { _, newState in
+            switch newState {
+            case .ringing:
+                RingbackPlayer.shared.start()
+            case .active, .failed, .completed:
+                RingbackPlayer.shared.stop()
+            default:
+                break
+            }
+        }
+        .onDisappear {
+            RingbackPlayer.shared.stop()
+        }
         .sheet(item: $activeLiveKitToken) { token in
             CommunicationLiveKitCallView(token: token, displayName: activeCall?.displayName ?? "Chiamata PerX") {
                 activeLiveKitToken = nil

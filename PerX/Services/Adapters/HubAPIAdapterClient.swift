@@ -615,6 +615,10 @@ extension HubAPIAdapterClient: CommunicationHTTPTransport {
     func communicationPost<T: Decodable, B: Encodable>(_ path: String, body: B) async throws -> T {
         try await cloudPost(path, body: body)
     }
+
+    func communicationGet<T: Decodable>(_ path: String) async throws -> T {
+        try await cloudGet(path)
+    }
 }
 
 // MARK: - Claim actor patch payload (lives here to keep DTOs colocated)

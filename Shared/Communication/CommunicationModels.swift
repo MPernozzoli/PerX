@@ -309,6 +309,34 @@ struct CommunicationSessionActionRequest: Codable {
     }
 }
 
+struct CommunicationIncomingCallItem: Codable, Identifiable {
+    let sessionId: String
+    let callId: String?
+    let displayName: String?
+    let state: String
+    let transport: String
+    let livekitRoomName: String?
+    let claimId: String?
+    let createdAt: Date
+
+    var id: String { sessionId }
+
+    enum CodingKeys: String, CodingKey {
+        case sessionId = "session_id"
+        case callId = "call_id"
+        case displayName = "display_name"
+        case state
+        case transport
+        case livekitRoomName = "livekit_room_name"
+        case claimId = "claim_id"
+        case createdAt = "created_at"
+    }
+}
+
+struct CommunicationIncomingCallListResponse: Codable {
+    let items: [CommunicationIncomingCallItem]
+}
+
 struct CommunicationSessionActionResponse: Codable {
     let sessionId: String
     let callId: String?

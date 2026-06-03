@@ -199,6 +199,11 @@ final class CommunicationStartService {
         return (call, response)
     }
 
+    func fetchIncomingCalls() async throws -> CommunicationIncomingCallListResponse {
+        try await transport?.communicationGet("/api/v1/communications/incoming")
+            ?? CommunicationIncomingCallListResponse(items: [])
+    }
+
     func performNotificationAction(
         sessionId: String,
         actionType: CommunicationNotificationActionType
@@ -213,4 +218,5 @@ final class CommunicationStartService {
 @MainActor
 protocol CommunicationHTTPTransport: Sendable {
     func communicationPost<T: Decodable, B: Encodable>(_ path: String, body: B) async throws -> T
+    func communicationGet<T: Decodable>(_ path: String) async throws -> T
 }
