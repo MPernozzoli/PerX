@@ -46,13 +46,17 @@ struct ComunicazioniView: View {
             .onReceive(IncomingCallPoller.shared.incomingCall) { item in
                 incomingCall = item
                 showIncomingCallAlert = true
+                RingbackPlayer.shared.start()
             }
             .alert(
                 "Chiamata in arrivo",
                 isPresented: $showIncomingCallAlert,
                 presenting: incomingCall
             ) { item in
-                Button("Rispondi") { selectedTab = .chiamate }
+                Button("Rispondi") {
+                    RingbackPlayer.shared.stop()
+                    selectedTab = .chiamate
+                }
                 Button("Rifiuta", role: .destructive) { RingbackPlayer.shared.stop() }
             } message: { item in
                 Text(item.displayName ?? "Comunicazione PerX")

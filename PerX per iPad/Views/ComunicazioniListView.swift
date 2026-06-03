@@ -45,6 +45,7 @@ struct ComunicazioniListView: View {
         .onReceive(IncomingCallPoller.shared.incomingCall) { item in
             incomingCall = item
             showIncomingCallAlert = true
+            RingbackPlayer.shared.start()
         }
         .alert(
             "Chiamata in arrivo",
@@ -52,6 +53,7 @@ struct ComunicazioniListView: View {
             presenting: incomingCall
         ) { item in
             Button("Rispondi") {
+                RingbackPlayer.shared.stop()
                 selectedTab = .telefono
             }
             Button("Rifiuta", role: .destructive) {

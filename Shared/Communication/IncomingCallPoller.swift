@@ -49,99 +49,69 @@ final class IncomingCallPoller: ObservableObject {
                     phoneNumber: nil,
                     claimContext: nil
                 )
-                // Ring on the callee side too
-                RingbackPlayer.shared.start()
             }
-            // Prune sessions that are no longer active
-            let activeIds = Set(response.items.map(\.sessionId))
-            if seenSessions != seenSessions.intersection(activeIds) {
-                RingbackPlayer.shared.stop()
-            }
-            seenSessions = seenSessions.intersection(activeIds)
+            // Prune sessions no longer active
+            seenSessions = seenSessions.intersection(Set(response.items.map(\.sessionId)))
         } catch {
             // Silently ignore — network errors or unconfigured transport are expected
         }
     }
 }
 
-// MARK: - Ringback tone (caller side)
+// MARK: - Ringback tone (caller and callee side)
 
-/// Plays a looping ringback tone while the call is in the ringing state.
-/// Call `start()` when the call transitions to .ringing, `stop()` on answer/fail.
+/// Plays a looping 425 Hz EU ringback tone (1 s on / 4 s off).
+/// Call `start()` on outbound ringing or incoming call; `stop()` on connect/fail/dismiss.
 final class RingbackPlayer {
     static let shared = RingbackPlayer()
 
-    private var player: AVAudioPlayer?
+    private var engine: AVAudioEngine?
+    private var node: AVAudioPlayerNode?
+    private var isPlaying = false
 
     private init() {}
 
     func start() {
-        guard player == nil else { return }
-        // Use the system ringback tone if available, otherwise synthesise a simple beep sequence
-        if let url = Bundle.main.url(forResource: "ringback", withExtension: "mp3")
-            ?? Bundle.main.url(forResource: "ringback", withExtension: "caf") {
-            play(url: url)
-        } else {
-            playSystemRingback()
+        guard !isPlaying else { return }
+        isPlaying = true
+
+        let eng = AVAudioEngine()
+        let src = AVAudioPlayerNode()
+        let format = AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 1)!
+        eng.attach(src)
+        eng.connect(src, to: eng.mainMixerNode, format: format)
+
+        let sampleRate = 44100.0
+        let onFrames  = Int(sampleRate)        // 1 s tone
+        let offFrames = Int(sampleRate * 4.0)  // 4 s silence
+        let total     = onFrames + offFrames
+        guard let buf = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(total)) else {
+            isPlaying = false; return
+        }
+        buf.frameLength = AVAudioFrameCount(total)
+        let data = buf.floatChannelData![0]
+        for i in 0..<onFrames {
+            data[i] = Float(0.35 * sin(2 * .pi * 425.0 * Double(i) / sampleRate))
+        }
+        for i in onFrames..<total { data[i] = 0 }
+
+        do {
+            try eng.start()
+            src.play()
+            src.scheduleBuffer(buf, at: nil, options: .loops)
+            self.engine = eng
+            self.node   = src
+        } catch {
+            isPlaying = false
         }
     }
 
     func stop() {
-        player?.stop()
-        player = nil
+        guard isPlaying else { return }
+        node?.stop()
+        engine?.stop()
+        node    = nil
+        engine  = nil
+        isPlaying = false
     }
-
-    private func play(url: URL) {
-        do {
-            let p = try AVAudioPlayer(contentsOf: url)
-            p.numberOfLoops = -1
-            p.volume = 0.6
-            p.play()
-            player = p
-        } catch {
-            playSystemRingback()
-        }
-    }
-
-    private func playSystemRingback() {
-        // Generate a 425 Hz European dial-tone pattern: 1s on / 4s off, looped
-        // Uses AVAudioEngine to synthesise the tone without requiring a bundled file
-        let engine = AVAudioEngine()
-        let format = AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 1)!
-        let src = AVAudioPlayerNode()
-        engine.attach(src)
-        engine.connect(src, to: engine.mainMixerNode, format: format)
-
-        let sampleRate = 44100.0
-        let onSamples = Int(sampleRate)       // 1 s tone
-        let offSamples = Int(sampleRate * 4)  // 4 s silence
-        let totalSamples = onSamples + offSamples
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(totalSamples)) else { return }
-        buffer.frameLength = AVAudioFrameCount(totalSamples)
-        let data = buffer.floatChannelData![0]
-        let freq = 425.0
-        for i in 0..<onSamples {
-            let t = Double(i) / sampleRate
-            data[i] = Float(0.4 * sin(2 * .pi * freq * t))
-        }
-        for i in onSamples..<totalSamples {
-            data[i] = 0
-        }
-
-        do {
-            try engine.start()
-            src.play()
-            src.scheduleBuffer(buffer, at: nil, options: .loops)
-            // Hold references so they aren't deallocated
-            objc_setAssociatedObject(self, &AssociatedKeys.engine, engine, .OBJC_ASSOCIATION_RETAIN)
-            objc_setAssociatedObject(self, &AssociatedKeys.node, src, .OBJC_ASSOCIATION_RETAIN)
-        } catch {
-            // Fail silently — ringtone is cosmetic
-        }
-    }
-}
-
-private enum AssociatedKeys {
-    static var engine = "engine"
-    static var node = "node"
 }

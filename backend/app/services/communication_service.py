@@ -645,7 +645,11 @@ class CommunicationService:
         return session, call
 
     def _room_name(self, tenant_id: str, seed: str | None) -> str:
-        return f"perx-{tenant_id[:8]}-{uuid.uuid5(uuid.NAMESPACE_URL, seed or str(uuid.uuid4())).hex[:12]}"
+        # Always unique per call: deterministic prefix for readability, random suffix
+        # to avoid UniqueViolation when the same destination is called again.
+        random_suffix = uuid.uuid4().hex[:8]
+        base = uuid.uuid5(uuid.NAMESPACE_URL, seed or str(uuid.uuid4())).hex[:8]
+        return f"perx-{tenant_id[:8]}-{base}{random_suffix}"
 
     def _normalized_event_payload(self, event: NormalizedProviderEvent) -> dict:
         return {

@@ -101,7 +101,9 @@ struct CallListView: View {
         }
         .sheet(isPresented: $showDial) {
             DialerSheet { phone, name in
-                await vm.dial(rawValue: phone, displayName: name, tenantId: auth.tenantId) != nil
+                let ok = await vm.dial(rawValue: phone, displayName: name, tenantId: auth.tenantId) != nil
+                if ok { RingbackPlayer.shared.start() }
+                return ok
             }
             .presentationDetents([.large])
         }
@@ -112,7 +114,7 @@ struct CallListView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .perxRealtimeIncomingCall)) { _ in
             Task { await vm.load() }
-            RingbackPlayer.shared.start()
+            // Ringback for callee started by CallProviderShared/CallKit — not here
         }
         .onReceive(CallSessionShared.shared.$roomState) { state in
             if state == "connected" || state == "disconnected" {
