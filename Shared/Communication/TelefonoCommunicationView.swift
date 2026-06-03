@@ -73,6 +73,18 @@ struct TelefonoCommunicationView: View {
         .onDisappear {
             RingbackPlayer.shared.stop()
         }
+        // macOS: open in floating window; iOS/iPadOS: keep modal sheet
+        .onChange(of: activeLiveKitToken) { _, token in
+            #if os(macOS)
+            if let token {
+                CallWindowManager.shared.openCallWindow(
+                    token: token,
+                    displayName: activeCall?.displayName ?? "Chiamata PerX"
+                )
+                activeLiveKitToken = nil
+            }
+            #endif
+        }
         .sheet(item: $activeLiveKitToken) { token in
             CommunicationLiveKitCallView(token: token, displayName: activeCall?.displayName ?? "Chiamata PerX") {
                 activeLiveKitToken = nil
