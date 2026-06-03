@@ -44,6 +44,19 @@ public final class CallSessionShared: ObservableObject {
             self.roomState = "connected"
             try await room.localParticipant.setMicrophone(enabled: true)
             refreshParticipants()
+
+            // Watch for the other party leaving the room
+            var hadRemote = false
+            while self.activeSessionId != nil && room.connectionState != .disconnected {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                let hasRemote = !room.remoteParticipants.isEmpty
+                if hasRemote { hadRemote = true }
+                if hadRemote && !hasRemote {
+                    await endActive()
+                    return
+                }
+                refreshParticipants()
+            }
         } catch {
             self.errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             await disconnectInternal()

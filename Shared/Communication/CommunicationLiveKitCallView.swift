@@ -64,6 +64,22 @@ private struct CommunicationLiveKitStage: View {
                 try await room.connect(url: token.livekitUrl, token: token.token)
                 try? await room.localParticipant.setMicrophone(enabled: true)
                 connectionState = "In chiamata PerX"
+                // Wait for at least one remote participant to confirm the call is live,
+                // then watch for them leaving (other party hung up).
+                var hadRemote = false
+                while room.connectionState != .disconnected {
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    let hasRemote = !room.remoteParticipants.isEmpty
+                    if hasRemote { hadRemote = true }
+                    if hadRemote && !hasRemote {
+                        // Remote participant was present and just left → hang up our side
+                        Task { await room.disconnect() }
+                        onHangup()
+                        return
+                    }
+                }
+                // Room disconnected externally
+                onHangup()
             } catch {
                 connectionState = "Connessione LiveKit non riuscita"
                 print("[Communication] LiveKit connect failed: \(error)")

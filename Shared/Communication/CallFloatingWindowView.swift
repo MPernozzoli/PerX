@@ -353,10 +353,15 @@ final class CallFloatingViewModel: ObservableObject {
     }
 
     private func tick() {
-        guard let start = startDate else { return }
-        let elapsed = Int(Date().timeIntervalSince(start))
-        let m = elapsed / 60
-        let s = elapsed % 60
-        durationText = String(format: "%02d:%02d", m, s)
+        if let start = startDate {
+            let elapsed = Int(Date().timeIntervalSince(start))
+            durationText = String(format: "%02d:%02d", elapsed / 60, elapsed % 60)
+        }
+        // Detect remote hangup: active call but no remote participants → other party left
+        #if canImport(LiveKit)
+        if phase == .active, let r = room, r.remoteParticipants.isEmpty {
+            hangup()
+        }
+        #endif
     }
 }
