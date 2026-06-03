@@ -130,7 +130,9 @@ class CommunicationService:
             livekit_room_name=session.livekit_room_name,
         )
         db.add(session)
+        await db.flush()  # persist session row before call FK references it
         db.add(call)
+        await db.flush()  # persist call row before participant FK references it
         self._add_participants(db, session, call, current_user, destination)
         self._log(db, session, call.id, current_user.id, "communication.start_requested", "pending", destination.model_dump(mode="json"))
 
