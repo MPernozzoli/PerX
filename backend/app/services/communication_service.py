@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 import secrets
 import uuid
 
@@ -43,12 +44,56 @@ from app.schemas.communication import (
 )
 from app.services.communication_ai_triage import StubCommunicationAITriageAdapter
 from app.services.communication_contact_resolver import CommunicationContactResolver
+from app.services.communication_extension_service import CommunicationExtensionService
 from app.services.livekit_token_service import LiveKitGrant, LiveKitTokenService
 from app.services.communication_routing_engine import CommunicationRoutingEngine
 from app.services.telecom_provider_adapter import NormalizedProviderEvent, adapter_for_provider
 
+_UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE)
+
 
 class CommunicationService:
+    async def _resolve_target_id(
+        self,
+        db: AsyncSession,
+        tenant_id: str,
+        destination: CommunicationDestination,
+    ) -> CommunicationDestination:
+        """Return destination with target_id guaranteed to be a real user UUID.
+
+        The iOS/macOS client resolves contacts locally from seed data and may
+        send a placeholder id (e.g. "user-massimo") or an extension number
+        instead of the actual user UUID. Re-resolve here so FK constraints hold.
+        """
+        if destination.destination_type.value not in {"internal_user", "internal_extension"}:
+            return destination
+        target = destination.target_id or ""
+        if _UUID_RE.match(target):
+            return destination  # already a real UUID, nothing to do
+        # Try to resolve by extension number
+        if re.match(r"^\d{1,6}$", target):
+            user = await CommunicationExtensionService.find_user_by_extension(db, tenant_id, target)
+            if user:
+                destination.target_id = user.id
+                destination.display_name = user.extension_display_name or user.full_name or destination.display_name
+                return destination
+        # Try to resolve by raw_value if it looks like an extension number
+        raw = destination.raw_value or ""
+        if re.match(r"^\d{1,6}$", raw):
+            user = await CommunicationExtensionService.find_user_by_extension(db, tenant_id, raw)
+            if user:
+                destination.target_id = user.id
+                destination.display_name = user.extension_display_name or user.full_name or destination.display_name
+                return destination
+        # Could not resolve to a UUID — clear target_id so FK won't fail; call
+        # will still be logged but won't create a broken participant row.
+        logger.warning(
+            "Could not resolve internal target_id %r (raw=%r) for tenant %s; clearing target_id",
+            target, raw, tenant_id,
+        )
+        destination.target_id = None
+        return destination
+
     async def start_communication(
         self,
         db: AsyncSession,
@@ -56,6 +101,7 @@ class CommunicationService:
         destination: CommunicationDestination,
         context: CommunicationContext,
     ) -> CommunicationStartResponse:
+        destination = await self._resolve_target_id(db, current_user.tenant_id, destination)
         session = CommunicationSession(
             id=str(uuid.uuid4()),
             tenant_id=current_user.tenant_id,
