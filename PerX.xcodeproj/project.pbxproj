@@ -630,10 +630,10 @@
 			);
 			mainGroup = 7803954C2CE509530093FAB4;
 			minimizedProjectReferenceProxies = 1;
-			preferredProjectObjectVersion = 77;
 			packageReferences = (
 				A1B2C3D4E5F600000000000A /* XCRemoteSwiftPackageReference "client-sdk-swift" */,
 			);
+			preferredProjectObjectVersion = 77;
 			productRefGroup = 780395562CE509530093FAB4 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -835,30 +835,6 @@
 			targetProxy = 79A1000B2F50000000900001 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
-
-/* Begin XCRemoteSwiftPackageReference section */
-		A1B2C3D4E5F600000000000A /* XCRemoteSwiftPackageReference "client-sdk-swift" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/livekit/client-sdk-swift";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 2.0.0;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-		A1B2C3D4E5F600000000000B /* LiveKit */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = A1B2C3D4E5F600000000000A /* XCRemoteSwiftPackageReference "client-sdk-swift" */;
-			productName = LiveKit;
-		};
-		A1B2C3D4E5F600000000000C /* LiveKit */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = A1B2C3D4E5F600000000000A /* XCRemoteSwiftPackageReference "client-sdk-swift" */;
-			productName = LiveKit;
-		};
-/* End XCSwiftPackageProductDependency section */
 
 /* Begin XCBuildConfiguration section */
 		7803957D2CE509550093FAB4 /* Debug */ = {
@@ -1666,6 +1642,30 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A1B2C3D4E5F600000000000A /* XCRemoteSwiftPackageReference "client-sdk-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/livekit/client-sdk-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A1B2C3D4E5F600000000000B /* LiveKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A1B2C3D4E5F600000000000A /* XCRemoteSwiftPackageReference "client-sdk-swift" */;
+			productName = LiveKit;
+		};
+		A1B2C3D4E5F600000000000C /* LiveKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A1B2C3D4E5F600000000000A /* XCRemoteSwiftPackageReference "client-sdk-swift" */;
+			productName = LiveKit;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 7803954D2CE509530093FAB4 /* Project object */;
 }

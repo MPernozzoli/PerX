@@ -15,12 +15,14 @@ from app.schemas.collab import (
     CalendarEventCreate,
     CalendarEventListResponse,
     CalendarEventResponse,
+    CalendarEventUpdate,
     DashboardWidgetListResponse,
     DashboardWidgetResponse,
     DashboardWidgetUpsert,
     UserWorkScheduleCreate,
     UserWorkScheduleListResponse,
     UserWorkScheduleResponse,
+    UserWorkScheduleUpdate,
 )
 from app.services.claim_service import ClaimService
 
@@ -70,6 +72,55 @@ async def create_work_schedule(
     await db.commit()
     await db.refresh(schedule)
     return UserWorkScheduleResponse.model_validate(schedule)
+
+
+@router.patch("/work-schedules/{schedule_id}", response_model=UserWorkScheduleResponse)
+async def update_work_schedule(
+    schedule_id: str,
+    payload: UserWorkScheduleUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    result = await db.execute(
+        select(UserWorkSchedule).where(
+            UserWorkSchedule.id == schedule_id,
+            UserWorkSchedule.tenant_id == current_user.tenant_id,
+        )
+    )
+    schedule = result.scalar_one_or_none()
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    if schedule.user_id != current_user.id and not current_user.is_platform_admin:
+        raise HTTPException(status_code=403, detail="Cannot modify another user's schedule")
+
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(schedule, field, value)
+
+    await db.commit()
+    await db.refresh(schedule)
+    return UserWorkScheduleResponse.model_validate(schedule)
+
+
+@router.delete("/work-schedules/{schedule_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_work_schedule(
+    schedule_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    result = await db.execute(
+        select(UserWorkSchedule).where(
+            UserWorkSchedule.id == schedule_id,
+            UserWorkSchedule.tenant_id == current_user.tenant_id,
+        )
+    )
+    schedule = result.scalar_one_or_none()
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    if schedule.user_id != current_user.id and not current_user.is_platform_admin:
+        raise HTTPException(status_code=403, detail="Cannot delete another user's schedule")
+
+    await db.delete(schedule)
+    await db.commit()
 
 
 @router.get("/calendar-events", response_model=CalendarEventListResponse)
@@ -130,6 +181,55 @@ async def create_calendar_event(
     await db.commit()
     await db.refresh(event)
     return CalendarEventResponse.model_validate(event)
+
+
+@router.patch("/calendar-events/{event_id}", response_model=CalendarEventResponse)
+async def update_calendar_event(
+    event_id: str,
+    payload: CalendarEventUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    result = await db.execute(
+        select(CalendarEvent).where(
+            CalendarEvent.id == event_id,
+            CalendarEvent.tenant_id == current_user.tenant_id,
+        )
+    )
+    event = result.scalar_one_or_none()
+    if not event:
+        raise HTTPException(status_code=404, detail="Calendar event not found")
+    if event.owner_user_id != current_user.id and not current_user.is_platform_admin:
+        raise HTTPException(status_code=403, detail="Cannot modify another user's event")
+
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(event, field, value)
+
+    await db.commit()
+    await db.refresh(event)
+    return CalendarEventResponse.model_validate(event)
+
+
+@router.delete("/calendar-events/{event_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_calendar_event(
+    event_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    result = await db.execute(
+        select(CalendarEvent).where(
+            CalendarEvent.id == event_id,
+            CalendarEvent.tenant_id == current_user.tenant_id,
+        )
+    )
+    event = result.scalar_one_or_none()
+    if not event:
+        raise HTTPException(status_code=404, detail="Calendar event not found")
+    if event.owner_user_id != current_user.id and not current_user.is_platform_admin:
+        raise HTTPException(status_code=403, detail="Cannot delete another user's event")
+
+    await db.delete(event)
+    await db.commit()
 
 
 @router.get("/dashboard/widgets", response_model=DashboardWidgetListResponse)

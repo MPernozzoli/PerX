@@ -145,6 +145,17 @@ class UserWorkScheduleResponse(BaseModel):
         from_attributes = True
 
 
+class UserWorkScheduleUpdate(BaseModel):
+    weekday: Optional[int] = None
+    start_time: Optional[time] = None
+    end_time: Optional[time] = None
+    location: Optional[str] = None
+    slot_type: Optional[str] = None
+    effective_from: Optional[date] = None
+    effective_to: Optional[date] = None
+    metadata_json: Optional[dict] = None
+
+
 class UserWorkScheduleListResponse(BaseModel):
     items: list[UserWorkScheduleResponse]
     total: int
@@ -164,6 +175,19 @@ class CalendarEventCreate(BaseModel):
     status: str = "confirmed"
     visibility: str = "tenant"
     source: str = "manual"
+    metadata_json: Optional[dict] = None
+
+
+class CalendarEventUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    event_type: Optional[str] = None
+    starts_at: Optional[datetime] = None
+    ends_at: Optional[datetime] = None
+    all_day: Optional[bool] = None
+    location: Optional[str] = None
+    status: Optional[str] = None
+    visibility: Optional[str] = None
     metadata_json: Optional[dict] = None
 
 

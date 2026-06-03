@@ -178,4 +178,29 @@ async def create_message(
         )
     except Exception:
         pass
+
+    try:
+        from app.services.push_notifier import notify_alert
+        member_ids = (await db.execute(
+            select(InternalChatMember.user_id).where(
+                InternalChatMember.thread_id == thread.id,
+                InternalChatMember.user_id != current_user.id,
+            )
+        )).scalars().all()
+        if member_ids:
+            sender_label = current_user.full_name or current_user.email or "Nuovo messaggio"
+            preview = (payload.body_text or "").strip()
+            if len(preview) > 140:
+                preview = preview[:137] + "…"
+            await notify_alert(
+                db,
+                member_ids,
+                title=sender_label,
+                body=preview or "Ti ha inviato un messaggio",
+                data={"thread_id": thread.id, "message_id": message.id, "kind": "chat"},
+                thread_id=thread.id,
+            )
+    except Exception:
+        pass
+
     return response

@@ -44,6 +44,7 @@ from app.api.v1 import (
     routes_processed_emails_sync,
     routes_folder_packages,
     routes_realtime,
+    routes_devices,
 )
 from app.services.inspection_workflow_service import InspectionAutomationRuntime
 from app.services.video_inspection_workflow_service import VideoInspectionAutomationRuntime
@@ -122,6 +123,7 @@ app.include_router(routes_user_directory.router, prefix="/api/v1/user-directory"
 app.include_router(routes_processed_emails_sync.router, prefix="/api/v1/processed-emails", tags=["processed-emails"])
 app.include_router(routes_folder_packages.router, prefix="/api/v1/folder-packages", tags=["folder-packages"])
 app.include_router(routes_realtime.router, prefix="/api/v1/realtime", tags=["realtime"])
+app.include_router(routes_devices.router, prefix="/api/v1/devices", tags=["devices"])
 
 
 @app.get("/")

@@ -99,6 +99,15 @@ class Settings(BaseSettings):
     RESEND_SCHEDULED_EMAIL_POLL_SECONDS: int = 30
     RESEND_SCHEDULED_EMAIL_BATCH_SIZE: int = 25
     
+    # APNs (Apple Push Notifications) — used by PerX Lite iOS for push + VoIP/CallKit
+    APNS_KEY_ID: Optional[str] = None
+    APNS_TEAM_ID: Optional[str] = None
+    APNS_KEY_PATH: Optional[str] = None  # path to AuthKey_<KEY_ID>.p8 (alt to APNS_KEY_PEM)
+    APNS_KEY_PEM: Optional[str] = None   # contents of the .p8 (PEM); preferred on PaaS
+    APNS_BUNDLE_ID: Optional[str] = None  # e.g. com.perx.PerXLite
+    APNS_VOIP_BUNDLE_ID: Optional[str] = None  # usually same bundle for VoIP push
+    APNS_USE_SANDBOX: bool = False
+
     # Feature Flags
     FF_CLOUD_AUTH_ENABLED: bool = False
     FF_CLOUD_EMAIL_READONLY: bool = False

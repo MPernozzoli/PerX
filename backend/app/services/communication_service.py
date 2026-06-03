@@ -4,8 +4,11 @@ Application service for CommunicationSession lifecycle.
 from __future__ import annotations
 
 import hashlib
+import logging
 import secrets
 import uuid
+
+logger = logging.getLogger(__name__)
 from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -105,6 +108,14 @@ class CommunicationService:
             self._log(db, session, call.id, current_user.id, "routing_engine.dispatch_requested", "pending", {"target_id": destination.target_id})
 
         await db.commit()
+
+        if destination.destination_type.value in {"internal_user", "internal_extension"}:
+            try:
+                from app.services.push_notifier import notify_incoming_call
+                await notify_incoming_call(db, session.id)
+            except Exception as e:
+                logger.warning("VoIP push dispatch failed for session %s: %s", session.id, e)
+
         return CommunicationStartResponse(
             session_id=session.id,
             call_id=call.id,
@@ -263,7 +274,43 @@ class CommunicationService:
             action["session_id"] = session.id
             action["call_id"] = call.id
 
+            if decision.action == "ring_user" and decision.target_type == "user_email" and decision.target_id:
+                target_user = (await db.execute(
+                    select(User).where(
+                        User.tenant_id == tenant_id,
+                        User.email == decision.target_id,
+                        User.is_active == True,  # noqa: E712
+                    )
+                )).scalar_one_or_none()
+                if target_user:
+                    existing_callee = (await db.execute(
+                        select(CallParticipant).where(
+                            CallParticipant.session_id == session.id,
+                            CallParticipant.user_id == target_user.id,
+                            CallParticipant.role == "callee",
+                        )
+                    )).scalar_one_or_none()
+                    if existing_callee is None:
+                        db.add(CallParticipant(
+                            id=str(uuid.uuid4()),
+                            tenant_id=tenant_id,
+                            session_id=session.id,
+                            call_id=call.id,
+                            participant_type="internal_user",
+                            user_id=target_user.id,
+                            display_name=target_user.full_name or target_user.email,
+                            livekit_identity=f"user:{target_user.id}",
+                            role="callee",
+                        ))
+
         await db.commit()
+
+        if session and call and action.get("type") == "ring_user":
+            try:
+                from app.services.push_notifier import notify_incoming_call
+                await notify_incoming_call(db, session.id)
+            except Exception as e:
+                logger.warning("Inbound VoIP push dispatch failed for session %s: %s", session.id, e)
         return ProviderWebhookResponse(
             event_id=event.id,
             provider=event.provider,

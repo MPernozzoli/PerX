@@ -219,7 +219,7 @@ def upgrade() -> None:
     )
     op.create_index("ix_communication_external_invite_links_tenant_id", "communication_external_invite_links", ["tenant_id"])
     op.create_index("ix_communication_external_invite_links_session_id", "communication_external_invite_links", ["session_id"])
-    op.create_index("ix_communication_external_invite_links_scheduled_communication_id", "communication_external_invite_links", ["scheduled_communication_id"])
+    op.create_index("ix_comm_ext_invite_links_sched_comm_id", "communication_external_invite_links", ["scheduled_communication_id"])
     op.create_index("ix_communication_external_invite_links_claim_id", "communication_external_invite_links", ["claim_id"])
 
     op.create_table(
