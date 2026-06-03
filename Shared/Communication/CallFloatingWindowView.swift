@@ -239,10 +239,12 @@ final class CallFloatingViewModel: ObservableObject {
 #if canImport(LiveKit)
     private var room: Room?
 #endif
+    private var sessionId: String?
     private var startDate: Date?
     private var timer: Timer?
 
     func connect(token: CommunicationLiveKitToken) {
+        sessionId = token.sessionId
         RingbackPlayer.shared.stop()
         #if canImport(LiveKit)
         let r = Room()
@@ -308,8 +310,19 @@ final class CallFloatingViewModel: ObservableObject {
         room = nil
         #endif
         stopTimer()
+        RingbackPlayer.shared.stop()
         phase = .ended
         statusText = "Chiamata terminata"
+        // Notify backend so the session moves to "ended" and disappears from
+        // incoming polls on other devices (prevents ghost ringing after hangup)
+        if let sid = sessionId {
+            Task {
+                _ = try? await CommunicationStartService.shared.performNotificationAction(
+                    sessionId: sid,
+                    actionType: .end
+                )
+            }
+        }
     }
 
     func toggleMute() {

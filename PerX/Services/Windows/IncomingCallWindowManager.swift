@@ -128,6 +128,12 @@ struct IncomingCallWindowView: View {
 
                 Button(role: .destructive) {
                     RingbackPlayer.shared.stop()
+                    Task {
+                        _ = try? await CommunicationStartService.shared.performNotificationAction(
+                            sessionId: item.sessionId,
+                            actionType: .end
+                        )
+                    }
                     onDismiss()
                 } label: {
                     Label("Rifiuta", systemImage: "phone.down.fill")

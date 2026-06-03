@@ -258,6 +258,7 @@ enum CommunicationNotificationActionType: String, Codable, CaseIterable {
     case answerAndOpenClaim = "answer_and_open_claim"
     case openClaimOnly = "open_claim_only"
     case sendToVoicemailAITriage = "send_to_voicemail_ai_triage"
+    case end
 }
 
 struct CommunicationNotificationAction: Codable, Hashable {

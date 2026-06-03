@@ -87,8 +87,15 @@ struct TelefonoCommunicationView: View {
         }
         .sheet(item: $activeLiveKitToken) { token in
             CommunicationLiveKitCallView(token: token, displayName: activeCall?.displayName ?? "Chiamata PerX") {
+                let sid = token.sessionId
                 activeLiveKitToken = nil
                 callState = .completed
+                Task {
+                    _ = try? await CommunicationStartService.shared.performNotificationAction(
+                        sessionId: sid,
+                        actionType: .end
+                    )
+                }
             }
         }
         .alert("Errore chiamata", isPresented: Binding(

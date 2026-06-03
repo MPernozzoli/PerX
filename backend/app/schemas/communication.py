@@ -55,8 +55,8 @@ class CommunicationDestination(BaseModel):
     destination_type: CommunicationDestinationType
     transport: CommunicationTransport
     target_id: Optional[str] = None
-    display_name: str
-    tenant_id: str
+    display_name: Optional[str] = None
+    tenant_id: Optional[str] = None
     suggested_caller_id: Optional[str] = None
     context_claim_id: Optional[str] = None
     raw_value: str
@@ -109,6 +109,7 @@ class CommunicationNotificationActionType(str, Enum):
     answer_and_open_claim = "answer_and_open_claim"
     open_claim_only = "open_claim_only"
     send_to_voicemail_ai_triage = "send_to_voicemail_ai_triage"
+    end = "end"
 
 
 class CommunicationNotificationAction(BaseModel):

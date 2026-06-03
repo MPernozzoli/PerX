@@ -416,6 +416,13 @@ class CommunicationService:
             elif session.external_provider and call and call.provider_call_id:
                 adapter = adapter_for_provider(session.external_provider)
                 provider_action = await adapter.answer_call(call.provider_call_id)
+        elif action_type == CommunicationNotificationActionType.end:
+            session.state = "ended"
+            session.ended_at = datetime.now(timezone.utc)
+            if call:
+                call.state = "ended"
+                call.completed_at = datetime.now(timezone.utc)
+            state = "ended"
         elif action_type == CommunicationNotificationActionType.open_claim_only:
             open_claim = bool(session.claim_id)
         elif action_type == CommunicationNotificationActionType.send_to_voicemail_ai_triage:
