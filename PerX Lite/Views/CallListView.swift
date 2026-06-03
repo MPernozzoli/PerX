@@ -22,18 +22,20 @@ final class CallListViewModel: ObservableObject {
         isLoading = false
     }
 
-    func dial(rawValue: String, displayName: String?) async -> String? {
+    func dial(rawValue: String, displayName: String?, tenantId: String?) async -> String? {
         let trimmed = rawValue.trimmingCharacters(in: .whitespaces)
         let isInternal = trimmed.count <= 4 && trimmed.allSatisfy(\.isNumber)
+        let tid = tenantId ?? "default"
         let req = CommunicationStartRequestDTO(
             destination: .init(
                 destination_type: isInternal ? "internal_extension" : "external_phone",
                 transport: isInternal ? "livekit" : "telecom_provider",
                 target_id: nil,
                 raw_value: trimmed,
-                display_name: displayName
+                display_name: displayName,
+                tenant_id: tid
             ),
-            context: .init(claim_id: nil)
+            context: .init(claim_id: nil, tenant_id: tid)
         )
         do {
             let resp: CommunicationStartResponseDTO = try await APIClient.shared.post(
@@ -99,7 +101,7 @@ struct CallListView: View {
         }
         .sheet(isPresented: $showDial) {
             DialerSheet { phone, name in
-                await vm.dial(rawValue: phone, displayName: name) != nil
+                await vm.dial(rawValue: phone, displayName: name, tenantId: auth.tenantId) != nil
             }
             .presentationDetents([.large])
         }
@@ -110,6 +112,12 @@ struct CallListView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .perxRealtimeIncomingCall)) { _ in
             Task { await vm.load() }
+            RingbackPlayer.shared.start()
+        }
+        .onReceive(CallSessionShared.shared.$roomState) { state in
+            if state == "connected" || state == "disconnected" {
+                RingbackPlayer.shared.stop()
+            }
         }
         .alert("Errore", isPresented: .constant(vm.errorMessage != nil), actions: {
             Button("OK") { vm.errorMessage = nil }

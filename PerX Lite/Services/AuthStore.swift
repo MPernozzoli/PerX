@@ -9,6 +9,7 @@ final class AuthStore: ObservableObject {
     @Published var displayName: String?
     @Published var myExtension: String?
     @Published var myExtensionEnabled: Bool = false
+    @Published var tenantId: String?
 
     init() {
         self.isAuthenticated = APIClient.shared.isLoggedIn
@@ -41,6 +42,7 @@ final class AuthStore: ObservableObject {
             let me: MeProfileDTO = try await APIClient.shared.get("/api/v1/profiles/me")
             self.myExtension = me.extension_number
             self.myExtensionEnabled = me.extension_enabled ?? false
+            self.tenantId = me.tenant_id
             let full = [me.first_name, me.last_name]
                 .compactMap { $0?.trimmingCharacters(in: .whitespaces) }
                 .filter { !$0.isEmpty }

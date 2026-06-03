@@ -150,9 +150,11 @@ struct CommunicationStartRequestDTO: Encodable {
         let target_id: String?
         let raw_value: String
         let display_name: String?
+        let tenant_id: String         // must match current user's tenant
     }
     struct Context: Encodable {
         let claim_id: String?
+        let tenant_id: String?
     }
     let destination: Destination
     let context: Context
@@ -202,6 +204,7 @@ struct CallHistoryListDTO: Decodable {
 struct MeProfileDTO: Decodable, Hashable {
     let id: String
     let email: String
+    let tenant_id: String?
     let first_name: String?
     let last_name: String?
     let extension_number: String?

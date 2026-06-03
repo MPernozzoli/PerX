@@ -13,6 +13,9 @@ struct PerX_LiteApp: App {
             case "claim_updated":
                 NotificationCenter.default.post(name: .perxRealtimeClaimUpdated, object: nil, userInfo: event.payload)
             case "incoming_call":
+                // Trigger the CallKit UI via CallProvider, then also reload the list
+                let payload = IncomingCallPayload.parse(from: event.payload)
+                CallProviderShared.shared.reportIncomingCall(payload) { _ in }
                 NotificationCenter.default.post(name: .perxRealtimeIncomingCall, object: nil, userInfo: event.payload)
             case "chat_message":
                 NotificationCenter.default.post(name: .perxRealtimeChatMessage, object: nil, userInfo: event.payload)
