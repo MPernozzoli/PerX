@@ -39,9 +39,13 @@ final class IncomingCallPoller: ObservableObject {
             let response = try await CommunicationStartService.shared.fetchIncomingCalls()
             for item in response.items where !seenSessions.contains(item.sessionId) {
                 seenSessions.insert(item.sessionId)
-                // In-app banner (works foregrounded)
+                // Publish for iPad/iOS in-app alert
                 incomingCall.send(item)
-                // System notification (works backgrounded)
+                #if os(macOS)
+                // macOS: dedicated floating window with Answer/Reject buttons
+                IncomingCallWindowManager.shared.present(item: item)
+                #endif
+                // System notification (works backgrounded on all platforms)
                 CommunicationNotificationService.shared.sendIncomingCallNotification(
                     sessionId: item.sessionId,
                     callId: item.callId,
@@ -51,7 +55,17 @@ final class IncomingCallPoller: ObservableObject {
                 )
             }
             // Prune sessions no longer active
-            seenSessions = seenSessions.intersection(Set(response.items.map(\.sessionId)))
+            let activeIds = Set(response.items.map(\.sessionId))
+            if !seenSessions.subtracting(activeIds).isEmpty {
+                // Sessions that disappeared — dismiss incoming window if still showing
+                #if os(macOS)
+                if !activeIds.contains(where: { seenSessions.contains($0) }) {
+                    IncomingCallWindowManager.shared.dismiss()
+                }
+                #endif
+                RingbackPlayer.shared.stop()
+            }
+            seenSessions = seenSessions.intersection(activeIds)
         } catch {
             // Silently ignore — network errors or unconfigured transport are expected
         }
@@ -60,8 +74,8 @@ final class IncomingCallPoller: ObservableObject {
 
 // MARK: - Ringback tone (caller and callee side)
 
-/// Plays a looping 425 Hz EU ringback tone (1 s on / 4 s off).
-/// Call `start()` on outbound ringing or incoming call; `stop()` on connect/fail/dismiss.
+/// Plays ringback tones for outbound calls (EU 425 Hz, 1 s on / 4 s off)
+/// and incoming calls (double-ring: 0.4 s + 0.2 s gap + 0.4 s, then 2 s silence).
 final class RingbackPlayer {
     static let shared = RingbackPlayer()
 
@@ -71,7 +85,8 @@ final class RingbackPlayer {
 
     private init() {}
 
-    func start() {
+    /// - Parameter incoming: `true` for double-ring (callee side), `false` for outgoing ringback.
+    func start(incoming: Bool = false) {
         guard !isPlaying else { return }
         isPlaying = true
 
@@ -81,19 +96,10 @@ final class RingbackPlayer {
         eng.attach(src)
         eng.connect(src, to: eng.mainMixerNode, format: format)
 
-        let sampleRate = 44100.0
-        let onFrames  = Int(sampleRate)        // 1 s tone
-        let offFrames = Int(sampleRate * 4.0)  // 4 s silence
-        let total     = onFrames + offFrames
-        guard let buf = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(total)) else {
+        guard let buf = incoming ? makeIncomingBuffer(format: format)
+                                 : makeOutgoingBuffer(format: format) else {
             isPlaying = false; return
         }
-        buf.frameLength = AVAudioFrameCount(total)
-        let data = buf.floatChannelData![0]
-        for i in 0..<onFrames {
-            data[i] = Float(0.35 * sin(2 * .pi * 425.0 * Double(i) / sampleRate))
-        }
-        for i in onFrames..<total { data[i] = 0 }
 
         do {
             try eng.start()
@@ -113,5 +119,51 @@ final class RingbackPlayer {
         node    = nil
         engine  = nil
         isPlaying = false
+    }
+
+    // MARK: - Buffer factories
+
+    /// Outgoing ringback: 425 Hz, 1 s on / 4 s off
+    private func makeOutgoingBuffer(format: AVAudioFormat) -> AVAudioPCMBuffer? {
+        let sr  = 44100.0
+        let on  = Int(sr)
+        let off = Int(sr * 4.0)
+        return tone(freq: 425, onFrames: on, offFrames: off, sampleRate: sr, format: format, amp: 0.35)
+    }
+
+    /// Incoming double-ring: 0.4 s + 0.2 s gap + 0.4 s tone, then 2 s silence — 480 Hz
+    private func makeIncomingBuffer(format: AVAudioFormat) -> AVAudioPCMBuffer? {
+        let sr      = 44100.0
+        let ring    = Int(sr * 0.4)
+        let gap     = Int(sr * 0.2)
+        let silence = Int(sr * 2.0)
+        let total   = ring + gap + ring + silence
+        guard let buf = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(total)) else { return nil }
+        buf.frameLength = AVAudioFrameCount(total)
+        let data = buf.floatChannelData![0]
+        let freq = 480.0
+        for i in 0..<ring {
+            data[i] = Float(0.35 * sin(2 * .pi * freq * Double(i) / sr))
+        }
+        for i in ring..<(ring + gap) { data[i] = 0 }
+        let offset = ring + gap
+        for i in 0..<ring {
+            data[offset + i] = Float(0.35 * sin(2 * .pi * freq * Double(i) / sr))
+        }
+        for i in (offset + ring)..<total { data[i] = 0 }
+        return buf
+    }
+
+    private func tone(freq: Double, onFrames: Int, offFrames: Int,
+                      sampleRate: Double, format: AVAudioFormat, amp: Double) -> AVAudioPCMBuffer? {
+        let total = onFrames + offFrames
+        guard let buf = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(total)) else { return nil }
+        buf.frameLength = AVAudioFrameCount(total)
+        let data = buf.floatChannelData![0]
+        for i in 0..<onFrames {
+            data[i] = Float(amp * sin(2 * .pi * freq * Double(i) / sampleRate))
+        }
+        for i in onFrames..<total { data[i] = 0 }
+        return buf
     }
 }

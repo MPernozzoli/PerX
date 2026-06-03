@@ -45,7 +45,7 @@ struct ComunicazioniListView: View {
         .onReceive(IncomingCallPoller.shared.incomingCall) { item in
             incomingCall = item
             showIncomingCallAlert = true
-            RingbackPlayer.shared.start()
+            RingbackPlayer.shared.start(incoming: true)
         }
         .alert(
             "Chiamata in arrivo",

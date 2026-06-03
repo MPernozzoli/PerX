@@ -27,13 +27,10 @@ struct CallFloatingWindowView: View {
         .onAppear { vm.connect(token: token) }
         .onDisappear { vm.hangup() }
         .onChange(of: vm.phase) { _, phase in
-            if case .ended = phase {
+            if phase == .ended || phase == .failed {
                 Task {
                     try? await Task.sleep(nanoseconds: 5_000_000_000)
-                    await MainActor.run {
-                        RingbackPlayer.shared.stop()
-                        onClose?()
-                    }
+                    await MainActor.run { onClose?() }
                 }
             }
         }
@@ -209,6 +206,7 @@ struct CallFloatingWindowView: View {
     private var phaseColor: Color {
         switch vm.phase {
         case .connecting: return .yellow
+        case .ringing:    return .orange
         case .active:     return .green
         case .ended:      return .secondary
         case .failed:     return .red
@@ -218,6 +216,7 @@ struct CallFloatingWindowView: View {
     private var phaseIcon: String {
         switch vm.phase {
         case .connecting: return "phone.arrow.up.right"
+        case .ringing:    return "phone.arrow.up.right.fill"
         case .active:     return "phone.connection.fill"
         case .ended:      return "phone.down"
         case .failed:     return "exclamationmark.triangle"
@@ -227,7 +226,7 @@ struct CallFloatingWindowView: View {
 
 // MARK: - ViewModel
 
-enum CallPhase { case connecting, active, ended, failed }
+enum CallPhase { case connecting, ringing, active, ended, failed }
 
 @MainActor
 final class CallFloatingViewModel: ObservableObject {
@@ -253,13 +252,45 @@ final class CallFloatingViewModel: ObservableObject {
                 try await r.connect(url: token.livekitUrl, token: token.token)
                 try? await r.localParticipant.setMicrophone(enabled: true)
                 await MainActor.run {
-                    self.phase = .active
-                    self.statusText = "In chiamata"
-                    self.startDate = Date()
-                    self.startTimer()
+                    self.phase = .ringing
+                    self.statusText = "In chiamata..."
+                    RingbackPlayer.shared.start(incoming: false)
                 }
+                // Wait for a remote participant to join (callee answers)
+                // Poll up to 90 s before giving up
+                let deadline = Date().addingTimeInterval(90)
+                while Date() < deadline {
+                    try await Task.sleep(nanoseconds: 500_000_000)
+                    if !r.remoteParticipants.isEmpty {
+                        await MainActor.run {
+                            RingbackPlayer.shared.stop()
+                            self.phase = .active
+                            self.statusText = "In chiamata"
+                            self.startDate = Date()
+                            self.startTimer()
+                        }
+                        return
+                    }
+                    // If room disconnected, bail
+                    if r.connectionState == .disconnected {
+                        await MainActor.run {
+                            RingbackPlayer.shared.stop()
+                            self.phase = .ended
+                            self.statusText = "Chiamata terminata"
+                        }
+                        return
+                    }
+                }
+                // Timeout — no answer
+                await MainActor.run {
+                    RingbackPlayer.shared.stop()
+                    self.phase = .failed
+                    self.statusText = "Nessuna risposta"
+                }
+                await r.disconnect()
             } catch {
                 await MainActor.run {
+                    RingbackPlayer.shared.stop()
                     self.phase = .failed
                     self.statusText = "Connessione non riuscita"
                 }
