@@ -142,6 +142,14 @@ struct UserProfile: Codable, Equatable, Identifiable {
     // Lavoro
     var contractType: ContractType?
     var roles: [UserRole]
+
+    // Comunicazioni / interni PerX
+    var extensionNumber: String?
+    var extensionEnabled: Bool?
+    var extensionAssignedAt: Date?
+    var extensionDisplayName: String?
+    var availabilityStatus: AvailabilityStatus?
+    var communicationStatus: CommunicationStatus?
     
     // Preferenze
     var enableBadges: Bool
@@ -218,6 +226,12 @@ struct UserProfile: Codable, Equatable, Identifiable {
         self.signatureImageURL = nil
         self.contractType = nil
         self.roles = []
+        self.extensionNumber = nil
+        self.extensionEnabled = false
+        self.extensionAssignedAt = nil
+        self.extensionDisplayName = nil
+        self.availabilityStatus = .available
+        self.communicationStatus = .idle
         self.enableBadges = false
         self.sendReadReceipts = true
         self.emailSignatureHTML = nil

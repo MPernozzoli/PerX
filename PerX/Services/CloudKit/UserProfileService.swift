@@ -337,6 +337,12 @@ private struct BackendUserProfileDTO: Codable {
     let notify_birthday: Bool
     let contract_type: String?
     let roles: [String]
+    let extension_number: String?
+    let extension_enabled: Bool?
+    let extension_assigned_at: Date?
+    let extension_display_name: String?
+    let availability_status: String?
+    let communication_status: String?
     let avatar_type: String
     let avatar_photo_base64: String?
     let avatar_asset_url: String?
@@ -365,6 +371,12 @@ private struct BackendUserProfileDTO: Codable {
         profile.notifyBirthday = notify_birthday
         profile.contractType = contract_type.flatMap(ContractType.init(rawValue:))
         profile.roles = roles.compactMap(UserRole.init(rawValue:))
+        profile.extensionNumber = extension_number
+        profile.extensionEnabled = extension_enabled ?? false
+        profile.extensionAssignedAt = extension_assigned_at
+        profile.extensionDisplayName = extension_display_name
+        profile.availabilityStatus = availability_status.flatMap(AvailabilityStatus.init(rawValue:)) ?? .available
+        profile.communicationStatus = communication_status.flatMap(CommunicationStatus.init(rawValue:)) ?? .idle
         profile.avatarType = AvatarType(rawValue: avatar_type) ?? .generated
         if let avatar_photo_base64,
            let data = Data(base64Encoded: avatar_photo_base64) {
@@ -397,6 +409,12 @@ private struct BackendUserProfileUpdateDTO: Encodable {
     let notify_birthday: Bool
     let contract_type: String?
     let roles: [String]
+    let extension_number: String?
+    let extension_enabled: Bool?
+    let extension_assigned_at: Date?
+    let extension_display_name: String?
+    let availability_status: String?
+    let communication_status: String?
     let avatar_type: String
     let avatar_photo_base64: String?
     let generated_avatar_color: String?
@@ -418,6 +436,12 @@ private struct BackendUserProfileUpdateDTO: Encodable {
         self.notify_birthday = profile.notifyBirthday
         self.contract_type = profile.contractType?.rawValue
         self.roles = profile.roles.map(\.rawValue)
+        self.extension_number = profile.extensionNumber
+        self.extension_enabled = profile.extensionEnabled
+        self.extension_assigned_at = profile.extensionAssignedAt
+        self.extension_display_name = profile.extensionDisplayName
+        self.availability_status = profile.availabilityStatus?.rawValue
+        self.communication_status = profile.communicationStatus?.rawValue
         self.avatar_type = profile.avatarType.rawValue
         self.avatar_photo_base64 = profile.avatarAssetURL == nil ? profile.avatarPhotoData?.base64EncodedString() : nil
         self.generated_avatar_color = profile.generatedAvatar.backgroundColor

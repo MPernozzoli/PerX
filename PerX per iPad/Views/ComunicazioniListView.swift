@@ -13,12 +13,14 @@ struct ComunicazioniListView: View {
     
     enum ComunicazioniTab: String, CaseIterable, Hashable {
         case outbox = "In Uscita"
+        case telefono = "Telefono"
         case email = "Email"
         case whatsapp = "WhatsApp"
         
         var icon: String {
             switch self {
             case .outbox: return "tray.and.arrow.up.fill"
+            case .telefono: return "phone.fill"
             case .email: return "envelope.fill"
             case .whatsapp: return "message.fill"
             }
@@ -44,6 +46,8 @@ struct ComunicazioniListView: View {
             switch selectedTab {
             case .outbox:
                 OutboxListView()
+            case .telefono:
+                TelefonoCommunicationView()
             case .email:
                 iPadEmailListView()
             case .whatsapp:

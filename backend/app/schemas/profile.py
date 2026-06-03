@@ -23,6 +23,12 @@ class UserProfileResponse(BaseModel):
     notify_birthday: bool = True
     contract_type: Optional[str] = None
     roles: list[str] = Field(default_factory=list)
+    extension_number: Optional[str] = None
+    extension_enabled: bool = False
+    extension_assigned_at: Optional[datetime] = None
+    extension_display_name: Optional[str] = None
+    availability_status: str = "available"
+    communication_status: str = "idle"
     avatar_type: str = "generated"
     avatar_photo_base64: Optional[str] = None
     avatar_asset_url: Optional[str] = None
@@ -51,6 +57,11 @@ class UserProfileUpdateRequest(BaseModel):
     notify_birthday: bool = True
     contract_type: Optional[str] = None
     roles: list[str] = Field(default_factory=list)
+    extension_number: Optional[str] = None
+    extension_enabled: Optional[bool] = None
+    extension_display_name: Optional[str] = None
+    availability_status: str = "available"
+    communication_status: str = "idle"
     avatar_type: str = "generated"
     avatar_photo_base64: Optional[str] = None
     generated_avatar_color: Optional[str] = None

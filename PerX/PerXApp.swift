@@ -23,6 +23,8 @@ struct PerXApp: App {
         // Registra il transport HTTP del Videoperizia service sulla piattaforma
         // corrente (macOS PerX → HubAPIAdapterClient).
         VideoperiziaService.configure(transport: HubAPIAdapterClient.shared)
+        CommunicationStartService.configure(transport: HubAPIAdapterClient.shared)
+        CommunicationNotificationService.shared.registerNotificationCategories()
     }
     
     var body: some Scene {
@@ -401,6 +403,34 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
                     phoneNumber: phoneNumber,
                     sinistroRef: sinistroRef?.isEmpty == true ? nil : sinistroRef
                 )
+            }
+        }
+
+        // Gestisci azioni rapide delle chiamate in arrivo
+        if let type = userInfo["type"] as? String,
+           type == "communication_incoming_call",
+           let sessionId = userInfo["sessionId"] as? String {
+            let actionType = CommunicationNotificationService.shared.actionType(for: response.actionIdentifier)
+            let claimReference = userInfo["claimReference"] as? String
+
+            Task { @MainActor in
+                if let actionType {
+                    do {
+                        let result = try await CommunicationStartService.shared.performNotificationAction(
+                            sessionId: sessionId,
+                            actionType: actionType
+                        )
+                        if result?.openClaim == true,
+                           let claimReference,
+                           !claimReference.isEmpty {
+                            await handleFileNotificationTap(riferimento: claimReference)
+                        }
+                    } catch {
+                        print("[PerXApp] Errore azione chiamata: \(error)")
+                    }
+                } else if let claimReference, !claimReference.isEmpty {
+                    await handleFileNotificationTap(riferimento: claimReference)
+                }
             }
         }
         

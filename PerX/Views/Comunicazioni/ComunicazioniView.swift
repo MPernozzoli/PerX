@@ -71,7 +71,7 @@ struct ComunicazioniView: View {
         case .telegram:
             placeholderView(for: "Telegram")
         case .chiamate:
-            placeholderView(for: "Chiamate")
+            TelefonoCommunicationView()
         case .ibrida:
             placeholderView(for: "Ibrida")
         case .rubrica:

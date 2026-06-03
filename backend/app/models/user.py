@@ -1,13 +1,16 @@
 """
 User model
 """
-from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, JSON, Text
+from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, JSON, Text, UniqueConstraint
 from sqlalchemy.sql import func
 from app.core.database import Base
 
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "extension_number", name="uq_users_tenant_extension_number"),
+    )
     
     id = Column(String, primary_key=True, index=True)
     tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
@@ -25,6 +28,12 @@ class User(Base):
     password_hash = Column(String, nullable=True)  # Nullable for OAuth users
     idp_subject = Column(String, nullable=True)  # For external IdP
     contract_type = Column(String, nullable=True)
+    extension_number = Column(String(3), nullable=True, index=True)
+    extension_enabled = Column(Boolean, default=False, nullable=False)
+    extension_assigned_at = Column(DateTime(timezone=True), nullable=True)
+    extension_display_name = Column(String, nullable=True)
+    availability_status = Column(String, nullable=False, default="available")
+    communication_status = Column(String, nullable=False, default="idle")
     avatar_type = Column(String, nullable=False, default="generated")
     avatar_photo_base64 = Column(Text, nullable=True)
     generated_avatar_color = Column(String, nullable=True)

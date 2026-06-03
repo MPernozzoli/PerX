@@ -117,6 +117,12 @@ async def _to_response(db: AsyncSession, user: User) -> UserProfileResponse:
         notify_birthday=user.notify_birthday,
         contract_type=user.contract_type,
         roles=role_names,
+        extension_number=user.extension_number,
+        extension_enabled=bool(user.extension_enabled),
+        extension_assigned_at=user.extension_assigned_at,
+        extension_display_name=user.extension_display_name,
+        availability_status=user.availability_status or "available",
+        communication_status=user.communication_status or "idle",
         avatar_type=user.avatar_type or "generated",
         avatar_photo_base64=user.avatar_photo_base64,
         avatar_asset_url=_asset_url(user.id, "avatar_photo") if avatar_asset else None,
@@ -202,6 +208,15 @@ async def update_my_profile(
     current_user.birthday_visibility = payload.birthday_visibility or "everyone"
     current_user.notify_birthday = payload.notify_birthday
     current_user.contract_type = payload.contract_type
+    if payload.extension_number is not None:
+        current_user.extension_number = payload.extension_number
+        current_user.extension_enabled = payload.extension_enabled if payload.extension_enabled is not None else True
+        current_user.extension_assigned_at = datetime.utcnow()
+    elif payload.extension_enabled is not None:
+        current_user.extension_enabled = payload.extension_enabled
+    current_user.extension_display_name = payload.extension_display_name
+    current_user.availability_status = payload.availability_status or "available"
+    current_user.communication_status = payload.communication_status or "idle"
     current_user.avatar_type = payload.avatar_type or "generated"
     current_user.avatar_photo_base64 = payload.avatar_photo_base64
     current_user.generated_avatar_color = payload.generated_avatar_color

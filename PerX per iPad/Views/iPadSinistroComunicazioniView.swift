@@ -19,11 +19,13 @@ struct iPadSinistroComunicazioniView: View {
     @State private var showingComposeWA = false
     
     enum ComunicazioneTab: String, CaseIterable {
+        case telefono = "Telefono"
         case email = "Email"
         case whatsapp = "WhatsApp"
         
         var icon: String {
             switch self {
+            case .telefono: return "phone.fill"
             case .email: return "envelope.fill"
             case .whatsapp: return "message.fill"
             }
@@ -46,6 +48,16 @@ struct iPadSinistroComunicazioniView: View {
             
             // Content
             switch selectedTab {
+            case .telefono:
+                TelefonoCommunicationView(
+                    context: CommunicationContext(
+                        tenantId: "default",
+                        claimId: riferimento,
+                        claimReference: riferimento,
+                        source: "sinistro-comunicazioni",
+                        scheduledCommunicationId: nil
+                    )
+                )
             case .email:
                 emailListView
             case .whatsapp:

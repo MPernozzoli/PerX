@@ -15,6 +15,8 @@ struct PerX_iPadApp: App {
     init() {
         // Registra il transport HTTP del Videoperizia service (iPad → HubAPIClient).
         VideoperiziaService.configure(transport: HubAPIClient.shared)
+        CommunicationStartService.configure(transport: HubAPIClient.shared)
+        CommunicationNotificationService.shared.registerNotificationCategories()
     }
 
     var body: some Scene {

@@ -54,6 +54,11 @@ class UserDirectoryEntry(BaseModel):
     generated_avatar_icon: Optional[str] = None
     avatar_gif_url: Optional[str] = None
     contract_type: Optional[str] = None
+    extension_number: Optional[str] = None
+    extension_enabled: bool = False
+    extension_display_name: Optional[str] = None
+    availability_status: str = "available"
+    communication_status: str = "idle"
     is_active: bool
     last_seen_at: Optional[datetime] = None
     work_location: Optional[str] = None
@@ -77,3 +82,8 @@ class UserProfileUpdate(BaseModel):
     generated_avatar_icon: Optional[str] = None
     avatar_gif_url: Optional[str] = None
     contract_type: Optional[str] = None
+    extension_number: Optional[str] = None
+    extension_enabled: Optional[bool] = None
+    extension_display_name: Optional[str] = None
+    availability_status: Optional[str] = None
+    communication_status: Optional[str] = None

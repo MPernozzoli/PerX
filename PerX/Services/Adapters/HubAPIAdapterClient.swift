@@ -595,6 +595,12 @@ final class HubAPIAdapterClient {
     }
 }
 
+extension HubAPIAdapterClient: CommunicationHTTPTransport {
+    func communicationPost<T: Decodable, B: Encodable>(_ path: String, body: B) async throws -> T {
+        try await post(path, body: body)
+    }
+}
+
 // MARK: - Claim actor patch payload (lives here to keep DTOs colocated)
 
 struct CloudClaimActorsPatch: Codable {

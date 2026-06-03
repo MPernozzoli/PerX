@@ -15,6 +15,7 @@ from app.api.v1 import (
     routes_auth,
     routes_bignami,
     routes_claims,
+    routes_communications,
     routes_cat_dispatcher,
     routes_diary,
     routes_documents,
@@ -91,6 +92,7 @@ app.include_router(routes_profiles.router, prefix="/api/v1/profiles", tags=["pro
 app.include_router(routes_reporting.router, prefix="/api/v1/reports", tags=["reporting"])
 app.include_router(routes_bignami.router, prefix="/api/v1", tags=["bignami"])
 app.include_router(routes_claims.router, prefix="/api/v1/claims", tags=["claims"])
+app.include_router(routes_communications.router, prefix="/api/v1/communications", tags=["communications"])
 app.include_router(routes_cat_dispatcher.router, prefix="/api/v1/cat-dispatcher", tags=["cat-dispatcher"])
 app.include_router(routes_tasks.router, prefix="/api/v1", tags=["tasks"])
 app.include_router(routes_documents.router, prefix="/api/v1", tags=["documents"])
