@@ -1,12 +1,18 @@
 import Foundation
 import AVFoundation
+import Combine
 
-/// Polls GET /api/v1/communications/incoming on a timer and fires local
-/// UserNotifications when a new session arrives. Used on macOS where VoIP
-/// push (APNs voip) is not available. On iOS the VoIP push handles this.
+/// Polls GET /api/v1/communications/incoming every 5s and:
+/// - fires a local UserNotification (works when app is backgrounded)
+/// - publishes on `incomingCall` so in-app UI can show a banner immediately
+///
+/// Used on both macOS (no VoIP push) and iPad/iOS until APNs VoIP certs are configured.
 @MainActor
 final class IncomingCallPoller: ObservableObject {
     static let shared = IncomingCallPoller()
+
+    /// Published when a new incoming call session is detected.
+    let incomingCall = PassthroughSubject<CommunicationIncomingCallItem, Never>()
 
     private var timer: Timer?
     private var seenSessions: Set<String> = []
@@ -16,10 +22,10 @@ final class IncomingCallPoller: ObservableObject {
 
     func start() {
         guard timer == nil else { return }
+        // Fire immediately so the first check doesn't wait 5s
+        Task { await poll() }
         timer = Timer.scheduledTimer(withTimeInterval: pollInterval, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                await self?.poll()
-            }
+            Task { @MainActor [weak self] in await self?.poll() }
         }
     }
 
@@ -33,6 +39,9 @@ final class IncomingCallPoller: ObservableObject {
             let response = try await CommunicationStartService.shared.fetchIncomingCalls()
             for item in response.items where !seenSessions.contains(item.sessionId) {
                 seenSessions.insert(item.sessionId)
+                // In-app banner (works foregrounded)
+                incomingCall.send(item)
+                // System notification (works backgrounded)
                 CommunicationNotificationService.shared.sendIncomingCallNotification(
                     sessionId: item.sessionId,
                     callId: item.callId,
@@ -40,12 +49,17 @@ final class IncomingCallPoller: ObservableObject {
                     phoneNumber: nil,
                     claimContext: nil
                 )
+                // Ring on the callee side too
+                RingbackPlayer.shared.start()
             }
             // Prune sessions that are no longer active
             let activeIds = Set(response.items.map(\.sessionId))
+            if seenSessions != seenSessions.intersection(activeIds) {
+                RingbackPlayer.shared.stop()
+            }
             seenSessions = seenSessions.intersection(activeIds)
         } catch {
-            // Silently ignore — network errors or not-configured transport are expected
+            // Silently ignore — network errors or unconfigured transport are expected
         }
     }
 }

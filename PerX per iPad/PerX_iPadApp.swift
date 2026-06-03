@@ -17,6 +17,7 @@ struct PerX_iPadApp: App {
         VideoperiziaService.configure(transport: HubAPIClient.shared)
         CommunicationStartService.configure(transport: HubAPIClient.shared)
         CommunicationNotificationService.shared.registerNotificationCategories()
+        IncomingCallPoller.shared.start()
     }
 
     var body: some Scene {

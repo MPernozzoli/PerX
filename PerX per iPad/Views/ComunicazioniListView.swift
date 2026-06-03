@@ -6,10 +6,13 @@
 //
 
 import SwiftUI
+import Combine
 
 struct ComunicazioniListView: View {
     @EnvironmentObject var session: SessionCoordinator
     @State private var selectedTab: ComunicazioniTab = .outbox
+    @State private var incomingCall: CommunicationIncomingCallItem?
+    @State private var showIncomingCallAlert = false
     
     enum ComunicazioniTab: String, CaseIterable, Hashable {
         case outbox = "In Uscita"
@@ -39,6 +42,24 @@ struct ComunicazioniListView: View {
         .background(Color(.systemGroupedBackground))
         .navigationTitle("Comunicazioni")
         .navigationBarTitleDisplayMode(.inline)
+        .onReceive(IncomingCallPoller.shared.incomingCall) { item in
+            incomingCall = item
+            showIncomingCallAlert = true
+        }
+        .alert(
+            "Chiamata in arrivo",
+            isPresented: $showIncomingCallAlert,
+            presenting: incomingCall
+        ) { item in
+            Button("Rispondi") {
+                selectedTab = .telefono
+            }
+            Button("Rifiuta", role: .destructive) {
+                RingbackPlayer.shared.stop()
+            }
+        } message: { item in
+            Text(item.displayName ?? "Comunicazione PerX")
+        }
     }
 
     @ViewBuilder

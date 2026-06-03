@@ -1,5 +1,6 @@
 import SwiftUI
 import CoreData
+import Combine
 
 struct ComunicazioniView: View {
     // --- Tab principale ---
@@ -30,7 +31,9 @@ struct ComunicazioniView: View {
     @ObservedObject private var whatsappViewModel = WhatsAppViewModel.shared
     @State private var selectedWhatsAppChatId: String?
     @State private var showingQRCode = false
-    
+    @State private var incomingCall: CommunicationIncomingCallItem?
+    @State private var showIncomingCallAlert = false
+
     // Layout preferences (persistenti)
     @AppStorage("mailSidebarWidth") private var sidebarWidth: Double = 320
     @AppStorage("mailDetailWidth") private var detailWidth: Double = 600
@@ -40,6 +43,20 @@ struct ComunicazioniView: View {
             .background(Color(.windowBackgroundColor))
             .toolbar { toolbarContent }
             .navigationTitle("")
+            .onReceive(IncomingCallPoller.shared.incomingCall) { item in
+                incomingCall = item
+                showIncomingCallAlert = true
+            }
+            .alert(
+                "Chiamata in arrivo",
+                isPresented: $showIncomingCallAlert,
+                presenting: incomingCall
+            ) { item in
+                Button("Rispondi") { selectedTab = .chiamate }
+                Button("Rifiuta", role: .destructive) { RingbackPlayer.shared.stop() }
+            } message: { item in
+                Text(item.displayName ?? "Comunicazione PerX")
+            }
             .onChange(of: selectedEmail) { _, newValue in
                 handleEmailChange(newValue)
             }
