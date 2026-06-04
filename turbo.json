@@ -4,6 +4,7 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
+      "env": ["ROUTING_API_URL", "ROUTING_RESOLVE_SECRET"],
       "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
     },
     "dev": {

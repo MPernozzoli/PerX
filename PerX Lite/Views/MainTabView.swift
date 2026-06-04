@@ -17,6 +17,12 @@ struct MainTabView: View {
                     ScheduleView()
                         .tabItem { Label("Programmazione", systemImage: "clock.fill") }
 
+                    // Route + navigator tab: visible only for CAT-role users
+                    if auth.isCATUser {
+                        CATRoutesView()
+                            .tabItem { Label("Route CAT", systemImage: "map.fill") }
+                    }
+
                     ProfileView()
                         .tabItem { Label("Profilo", systemImage: "person.crop.circle") }
                 }
@@ -33,6 +39,7 @@ struct MainTabView: View {
 struct ProfileView: View {
     @EnvironmentObject private var auth: AuthStore
     @ObservedObject private var realtime = RealtimeService.shared
+    @AppStorage("liteNavigationApp") private var navAppRaw: String = NavigationApp.apple.rawValue
 
     var body: some View {
         NavigationStack {
@@ -60,6 +67,21 @@ struct ProfileView: View {
                     }
                     LabeledContent("Server", value: APIClient.shared.baseURL)
                 }
+
+                if auth.isCATUser {
+                    Section {
+                        Picker("App di navigazione", selection: $navAppRaw) {
+                            ForEach(NavigationApp.allCases, id: \.rawValue) { app in
+                                Text(app.displayName).tag(app.rawValue)
+                            }
+                        }
+                    } header: {
+                        Text("Navigazione")
+                    } footer: {
+                        Text("L'app scelta si apre quando premi \"Avvia navigazione\" nel navigatore route.")
+                    }
+                }
+
                 Section("Stato realtime") {
                     HStack {
                         Circle()

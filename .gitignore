@@ -93,6 +93,7 @@ ENV/
 # =========================
 node_modules/
 .next/
+tsconfig.tsbuildinfo
 .turbo/
 # Monorepo npm workspaces: only the root package-lock.json is valid.
 # Nested lockfiles inside workspace members cause the npm
