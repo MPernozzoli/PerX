@@ -328,7 +328,7 @@ export async function submitDocumentCollection(
   session: PortalSession,
   data: Record<string, unknown>,
   claimId: string,
-): Promise<{ status: string }> {
+): Promise<{ status: string; document_count?: number; submitted_at?: string }> {
   return portalFetch(
     `${API_BASE}/claims/${encodeURIComponent(claimId)}/documents/collection`,
     {
