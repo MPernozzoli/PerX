@@ -67,7 +67,7 @@ export interface PortalClaimSummary {
   expert: PortalExpert;
   macro_state: PortalMacroState;
   requirements: PortalRequirement[];
-  additional_document_requests: PortalAdditionalDocumentRequest[];
+  additional_document_requests: string[];
   chat_enabled?: boolean;
   requested_amount?: number;
   estimated_damage_amount?: number;
@@ -152,6 +152,7 @@ export interface PortalInspectionCandidateCat {
 
 export interface PortalInspectionSchedulingOverview {
   enabled?: boolean;
+  preparation_items: string[];
   address_confirmed?: boolean;
   instructions?: string;
   pending_confirmation_message?: string;
