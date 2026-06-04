@@ -1,3 +1,5 @@
+"use client";
+
 import { Toaster } from "@perx/ui/components/ui/toaster";
 import { Toaster as Sonner } from "@perx/ui/components/ui/sonner";
 import { TooltipProvider } from "@perx/ui/components/ui/tooltip";
@@ -6,16 +8,16 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { AuthModalProvider } from "./contexts/AuthModalContext";
 import { AuthModal } from "./components/AuthModal";
-import { HomePage } from "./pages/HomePage";
-import { PolicyDetail } from "./pages/PolicyDetail";
-import { AddPolicy } from "./pages/AddPolicy";
-import { Profile } from "./pages/Profile";
-import { Settings } from "./pages/Settings";
-import { StudioSettings } from "./pages/StudioSettings";
-import { Studios } from "./pages/Studios";
-import { StudioDetail } from "./pages/StudioDetail";
-import { Admin } from "./pages/Admin";
-import NotFound from "./pages/NotFound";
+import { HomePage } from "./screens/HomePage";
+import { PolicyDetail } from "./screens/PolicyDetail";
+import { AddPolicy } from "./screens/AddPolicy";
+import { Profile } from "./screens/Profile";
+import { Settings } from "./screens/Settings";
+import { StudioSettings } from "./screens/StudioSettings";
+import { Studios } from "./screens/Studios";
+import { StudioDetail } from "./screens/StudioDetail";
+import { Admin } from "./screens/Admin";
+import NotFound from "./screens/NotFound";
 import { Loader2 } from "lucide-react";
 
 const queryClient = new QueryClient();

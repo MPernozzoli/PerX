@@ -15,7 +15,7 @@ import {
   CheckCircle2,
   Search
 } from 'lucide-react';
-import type { InterventionMode, CAT, CATAssignment } from '@/pages/GISEditor';
+import type { InterventionMode, CAT, CATAssignment } from '@/screens/GISEditor';
 
 interface GISInspectorProps {
   cats: CAT[];

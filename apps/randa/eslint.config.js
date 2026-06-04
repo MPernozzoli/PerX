@@ -1,3 +1,8 @@
 import reactViteConfig from "@perx/eslint-config/react-vite";
 
-export default reactViteConfig;
+export default [
+  {
+    ignores: [".next/**", "dist/**"],
+  },
+  ...reactViteConfig,
+];

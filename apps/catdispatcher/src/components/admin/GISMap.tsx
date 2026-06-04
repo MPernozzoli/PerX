@@ -3,7 +3,7 @@ import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
-import type { InterventionMode, CAT, CATAssignment, PendingChange } from '@/pages/GISEditor';
+import type { InterventionMode, CAT, CATAssignment, PendingChange } from '@/screens/GISEditor';
 
 interface BoundaryGeom {
   name: string;

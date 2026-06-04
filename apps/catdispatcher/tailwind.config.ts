@@ -2,7 +2,7 @@ import type { Config } from "tailwindcss";
 import baseConfig from "@perx/tailwind-config";
 
 export default {
-  presets: [baseConfig],
+  presets: [baseConfig as unknown as Config],
   content: [
     "./pages/**/*.{ts,tsx}",
     "./components/**/*.{ts,tsx}",

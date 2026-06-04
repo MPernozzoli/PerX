@@ -91,7 +91,7 @@ Le funzionalità di CAT Dispatcher possono evolvere nel tempo, ma il sistema ruo
 
 ## API PerX
 
-CatDispatcher è integrato nella repo PerX come frontend separato, ma usa il backend PerX e lo stesso database Supabase. Il frontend configura `VITE_PERX_API_BASE_URL` e chiama solo endpoint `/api/v1/cat-dispatcher/*`.
+CatDispatcher è integrato nella repo PerX come frontend separato, ma usa il backend PerX e lo stesso database Supabase. Il frontend configura `NEXT_PUBLIC_PERX_API_BASE_URL` e chiama solo endpoint `/api/v1/cat-dispatcher/*`.
 
 Endpoint principali:
 
@@ -197,7 +197,7 @@ L’architettura di CAT Dispatcher è orientata a privilegiare:
 
 L’applicazione è attualmente sviluppata come **frontend web** basato su:
 
-- **Vite** come tool di build (`vite`, `vite preview`);
+- **Next.js App Router** come runtime e tool di build (`next dev`, `next build`);
 - **React 18** + **TypeScript**;
 - **React Router** per la navigazione interna;
 - **Tailwind CSS** (con preset `tailwindcss-animate`, tipografia, utility) e componentistica **shadcn/UI** basata su **Radix UI**;

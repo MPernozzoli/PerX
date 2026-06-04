@@ -17,7 +17,7 @@ type Status =
   | "available"
   | "error";
 
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
+function urlBase64ToArrayBuffer(base64String: string): ArrayBuffer {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
   const rawData = atob(base64);
@@ -25,7 +25,7 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   for (let i = 0; i < rawData.length; i += 1) {
     output[i] = rawData.charCodeAt(i);
   }
-  return output;
+  return output.buffer.slice(output.byteOffset, output.byteOffset + output.byteLength) as ArrayBuffer;
 }
 
 async function readExistingSubscription(): Promise<PushSubscription | null> {
@@ -90,7 +90,7 @@ export function PushPrompt() {
       const registration = await navigator.serviceWorker.ready;
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(publicKey)
+        applicationServerKey: urlBase64ToArrayBuffer(publicKey)
       });
 
       const json = subscription.toJSON();
