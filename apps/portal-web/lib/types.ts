@@ -38,15 +38,36 @@ export interface PortalRequirement {
   description: string;
 }
 
+export interface PortalActFlow {
+  label: string;
+  provider?: string;
+  signed_at?: string;
+  countersigned_at?: string;
+  signing_url?: string;
+  countersigned_document_id?: string;
+}
+
+export interface PortalAdditionalDocumentRequest {
+  id?: string;
+  label?: string;
+  description?: string;
+  category?: string;
+  [key: string]: unknown;
+}
+
 export interface PortalClaimSummary {
   claim_id: string;
   reference?: string;
+  external_ref?: string;
+  numero_sinistro?: string;
   compagnia?: string;
   nome_assicurato?: string;
+  contraente_name?: string;
   data_sinistro?: string;
   expert: PortalExpert;
   macro_state: PortalMacroState;
   requirements: PortalRequirement[];
+  additional_document_requests: PortalAdditionalDocumentRequest[];
   chat_enabled?: boolean;
   requested_amount?: number;
   estimated_damage_amount?: number;
@@ -59,8 +80,11 @@ export interface PortalClaimSummary {
   inspection_mode?: "fieldwork" | "desktop" | "video";
   inspection_status?: string;
   inspection_scheduled_at?: string;
+  inspection_scheduling_enabled?: boolean;
   act_status?: string;
+  act_sent_at?: string;
   act_signed_at?: string;
+  act_flow?: PortalActFlow;
 }
 
 export interface PortalTimelineEvent {
@@ -73,6 +97,7 @@ export interface PortalTimelineEvent {
 export interface PortalDocument {
   id: string;
   name: string;
+  file_name: string;
   category?: string;
   uploaded_at?: string;
   url?: string;
