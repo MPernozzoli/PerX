@@ -94,6 +94,10 @@ ENV/
 node_modules/
 .next/
 .turbo/
+# Monorepo npm workspaces: only the root package-lock.json is valid.
+# Nested lockfiles inside workspace members cause the npm
+# "Tracker idealTree already exists" crash on Vercel.
+apps/*/package-lock.json
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

@@ -1,3 +1,4 @@
 {
-  "installCommand": "npm ci --prefix=../.."
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "cd ../.. && npm install"
 }
