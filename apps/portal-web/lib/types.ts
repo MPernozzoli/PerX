@@ -114,18 +114,55 @@ export interface PortalMessage {
   id: string;
   created_at: string;
   body: string;
+  body_text?: string;
+  author_type?: string;
   sender?: string;
   read?: boolean;
 }
 
+export interface PortalInspectionSlot {
+  slot_id?: string;
+  date: string;
+  label: string;
+  start_at?: string;
+  end_at?: string;
+}
+
+export interface PortalInspectionAvailabilityDay {
+  date: string;
+  label: string;
+  slots: PortalInspectionSlot[];
+}
+
+export interface PortalInspectionLocation {
+  confirmed_at?: string;
+  address_line?: string;
+  latitude?: number;
+  longitude?: number;
+  municipality?: string;
+  province?: string;
+  region?: string;
+}
+
+export interface PortalInspectionCandidateCat {
+  id?: string;
+  name?: string;
+  [key: string]: unknown;
+}
+
 export interface PortalInspectionSchedulingOverview {
+  enabled?: boolean;
+  address_confirmed?: boolean;
+  instructions?: string;
+  pending_confirmation_message?: string;
+  route_review_deadline?: string;
+  availability_days: PortalInspectionAvailabilityDay[];
+  selected_slots: PortalInspectionSlot[];
+  candidate_cats: PortalInspectionCandidateCat[];
+  location: PortalInspectionLocation;
   status?: string;
   scheduled_at?: string;
-  address?: string;
   inspector_name?: string;
-  available_slots?: Array<{ slot_id: string; datetime: string; label?: string }>;
-  preferred_slots?: Array<{ date: string; label: string; startTime: string; endTime: string }>;
-  notes?: string;
 }
 
 export interface PortalBankAccountSubmission {
@@ -176,6 +213,7 @@ export interface PortalMeSessionInfo {
   created_at: string;
   last_seen_at?: string;
   user_agent?: string;
+  device_label?: string;
   ip_address?: string;
   is_current?: boolean;
 }
