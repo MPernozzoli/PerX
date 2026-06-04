@@ -1,3 +1,4 @@
 {
-  "installCommand": "npm ci --prefix=../.."
+  "installCommand": "npm ci --prefix=../..",
+  "buildCommand": "cd ../.. && npx turbo run build --filter=@perx/randa"
 }
