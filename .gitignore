@@ -74,6 +74,8 @@ lib64/
 !catdispatcher/src/lib/**
 !portal-web/lib/
 !portal-web/lib/**
+!apps/portal-web/lib/
+!apps/portal-web/lib/**
 !apps/*/src/lib/
 !apps/*/src/lib/**
 !packages/ui/src/lib/
