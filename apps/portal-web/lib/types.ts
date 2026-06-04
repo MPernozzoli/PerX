@@ -99,6 +99,7 @@ export interface PortalDocument {
   name: string;
   file_name: string;
   category?: string;
+  status?: string;
   uploaded_at?: string;
   url?: string;
   required?: boolean;
