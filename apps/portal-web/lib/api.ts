@@ -343,7 +343,7 @@ export async function submitAdditionalDocuments(
   session: PortalSession,
   params: { note?: string; documentIds: string[]; requestedItems: string[] },
   claimId: string,
-): Promise<{ status: string }> {
+): Promise<{ status: string; document_count?: number; submitted_at?: string }> {
   return portalFetch(
     `${API_BASE}/claims/${encodeURIComponent(claimId)}/documents/additional`,
     {
