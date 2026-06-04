@@ -167,12 +167,20 @@ export interface PortalInspectionSchedulingOverview {
   inspector_name?: string;
 }
 
+export interface PortalBankAccountValidation {
+  is_valid: boolean;
+  normalized_iban: string;
+  abi?: string;
+  cab?: string;
+}
+
 export interface PortalBankAccountSubmission {
   iban: string;
   status: string;
   submitted_at?: string;
   verified_at?: string;
   masked_iban?: string;
+  validation: PortalBankAccountValidation;
 }
 
 export interface PortalMeDeletionRequest {
