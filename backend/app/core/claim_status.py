@@ -84,6 +84,9 @@ VALID_TRANSITIONS: dict[str, set[str]] = {
     },
     ClaimStatus.VIDEOPERIZIA.value: {
         ClaimStatus.DA_GESTIRE_VIDEO.value,
+        # Outcome alternatives when perizia ends without enough evidence:
+        ClaimStatus.VIDEOPERIZIA.value,   # reschedule → restart da_fissare flow
+        ClaimStatus.SOPRALLUOGO.value,    # escalate → physical inspection with CAT
     },
     ClaimStatus.DA_GESTIRE_VIDEO.value: {
         ClaimStatus.IN_GESTIONE.value,

@@ -4,7 +4,7 @@ Pydantic schemas for the videoperizia (video-inspection) live-call API.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -20,6 +20,7 @@ class VideoperiziaSessionResponse(BaseModel):
     started_at: Optional[datetime] = None
     ended_at: Optional[datetime] = None
     perito_user_id: Optional[str] = None
+    insured_disconnected_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
@@ -35,6 +36,33 @@ class VideoperiziaLobbyJoinRequest(BaseModel):
 
 class VideoperiziaSessionEndRequest(BaseModel):
     reason: Optional[str] = None
+
+
+class VideoperiziaEndResponse(BaseModel):
+    """
+    Returned by POST /session/{sid}/end.
+
+    When `needs_outcome_confirmation` is True the expert app must present the
+    outcome dialog (< 3 frames captured). The claim has NOT been transitioned
+    yet — the client must call POST /session/{sid}/outcome to complete the flow.
+
+    When False the claim has already been moved to DA_GESTIRE_VIDEO automatically.
+    """
+    session: VideoperiziaSessionResponse
+    needs_outcome_confirmation: bool
+    frame_count: int
+
+
+# Possible decisions the expert makes after a low-evidence inspection:
+#   confirmed          → claim → DA_GESTIRE_VIDEO (standard handoff)
+#   reschedule_video   → claim stays VIDEOPERIZIA, resets to da_fissare so the
+#                        insured receives a new scheduling notification
+#   escalate_sopralluogo → claim → SOPRALLUOGO da_fissare (physical CAT inspection)
+VideoperiziaOutcomeChoice = Literal["confirmed", "reschedule_video", "escalate_sopralluogo"]
+
+
+class VideoperiziaOutcomeRequest(BaseModel):
+    outcome: VideoperiziaOutcomeChoice
 
 
 class VideoperiziaTokenResponse(BaseModel):

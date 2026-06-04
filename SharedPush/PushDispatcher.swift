@@ -151,8 +151,12 @@ extension PushDispatcher: PKPushRegistryDelegate {
     nonisolated public func pushRegistry(_ registry: PKPushRegistry, didUpdate pushCredentials: PKPushCredentials, for type: PKPushType) {
         guard type == .voIP else { return }
         let hex = pushCredentials.token.map { String(format: "%02x", $0) }.joined()
-        logger.info("VoIP push token updated: \(hex.prefix(8))…")
-        Task { @MainActor in await self.send(hex, type: "voip") }
+        // Log token + bundle so we can cross-check against the APNs topic used by the backend.
+        // bundle_id stored in DB must match the bundle ID this token was generated for.
+        Task { @MainActor in
+            logger.info("VoIP token: \(hex.prefix(8))… bundle=\(self.bundleId ?? "nil") env=\(self.environment)")
+            await self.send(hex, type: "voip")
+        }
     }
 
     nonisolated public func pushRegistry(_ registry: PKPushRegistry, didInvalidatePushTokenFor type: PKPushType) {

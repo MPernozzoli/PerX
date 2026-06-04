@@ -16,10 +16,12 @@ from app.core.database import get_db
 from app.core.security import get_current_active_user
 from app.models.user import User
 from app.schemas.videoperizia import (
+    VideoperiziaEndResponse,
     VideoperiziaLocationPingListResponse,
     VideoperiziaLocationPingResponse,
     VideoperiziaMediaListResponse,
     VideoperiziaMediaResponse,
+    VideoperiziaOutcomeRequest,
     VideoperiziaSessionCreateResponse,
     VideoperiziaSessionEndRequest,
     VideoperiziaSessionResponse,
@@ -80,7 +82,7 @@ async def start_session(
 
 @router.post(
     "/claims/{claim_id}/videoperizia/session/{session_id}/end",
-    response_model=VideoperiziaSessionResponse,
+    response_model=VideoperiziaEndResponse,
 )
 async def end_session(
     claim_id: str,
@@ -88,12 +90,47 @@ async def end_session(
     payload: VideoperiziaSessionEndRequest = VideoperiziaSessionEndRequest(),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
-) -> VideoperiziaSessionResponse:
+) -> VideoperiziaEndResponse:
     try:
-        session = await VideoperiziaSessionService.end(
+        session, needs_confirmation, frame_count = await VideoperiziaSessionService.end(
             db, _tenant_id(current_user), claim_id, session_id,
             ended_by_user_id=current_user.id,
             reason=payload.reason,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    return VideoperiziaEndResponse(
+        session=VideoperiziaSessionResponse.model_validate(session),
+        needs_outcome_confirmation=needs_confirmation,
+        frame_count=frame_count,
+    )
+
+
+@router.post(
+    "/claims/{claim_id}/videoperizia/session/{session_id}/outcome",
+    response_model=VideoperiziaSessionResponse,
+)
+async def submit_outcome(
+    claim_id: str,
+    session_id: str,
+    payload: VideoperiziaOutcomeRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> VideoperiziaSessionResponse:
+    """
+    Submit the expert's manual outcome for a low-evidence session.
+
+    Called only when end_session returned needs_outcome_confirmation=True.
+    Allowed outcomes:
+      - confirmed            → claim → DA_GESTIRE_VIDEO
+      - reschedule_video     → claim stays VIDEOPERIZIA, resets to da_fissare
+      - escalate_sopralluogo → claim → SOPRALLUOGO da_fissare
+    """
+    try:
+        session = await VideoperiziaSessionService.submit_outcome(
+            db, _tenant_id(current_user), claim_id, session_id,
+            outcome=payload.outcome,
+            user_id=current_user.id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))

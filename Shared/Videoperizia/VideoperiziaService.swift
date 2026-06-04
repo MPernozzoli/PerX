@@ -67,12 +67,27 @@ final class VideoperiziaService {
             .videoperiziaPostEmpty("/api/v1/claims/\(claimId)/videoperizia/session/\(sessionId)/start")
     }
 
-    /// Perito preme "Termina". Backend chiude sessione e transiziona il claim
-    /// a DA_GESTIRE_VIDEO.
-    func end(claimId: String, sessionId: String, reason: String? = nil) async throws -> VideoperiziaSessionDTO {
+    /// Perito preme "Termina". Chiude la sessione LiveKit e restituisce la
+    /// risposta completa con `needs_outcome_confirmation` e `frame_count`.
+    /// Se `needs_outcome_confirmation == true` il caller deve presentare il
+    /// dialog di scelta e poi chiamare `submitOutcome()`.
+    func end(claimId: String, sessionId: String, reason: String? = nil) async throws -> VideoperiziaEndResponseDTO {
         return try await requireTransport().videoperiziaPost(
             "/api/v1/claims/\(claimId)/videoperizia/session/\(sessionId)/end",
             body: VideoperiziaSessionEndRequestDTO(reason: reason)
+        )
+    }
+
+    /// Invia la scelta manuale del perito dopo una sessione con poche prove.
+    /// Chiamato solo quando `end()` ha restituito `needs_outcome_confirmation = true`.
+    func submitOutcome(
+        claimId: String,
+        sessionId: String,
+        outcome: VideoperiziaOutcome
+    ) async throws -> VideoperiziaSessionDTO {
+        return try await requireTransport().videoperiziaPost(
+            "/api/v1/claims/\(claimId)/videoperizia/session/\(sessionId)/outcome",
+            body: VideoperiziaOutcomeRequestDTO(outcome: outcome.rawValue)
         )
     }
 

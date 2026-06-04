@@ -29,6 +29,10 @@ struct VideoperiziaCallView: View {
     @State private var errorMessage: String?
     @State private var isStarting = false
     @State private var isEnding = false
+    /// True while waiting for the user to pick an outcome (low-evidence case).
+    @State private var pendingOutcome = false
+    @State private var showOutcomeSheet = false
+    @State private var isSubmittingOutcome = false
 
     @Environment(\.dismiss) private var dismiss
 
@@ -56,6 +60,22 @@ struct VideoperiziaCallView: View {
                 if newValue == .lobby || newValue == .live {
                     startPolling()
                 }
+            }
+            .confirmationDialog(
+                "Come vuoi procedere?",
+                isPresented: $showOutcomeSheet,
+                titleVisibility: .visible
+            ) {
+                ForEach(VideoperiziaOutcome.allCases, id: \.self) { choice in
+                    Button(choice.label, role: choice == .escalateSopralluogo ? .destructive : nil) {
+                        Task { await submitOutcome(choice) }
+                    }
+                }
+                Button("Annulla", role: .cancel) {
+                    // Leave pendingOutcome=true: sheet can be reopened via button.
+                }
+            } message: {
+                Text("Sono state scattate meno di 3 foto. Conferma l'esito della videoperizia.")
             }
         }
     }
@@ -117,24 +137,64 @@ struct VideoperiziaCallView: View {
 
     private var liveContent: some View {
         VStack(spacing: 12) {
-            if let token {
+            // Insured-disconnect banner (polled every 3 s from session snapshot).
+            if session?.insuredHasLeft == true {
+                Label("L'assicurato ha lasciato la chiamata", systemImage: "person.crop.circle.badge.xmark")
+                    .font(.footnote)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.orange.opacity(0.85), in: Capsule())
+            }
+
+            if let token, !pendingOutcome {
                 LiveKitRoomStage(token: token, tabModel: tabModel)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if pendingOutcome {
+                // Call is over — waiting for outcome choice.
+                VStack(spacing: 8) {
+                    Image(systemName: "questionmark.circle.fill")
+                        .resizable().scaledToFit().frame(width: 56, height: 56)
+                        .foregroundStyle(.orange)
+                    Text("Videochiamata terminata")
+                        .font(.headline)
+                    Text("Scegli come procedere con il sinistro.")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ProgressView("Preparazione videochiamata…")
             }
+
             HStack(spacing: 12) {
-                Button(role: .destructive) {
-                    Task { await endCall() }
-                } label: {
-                    if isEnding {
-                        ProgressView()
-                    } else {
-                        Label("Termina", systemImage: "phone.down.fill")
+                if pendingOutcome {
+                    // Re-open the outcome sheet if the user dismissed it.
+                    Button {
+                        showOutcomeSheet = true
+                    } label: {
+                        if isSubmittingOutcome {
+                            ProgressView()
+                        } else {
+                            Label("Scegli esito", systemImage: "list.bullet.rectangle")
+                                .frame(maxWidth: .infinity).padding(.vertical, 6)
+                        }
                     }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isSubmittingOutcome)
+                } else {
+                    Button(role: .destructive) {
+                        Task { await endCall() }
+                    } label: {
+                        if isEnding {
+                            ProgressView()
+                        } else {
+                            Label("Termina", systemImage: "phone.down.fill")
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isEnding)
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(isEnding)
             }
         }
     }
@@ -192,13 +252,37 @@ struct VideoperiziaCallView: View {
         isEnding = true
         defer { isEnding = false }
         do {
-            let updated = try await VideoperiziaService.shared.end(
+            let response = try await VideoperiziaService.shared.end(
                 claimId: claimId, sessionId: session.id, reason: nil
             )
-            self.session = updated
+            self.session = response.session
+            if response.needs_outcome_confirmation {
+                // < 3 frame: call is over but claim hasn't moved yet.
+                pendingOutcome = true
+                showOutcomeSheet = true
+                // Stay in .live phase so the live-content block shows the
+                // "scegli esito" UI; phase will flip to .ended after outcome.
+            } else {
+                self.phase = .ended
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func submitOutcome(_ choice: VideoperiziaOutcome) async {
+        guard let session else { return }
+        isSubmittingOutcome = true
+        defer { isSubmittingOutcome = false }
+        do {
+            _ = try await VideoperiziaService.shared.submitOutcome(
+                claimId: claimId, sessionId: session.id, outcome: choice
+            )
+            pendingOutcome = false
             self.phase = .ended
         } catch {
             errorMessage = error.localizedDescription
+            // Leave pendingOutcome=true so the user can retry.
         }
     }
 

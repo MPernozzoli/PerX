@@ -31,6 +31,10 @@ from app.models.videoperizia import (
 from app.services.state_service import StateService
 from app.services.supabase_storage_service import SupabaseStorageService
 
+# Minimum number of frame captures required to auto-complete the inspection.
+# Below this threshold the expert is asked to confirm the outcome explicitly.
+MIN_FRAMES_FOR_AUTO_COMPLETE = 3
+
 
 SESSION_STATES = {"scheduled", "lobby_open", "live", "ended", "aborted"}
 
@@ -216,18 +220,38 @@ class VideoperiziaSessionService:
         *,
         ended_by_user_id: Optional[str],
         reason: Optional[str] = None,
-    ) -> VideoperiziaSession:
+    ) -> tuple[VideoperiziaSession, bool, int]:
         """
-        Expert presses 'Termina'. Closes the session and transitions the parent
-        claim VIDEOPERIZIA → DA_GESTIRE_VIDEO so the standard post-inspection
-        management flow can take over.
+        Expert presses 'Termina'. Always closes the session.
+
+        Returns ``(session, needs_outcome_confirmation, frame_count)``.
+
+        Outcome logic:
+        - frame_count >= MIN_FRAMES_FOR_AUTO_COMPLETE → claim transitions
+          VIDEOPERIZIA → DA_GESTIRE_VIDEO immediately; confirmation = False.
+        - frame_count < MIN_FRAMES_FOR_AUTO_COMPLETE → claim is NOT transitioned
+          yet; the caller must invoke ``submit_outcome()`` after the expert
+          chooses one of the three options in the UI.
         """
         claim = await VideoperiziaSessionService._load_claim(db, tenant_id, claim_id)
         session = await db.get(VideoperiziaSession, session_id)
         if session is None or session.tenant_id != tenant_id or session.claim_id != claim.id:
             raise ValueError("Session not found")
+
+        # Count frame captures for this session.
+        frame_result = await db.execute(
+            select(VideoperiziaMedia).where(
+                VideoperiziaMedia.tenant_id == tenant_id,
+                VideoperiziaMedia.session_id == session_id,
+                VideoperiziaMedia.kind == "frame",
+            )
+        )
+        frame_count = len(frame_result.scalars().all())
+
         if session.state == "ended":
-            return session
+            needs_confirmation = frame_count < MIN_FRAMES_FOR_AUTO_COMPLETE
+            return session, needs_confirmation, frame_count
+
         session.state = "ended"
         session.ended_at = _utcnow()
         db.add(
@@ -239,28 +263,144 @@ class VideoperiziaSessionService:
                 event_time=_utcnow(),
                 actor_user_id=ended_by_user_id,
                 source="api",
-                data_json={"session_id": session.id, "reason": reason},
+                data_json={"session_id": session.id, "reason": reason, "frame_count": frame_count},
             )
         )
-        # Commit the session close before triggering the state transition so
-        # any downstream automation reads a coherent snapshot.
+        # Commit the session close before any claim transition so downstream
+        # reads see a coherent snapshot.
         await db.commit()
-
-        # Reload with the canonical UUID so downstream state transitions and
-        # automations operate on the same identifier they expect.
-        await db.refresh(claim)
-        if claim.stato_corrente == ClaimStatus.VIDEOPERIZIA.value:
-            await StateService.transition_state(
-                db,
-                tenant_id,
-                claim.id,
-                from_state=ClaimStatus.VIDEOPERIZIA.value,
-                to_state=ClaimStatus.DA_GESTIRE_VIDEO.value,
-                user_id=ended_by_user_id,
-                reason=reason or "videoperizia_completed",
-                event_source="automation",
-            )
         await db.refresh(session)
+
+        needs_confirmation = frame_count < MIN_FRAMES_FOR_AUTO_COMPLETE
+        if not needs_confirmation:
+            # Sufficient evidence → auto-complete.
+            await db.refresh(claim)
+            if claim.stato_corrente == ClaimStatus.VIDEOPERIZIA.value:
+                await StateService.transition_state(
+                    db,
+                    tenant_id,
+                    claim.id,
+                    from_state=ClaimStatus.VIDEOPERIZIA.value,
+                    to_state=ClaimStatus.DA_GESTIRE_VIDEO.value,
+                    user_id=ended_by_user_id,
+                    reason=reason or "videoperizia_completed",
+                    event_source="automation",
+                )
+        return session, needs_confirmation, frame_count
+
+    @staticmethod
+    async def submit_outcome(
+        db: AsyncSession,
+        tenant_id: str,
+        claim_id: str,
+        session_id: str,
+        *,
+        outcome: str,
+        user_id: Optional[str],
+    ) -> VideoperiziaSession:
+        """
+        Expert submits a manual outcome after a low-evidence session end.
+
+        ``outcome`` must be one of:
+          - ``"confirmed"``             → claim → DA_GESTIRE_VIDEO (inspection accepted)
+          - ``"reschedule_video"``      → claim stays VIDEOPERIZIA, resets substato to
+                                          da_fissare so the insured gets a new scheduling
+                                          notification
+          - ``"escalate_sopralluogo"`` → claim → SOPRALLUOGO da_fissare (CAT physical
+                                          inspection flow)
+        """
+        allowed_outcomes = ("confirmed", "reschedule_video", "escalate_sopralluogo")
+        if outcome not in allowed_outcomes:
+            raise ValueError(f"Invalid outcome '{outcome}'. Must be one of {allowed_outcomes}")
+
+        claim = await VideoperiziaSessionService._load_claim(db, tenant_id, claim_id)
+        session = await db.get(VideoperiziaSession, session_id)
+        if session is None or session.tenant_id != tenant_id or session.claim_id != claim.id:
+            raise ValueError("Session not found")
+
+        await db.refresh(claim)
+        current_state = claim.stato_corrente
+
+        if outcome == "confirmed":
+            if current_state == ClaimStatus.VIDEOPERIZIA.value:
+                await StateService.transition_state(
+                    db, tenant_id, claim.id,
+                    from_state=ClaimStatus.VIDEOPERIZIA.value,
+                    to_state=ClaimStatus.DA_GESTIRE_VIDEO.value,
+                    user_id=user_id,
+                    reason="videoperizia_outcome_confirmed",
+                    event_source="api",
+                )
+        elif outcome == "reschedule_video":
+            # Reset the VIDEOPERIZIA flow — new da_fissare substato triggers
+            # an insured notification to pick a new slot.
+            await StateService.transition_state(
+                db, tenant_id, claim.id,
+                from_state=current_state,
+                to_state=ClaimStatus.VIDEOPERIZIA.value,
+                user_id=user_id,
+                reason="videoperizia_rescheduled",
+                event_source="api",
+                videoperizia_substato="da_fissare",
+            )
+        elif outcome == "escalate_sopralluogo":
+            await StateService.transition_state(
+                db, tenant_id, claim.id,
+                from_state=current_state,
+                to_state=ClaimStatus.SOPRALLUOGO.value,
+                user_id=user_id,
+                reason="videoperizia_escalated_to_sopralluogo",
+                event_source="api",
+                sopralluogo_substato="da_fissare",
+            )
+
+        db.add(
+            ClaimEvent(
+                id=str(uuid.uuid4()),
+                tenant_id=tenant_id,
+                claim_id=claim.id,
+                event_type="videoperizia_outcome_submitted",
+                event_time=_utcnow(),
+                actor_user_id=user_id,
+                source="api",
+                data_json={"session_id": session_id, "outcome": outcome},
+            )
+        )
+        await db.commit()
+        await db.refresh(session)
+        return session
+
+    @staticmethod
+    async def record_insured_leave(
+        db: AsyncSession,
+        tenant_id: str,
+        claim_id: str,
+    ) -> Optional[VideoperiziaSession]:
+        """
+        Called when the insured navigates away from the portal page (explicit
+        /leave call or LiveKit participant_left webhook). Stamps the timestamp
+        so the expert app poll can surface the "assicurato ha lasciato" badge.
+
+        Does nothing if the session is already ended / no active session.
+        """
+        session = await VideoperiziaSessionService._active_for_claim(db, tenant_id, claim_id)
+        if session is None or session.state in ("ended", "aborted"):
+            return session
+        if session.insured_disconnected_at is None:
+            session.insured_disconnected_at = _utcnow()
+            db.add(
+                ClaimEvent(
+                    id=str(uuid.uuid4()),
+                    tenant_id=tenant_id,
+                    claim_id=session.claim_id,
+                    event_type="videoperizia_insured_left",
+                    event_time=_utcnow(),
+                    source="portal",
+                    data_json={"session_id": session.id},
+                )
+            )
+            await db.commit()
+            await db.refresh(session)
         return session
 
     @staticmethod

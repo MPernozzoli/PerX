@@ -359,6 +359,23 @@ async def mint_insured_videoperizia_token(
     )
 
 
+@router.post("/claim/videoperizia/leave")
+async def leave_videoperizia_session(
+    session: PortalSessionContext = Depends(get_current_portal_session),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Insured signals they are leaving the call (browser unload / explicit button).
+    Stamps `insured_disconnected_at` on the active session so the expert app can
+    surface a disconnect badge via the normal 3-second poll.
+    No-op if there is no active session or the session is already closed.
+    """
+    vp = await VideoperiziaSessionService.record_insured_leave(
+        db, session.tenant_id, session.claim_id,
+    )
+    return {"ok": True, "session_id": vp.id if vp else None}
+
+
 @router.post("/claim/videoperizia/location-ping", response_model=VideoperiziaLocationPingResponse)
 async def publish_videoperizia_location_ping(
     payload: VideoperiziaLocationPingCreate,

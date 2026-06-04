@@ -11,12 +11,15 @@ struct VideoperiziaSessionDTO: Codable, Identifiable {
     let started_at: Date?
     let ended_at: Date?
     let perito_user_id: String?
+    /// Non-nil when the insured has left mid-call (portal /leave or LiveKit event).
+    let insured_disconnected_at: Date?
     let created_at: Date
     let updated_at: Date
 
     var isLive: Bool { state == "live" }
     var isLobbyOpen: Bool { state == "lobby_open" }
     var isClosed: Bool { state == "ended" || state == "aborted" }
+    var insuredHasLeft: Bool { insured_disconnected_at != nil }
 }
 
 struct VideoperiziaSessionCreateResponseDTO: Codable {
@@ -38,6 +41,33 @@ struct VideoperiziaTokenDTO: Codable {
 
 struct VideoperiziaSessionEndRequestDTO: Codable {
     let reason: String?
+}
+
+/// Risposta da POST …/session/{id}/end.
+/// Quando `needs_outcome_confirmation` è true il claim NON è ancora transitato:
+/// il perito deve scegliere un outcome tramite `submitOutcome()`.
+struct VideoperiziaEndResponseDTO: Codable {
+    let session: VideoperiziaSessionDTO
+    let needs_outcome_confirmation: Bool
+    let frame_count: Int
+}
+
+enum VideoperiziaOutcome: String, CaseIterable {
+    case confirmed             = "confirmed"
+    case rescheduleVideo       = "reschedule_video"
+    case escalateSopralluogo   = "escalate_sopralluogo"
+
+    var label: String {
+        switch self {
+        case .confirmed:           return "Sì, perizia completata"
+        case .rescheduleVideo:     return "No, riprogramma videoperizia"
+        case .escalateSopralluogo: return "No, sopralluogo fisico"
+        }
+    }
+}
+
+struct VideoperiziaOutcomeRequestDTO: Codable {
+    let outcome: String
 }
 
 // MARK: - Media

@@ -34,6 +34,12 @@ class VideoperiziaSession(Base):
     started_at = Column(DateTime(timezone=True), nullable=True)
     ended_at = Column(DateTime(timezone=True), nullable=True)
 
+    # Set when the insured explicitly calls /leave (portal) or a LiveKit
+    # participant_left webhook fires for their identity. Null means still present.
+    # Exposed to the expert app via the session polling endpoint so the UI can
+    # show a "l'assicurato ha lasciato la chiamata" badge without extra round-trips.
+    insured_disconnected_at = Column(DateTime(timezone=True), nullable=True)
+
     # Expert that actually conducted the call. Null until /start.
     perito_user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
 
