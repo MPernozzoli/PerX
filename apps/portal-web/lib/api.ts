@@ -162,15 +162,15 @@ export async function listPortalMessages(
 
 export async function createPortalMessage(
   session: PortalSession,
+  params: { bodyText: string },
   claimId: string,
-  body: string,
 ): Promise<PortalMessage> {
   return portalFetch<PortalMessage>(
     `${API_BASE}/claims/${encodeURIComponent(claimId)}/messages`,
     {
       method: "POST",
       headers: authHeaders(session),
-      body: JSON.stringify({ body }),
+      body: JSON.stringify(params),
     },
   );
 }

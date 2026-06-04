@@ -231,4 +231,6 @@ export interface PortalVideoperiziaToken {
   token: string;
   room_name: string;
   server_url?: string;
+  livekit_url?: string;
+  can_publish?: boolean;
 }
