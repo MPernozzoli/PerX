@@ -1,5 +1,5 @@
 import type { Config } from "tailwindcss";
-import baseConfig from "@perx/tailwind-config";
+import baseConfig from "../../packages/tailwind-config/index.ts";
 
 export default {
   presets: [baseConfig as unknown as Config],

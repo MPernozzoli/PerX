@@ -43,13 +43,11 @@ struct PerX_LiteApp: App {
             case "claim_updated":
                 NotificationCenter.default.post(name: .perxRealtimeClaimUpdated, object: nil, userInfo: event.payload)
             case "incoming_call":
-                // SSE path (app in foreground) — also triggers CallKit UI.
+                // SSE path — app is in foreground. Show the custom in-app banner
+                // instead of CallKit (which would show a system modal/fullscreen).
+                // VoIP push (background/locked) is handled separately via CallKit.
                 let payload = IncomingCallPayload.parse(from: event.payload)
-                CallProviderShared.shared.reportIncomingCall(payload) { error in
-                    if let error {
-                        logger.error("CallKit reportIncomingCall (SSE) failed: \(error.localizedDescription)")
-                    }
-                }
+                IncomingCallBannerState.shared.show(payload)
                 NotificationCenter.default.post(name: .perxRealtimeIncomingCall, object: nil, userInfo: event.payload)
             case "chat_message":
                 NotificationCenter.default.post(name: .perxRealtimeChatMessage, object: nil, userInfo: event.payload)

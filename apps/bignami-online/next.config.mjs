@@ -17,4 +17,19 @@ const nextConfig = {
   },
 };
 
-export default nextConfig;
+const packagesDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../packages");
+
+function withPackageAliases(cfg) {
+  const originalWebpack = cfg.webpack;
+  cfg.webpack = (webpackConfig, options) => {
+    webpackConfig.resolve.alias = {
+      ...webpackConfig.resolve.alias,
+      "@perx/ui": path.join(packagesDir, "ui/src"),
+      "@perx/tailwind-config": path.join(packagesDir, "tailwind-config"),
+    };
+    return originalWebpack ? originalWebpack(webpackConfig, options) : webpackConfig;
+  };
+  return cfg;
+}
+
+export default withPackageAliases(nextConfig);

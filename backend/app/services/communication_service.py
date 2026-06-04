@@ -10,7 +10,7 @@ import secrets
 import uuid
 
 logger = logging.getLogger(__name__)
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -158,11 +158,39 @@ class CommunicationService:
         await db.commit()
 
         if destination.destination_type.value in {"internal_user", "internal_extension"}:
+            # Collect callee user IDs before dispatching (used for SSE targeting)
+            from sqlalchemy import select as _select
+            _callee_result = await db.execute(
+                _select(CallParticipant).where(
+                    CallParticipant.session_id == session.id,
+                    CallParticipant.role == "callee",
+                    CallParticipant.user_id.is_not(None),
+                )
+            )
+            callee_user_ids = [p.user_id for p in _callee_result.scalars().all() if p.user_id]
+
             try:
                 from app.services.push_notifier import notify_incoming_call
                 await notify_incoming_call(db, session.id)
             except Exception as e:
                 logger.warning("VoIP push dispatch failed for session %s: %s", session.id, e)
+
+            # SSE: notify callee(s) directly so the app can show the banner in foreground
+            if callee_user_ids:
+                try:
+                    from app.api.v1.routes_realtime import sse_manager
+                    sse_payload = {
+                        "session_id": session.id,
+                        "caller_name": session.display_name or current_user.full_name or "",
+                        "caller_handle": "",
+                        "has_video": session.transport == "livekit",
+                        "claim_id": session.claim_id,
+                    }
+                    await sse_manager.broadcast_to_users(
+                        session.tenant_id, callee_user_ids, "incoming_call", sse_payload
+                    )
+                except Exception as e:
+                    logger.warning("SSE incoming_call dispatch failed for session %s: %s", session.id, e)
 
         return CommunicationStartResponse(
             session_id=session.id,
@@ -185,7 +213,9 @@ class CommunicationService:
             .where(
             CommunicationSession.tenant_id == current_user.tenant_id,
                 CommunicationSession.transport == "livekit",
-                CommunicationSession.state.in_(["pending", "ringing", "active"]),
+                CommunicationSession.state.in_(["pending", "ringing"]),
+                # Discard calls older than 90 s — they timed out without answer
+                CommunicationSession.created_at >= datetime.now(timezone.utc) - timedelta(seconds=90),
                 CallParticipant.user_id == current_user.id,
                 CallParticipant.role == "callee",
             )

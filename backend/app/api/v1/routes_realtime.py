@@ -43,55 +43,87 @@ TOPIC_EVENT_TYPES: dict[str, set[str]] = {
 class SSEConnectionManager:
     """
     In-process singleton SSE connection manager.
-    Manages per-tenant asyncio queues for connected clients.
+    Manages per-tenant and per-user asyncio queues for connected clients.
 
     Usage from other route modules (import at call site to avoid circular imports):
         from app.api.v1.routes_realtime import sse_manager
         await sse_manager.broadcast(tenant_id, "claim_updated", {...})
+        await sse_manager.broadcast_to_users(tenant_id, ["user_id_1"], "incoming_call", {...})
     """
 
     def __init__(self) -> None:
-        # tenant_id → list of asyncio.Queue instances (one per connected client)
+        # tenant_id → list of asyncio.Queue (one per connected client)
         self._connections: dict[str, list[asyncio.Queue]] = defaultdict(list)
+        # user_id → list of asyncio.Queue (same queue objects, also tracked per-user)
+        self._user_connections: dict[str, list[asyncio.Queue]] = defaultdict(list)
 
-    async def connect(self, tenant_id: str, queue: asyncio.Queue) -> None:
+    async def connect(self, tenant_id: str, queue: asyncio.Queue, user_id: str | None = None) -> None:
         self._connections[tenant_id].append(queue)
+        if user_id:
+            self._user_connections[user_id].append(queue)
         logger.debug(
-            "SSE client connected: tenant=%s total=%d",
+            "SSE client connected: tenant=%s user=%s total=%d",
             tenant_id,
+            user_id,
             len(self._connections[tenant_id]),
         )
 
-    async def disconnect(self, tenant_id: str, queue: asyncio.Queue) -> None:
+    async def disconnect(self, tenant_id: str, queue: asyncio.Queue, user_id: str | None = None) -> None:
         try:
             self._connections[tenant_id].remove(queue)
         except ValueError:
             pass
+        if user_id:
+            try:
+                self._user_connections[user_id].remove(queue)
+            except ValueError:
+                pass
         logger.debug(
-            "SSE client disconnected: tenant=%s total=%d",
+            "SSE client disconnected: tenant=%s user=%s total=%d",
             tenant_id,
+            user_id,
             len(self._connections[tenant_id]),
         )
 
     async def broadcast(self, tenant_id: str, event_type: str, payload: dict) -> None:
-        """
-        Broadcast an SSE event to all clients connected under a tenant.
-        Dead queues (full) are silently removed.
-        """
+        """Broadcast an SSE event to all clients connected under a tenant."""
         msg = f"data: {json.dumps({'type': event_type, 'payload': payload})}\n\n"
         dead: list[asyncio.Queue] = []
-
         for q in list(self._connections.get(tenant_id, [])):
             try:
                 q.put_nowait(msg)
             except asyncio.QueueFull:
                 dead.append(q)
-
         for q in dead:
             try:
                 self._connections[tenant_id].remove(q)
             except ValueError:
                 pass
+
+    async def broadcast_to_users(
+        self,
+        tenant_id: str,
+        user_ids: list[str],
+        event_type: str,
+        payload: dict,
+    ) -> None:
+        """
+        Broadcast an SSE event to specific users only (e.g. incoming_call to callee only).
+        Falls back to no-op if none of the target users are connected.
+        """
+        msg = f"data: {json.dumps({'type': event_type, 'payload': payload})}\n\n"
+        for uid in user_ids:
+            dead: list[asyncio.Queue] = []
+            for q in list(self._user_connections.get(uid, [])):
+                try:
+                    q.put_nowait(msg)
+                except asyncio.QueueFull:
+                    dead.append(q)
+            for q in dead:
+                try:
+                    self._user_connections[uid].remove(q)
+                except ValueError:
+                    pass
 
 
 # Module-level singleton exported for use in other route modules
@@ -222,7 +254,7 @@ async def sse_stream(
                 allowed_event_types.update(TOPIC_EVENT_TYPES.get(topic, set()))
 
         queue: asyncio.Queue = asyncio.Queue(maxsize=200)
-        await sse_manager.connect(user.tenant_id, queue)
+        await sse_manager.connect(user.tenant_id, queue, user_id=user.id)
 
         try:
             async for event in _event_generator(user.tenant_id, queue, allowed_event_types):
@@ -231,7 +263,7 @@ async def sse_stream(
                     break
                 yield event
         finally:
-            await sse_manager.disconnect(user.tenant_id, queue)
+            await sse_manager.disconnect(user.tenant_id, queue, user_id=user.id)
 
     return StreamingResponse(
         _stream(),

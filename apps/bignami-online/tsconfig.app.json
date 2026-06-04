@@ -1,5 +1,5 @@
 {
-  "extends": "@perx/tsconfig/vite-app.json",
+  "extends": "../../packages/tsconfig/vite-app.json",
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {

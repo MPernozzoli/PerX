@@ -52,6 +52,24 @@ final class CallListViewModel: ObservableObject {
         }
     }
 
+    func answer(sessionId: String) async {
+        // Remove from incoming list immediately so UI doesn't flicker
+        incoming.removeAll { $0.session_id == sessionId }
+        await CallSessionShared.shared.connect(toSessionId: sessionId)
+        await load()
+    }
+
+    func reject(sessionId: String) async {
+        incoming.removeAll { $0.session_id == sessionId }
+        struct Body: Encodable { let action_type: String }
+        struct Resp: Decodable { let session_id: String? }
+        _ = try? await APIClient.shared.post(
+            "/api/v1/communications/sessions/\(sessionId)/actions",
+            body: Body(action_type: "end")
+        ) as Resp
+        await load()
+    }
+
     func cancelOutbound() async {
         guard let sid = pendingOutboundSessionId else { return }
         pendingOutboundSessionId = nil
@@ -223,9 +241,13 @@ struct CallListView: View {
             sectionHeader("In arrivo", icon: "phone.arrow.down.left.fill", tint: .green)
             VStack(spacing: 0) {
                 ForEach(Array(vm.incoming.enumerated()), id: \.element.id) { idx, call in
-                    IncomingCallRow(call: call)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
+                    IncomingCallRow(
+                        call: call,
+                        onAnswer: { Task { await vm.answer(sessionId: call.session_id) } },
+                        onReject: { Task { await vm.reject(sessionId: call.session_id) } }
+                    )
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
                     if idx < vm.incoming.count - 1 { Divider().padding(.leading, 56) }
                 }
             }
@@ -297,6 +319,8 @@ struct CallListView: View {
 
 private struct IncomingCallRow: View {
     let call: IncomingCallDTO
+    let onAnswer: () -> Void
+    let onReject: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
@@ -312,9 +336,28 @@ private struct IncomingCallRow: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Text(call.created_at, style: .time)
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
+            // Answer / Reject buttons
+            HStack(spacing: 10) {
+                Button(action: onReject) {
+                    Image(systemName: "phone.down.fill")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 36, height: 36)
+                        .background(Color.red, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Rifiuta chiamata")
+
+                Button(action: onAnswer) {
+                    Image(systemName: "phone.fill")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 36, height: 36)
+                        .background(Color.green, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Rispondi")
+            }
         }
     }
 }

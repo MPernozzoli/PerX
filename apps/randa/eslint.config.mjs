@@ -1,4 +1,4 @@
-import reactViteConfig from "@perx/eslint-config/react-vite";
+import reactViteConfig from "../../packages/eslint-config/react-vite.mjs";
 
 export default [
   {

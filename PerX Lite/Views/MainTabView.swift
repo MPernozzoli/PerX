@@ -4,21 +4,28 @@ struct MainTabView: View {
     @EnvironmentObject private var auth: AuthStore
 
     var body: some View {
-        VStack(spacing: 0) {
-            ActiveCallBanner()
-            TabView {
-                CommunicationsView()
-                    .tabItem { Label("Comunicazioni", systemImage: "phone.fill") }
+        ZStack(alignment: .top) {
+            VStack(spacing: 0) {
+                ActiveCallBanner()
+                TabView {
+                    CommunicationsView()
+                        .tabItem { Label("Comunicazioni", systemImage: "phone.fill") }
 
-                CalendarView()
-                    .tabItem { Label("Calendario", systemImage: "calendar") }
+                    CalendarView()
+                        .tabItem { Label("Calendario", systemImage: "calendar") }
 
-                ScheduleView()
-                    .tabItem { Label("Programmazione", systemImage: "clock.fill") }
+                    ScheduleView()
+                        .tabItem { Label("Programmazione", systemImage: "clock.fill") }
 
-                ProfileView()
-                    .tabItem { Label("Profilo", systemImage: "person.crop.circle") }
+                    ProfileView()
+                        .tabItem { Label("Profilo", systemImage: "person.crop.circle") }
+                }
             }
+
+            // Incoming call banner — slides in from top over any tab, never modal
+            IncomingCallBanner()
+                .animation(.spring(response: 0.4, dampingFraction: 0.8), value: IncomingCallBannerState.shared.pendingCall?.sessionId)
+                .zIndex(100)
         }
     }
 }
