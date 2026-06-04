@@ -1,4 +1,5 @@
 import Foundation
+import os.log
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -7,12 +8,18 @@ import PushKit
 #endif
 import UserNotifications
 
+private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "perx", category: "PushDispatcher")
+
 /// Cross-platform dispatcher that:
 ///  * requests permissions
 ///  * registers APNs (all platforms)
 ///  * registers VoIP push via PushKit (iOS/iPadOS only)
 ///  * forwards incoming-call payloads to the platform-specific handler
 ///  * sends tokens to backend via the injected `DevicePushAPI`
+///
+/// `incomingCallHandler` is accessed from both @MainActor callers and the
+/// nonisolated PushKit delegate; it is protected by `handlerLock` so it is safe
+/// to read without an async hop.
 @MainActor
 public final class PushDispatcher: NSObject {
     public static let shared = PushDispatcher()
@@ -31,9 +38,17 @@ public final class PushDispatcher: NSObject {
     public var appIdentifier: String = "perx"
     public var environment: String = "production"
 
+    // nonisolated(unsafe) + handlerLock: the nonisolated PushKit delegate reads
+    // this synchronously; NSLock ensures thread safety without an async hop.
+    private let handlerLock = NSLock()
+    nonisolated(unsafe) private var _incomingCallHandler: ((IncomingCallPayload, @escaping () -> Void) -> Void)?
+
     /// Handler invoked when an incoming-call push arrives. The platform layer
     /// decides whether to drive CallKit or show a custom notification.
-    public var incomingCallHandler: ((IncomingCallPayload, @escaping () -> Void) -> Void)?
+    public var incomingCallHandler: ((IncomingCallPayload, @escaping () -> Void) -> Void)? {
+        get { handlerLock.withLock { _incomingCallHandler } }
+        set { handlerLock.withLock { _incomingCallHandler = newValue } }
+    }
 
     private lazy var store: PushTokenStore = PushTokenStore(appIdentifier: appIdentifier)
 
@@ -51,6 +66,16 @@ public final class PushDispatcher: NSObject {
         self.store = PushTokenStore(appIdentifier: appIdentifier)
     }
 
+    /// Call once on launch (before auth) to set up the PKPushRegistry so that
+    /// cold-launch VoIP pushes can be delivered immediately.
+    public func setupVoIPRegistry() {
+#if canImport(PushKit) && !os(macOS)
+        guard voipRegistry == nil else { return }
+        registerForVoIPPushes()
+#endif
+    }
+
+    /// Call after authentication to register APNs and send VoIP token to backend.
     public func start() {
         Task { await requestAndRegisterAPNs() }
 #if canImport(PushKit) && !os(macOS)
@@ -66,7 +91,7 @@ public final class PushDispatcher: NSObject {
     public func unregisterAll() async {
         for token in store.allTokens() {
             do { try await api?.unregisterDeviceToken(token: token) }
-            catch { print("Device token unregister failed: \(error)") }
+            catch { logger.warning("Device token unregister failed: \(error)") }
         }
         store.clearAll()
     }
@@ -99,17 +124,20 @@ public final class PushDispatcher: NSObject {
                 app: appIdentifier
             )
             store.save(token, type: type)
+            logger.info("Registered \(type) token with backend (platform=\(self.platform))")
         } catch {
-            print("Device token register failed (\(type)): \(error)")
+            logger.error("Device token register failed (\(type)): \(error)")
         }
     }
 
 #if canImport(PushKit) && !os(macOS)
     private func registerForVoIPPushes() {
-        let registry = PKPushRegistry(queue: .main)
+        guard voipRegistry == nil else { return }
+        let registry = PKPushRegistry(queue: DispatchQueue(label: "com.perx.pushkit", qos: .userInteractive))
         registry.delegate = self
         registry.desiredPushTypes = [.voIP]
         self.voipRegistry = registry
+        logger.info("PKPushRegistry created for VoIP pushes")
     }
 #endif
 }
@@ -123,24 +151,31 @@ extension PushDispatcher: PKPushRegistryDelegate {
     nonisolated public func pushRegistry(_ registry: PKPushRegistry, didUpdate pushCredentials: PKPushCredentials, for type: PKPushType) {
         guard type == .voIP else { return }
         let hex = pushCredentials.token.map { String(format: "%02x", $0) }.joined()
+        logger.info("VoIP push token updated: \(hex.prefix(8))…")
         Task { @MainActor in await self.send(hex, type: "voip") }
     }
 
-    nonisolated public func pushRegistry(_ registry: PKPushRegistry, didInvalidatePushTokenFor type: PKPushType) {}
+    nonisolated public func pushRegistry(_ registry: PKPushRegistry, didInvalidatePushTokenFor type: PKPushType) {
+        logger.info("VoIP push token invalidated")
+    }
 
+    /// Apple requires reportNewIncomingCall to be called synchronously (before the
+    /// completion handler is invoked) or iOS will terminate the app. We call the
+    /// handler directly on the PushKit queue — no async @MainActor hop.
     nonisolated public func pushRegistry(
         _ registry: PKPushRegistry,
         didReceiveIncomingPushWith payload: PKPushPayload,
         for type: PKPushType,
         completion: @escaping () -> Void
     ) {
+        logger.info("VoIP push received, type=\(type.rawValue)")
         let call = IncomingCallPayload.parse(from: payload.dictionaryPayload)
-        Task { @MainActor in
-            if let handler = self.incomingCallHandler {
-                handler(call, completion)
-            } else {
-                completion()
-            }
+        // Read handler without async hop — protected by handlerLock.
+        if let handler = handlerLock.withLock({ _incomingCallHandler }) {
+            handler(call, completion)
+        } else {
+            logger.warning("No incomingCallHandler set — reporting to CallKit skipped")
+            completion()
         }
     }
 }

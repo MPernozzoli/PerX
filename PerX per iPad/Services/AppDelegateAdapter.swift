@@ -5,14 +5,6 @@ final class AppDelegateAdapter: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil
     ) -> Bool {
-        // Set up PKPushRegistry immediately so that cold-launch VoIP pushes
-        // (app was killed) are delivered before authentication completes.
-        // configure() is called in PerX_LiteApp.init() which runs before
-        // PushKit delivers the pending push, but we also call setupVoIPRegistry()
-        // here as a safety net for any timing edge cases.
-        MainActor.assumeIsolated {
-            PushDispatcher.shared.setupVoIPRegistry()
-        }
         return true
     }
 

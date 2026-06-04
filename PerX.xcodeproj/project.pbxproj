@@ -1012,7 +1012,9 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
 				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads = YES;
 				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoadsInLocalNetwork = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "PerX usa la fotocamera durante la videoperizia per condividere il video con l'assicurato.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "PerX usa il microfono durante le chiamate e la videoperizia per la conversazione con l'assicurato.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -1072,7 +1074,9 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
 				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads = YES;
 				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoadsInLocalNetwork = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "PerX usa la fotocamera durante la videoperizia per condividere il video con l'assicurato.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "PerX usa il microfono durante le chiamate e la videoperizia per la conversazione con l'assicurato.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",

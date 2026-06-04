@@ -1,0 +1,14 @@
+{
+  "extends": "@perx/tsconfig/vite-app.json",
+  "compilerOptions": {
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@perx/ui/components/ui/*": ["../../packages/ui/src/components/ui/*"],
+      "@perx/ui/lib/utils": ["../../packages/ui/src/lib/utils.ts"],
+      "@perx/tailwind-config": ["../../packages/tailwind-config/index.ts"]
+    }
+  },
+  "include": ["src", "../../packages/ui/src"]
+}

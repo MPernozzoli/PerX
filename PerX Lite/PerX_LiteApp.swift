@@ -1,4 +1,7 @@
 import SwiftUI
+import os.log
+
+private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "perx", category: "App")
 
 @main
 struct PerX_LiteApp: App {
@@ -6,22 +9,24 @@ struct PerX_LiteApp: App {
     @StateObject private var auth = AuthStore()
 
     init() {
-        RealtimeService.shared.onEvent = { event in
-            switch event.type {
-            case "task_updated":
-                NotificationCenter.default.post(name: .perxRealtimeTaskUpdated, object: nil, userInfo: event.payload)
-            case "claim_updated":
-                NotificationCenter.default.post(name: .perxRealtimeClaimUpdated, object: nil, userInfo: event.payload)
-            case "incoming_call":
-                // Trigger the CallKit UI via CallProvider, then also reload the list
-                let payload = IncomingCallPayload.parse(from: event.payload)
-                CallProviderShared.shared.reportIncomingCall(payload) { _ in }
-                NotificationCenter.default.post(name: .perxRealtimeIncomingCall, object: nil, userInfo: event.payload)
-            case "chat_message":
-                NotificationCenter.default.post(name: .perxRealtimeChatMessage, object: nil, userInfo: event.payload)
-            default:
-                break
+        // Wire up CallKit handler BEFORE configure() so it is available
+        // when the PKPushRegistry (created in AppDelegateAdapter) delivers
+        // a pending cold-launch VoIP push.
+        CallSessionShared.shared.api = LitePushAPI.shared
+        PushDispatcher.shared.incomingCallHandler = { payload, completion in
+            // Called on PushKit's serial queue — CallProviderShared is thread-safe.
+            CallProviderShared.shared.reportIncomingCall(payload) { error in
+                if let error {
+                    logger.error("CallKit reportIncomingCall failed: \(error.localizedDescription)")
+                }
+                completion()
             }
+        }
+        CallProviderShared.shared.onAnswer = { sessionId in
+            await CallSessionShared.shared.connect(toSessionId: sessionId)
+        }
+        CallProviderShared.shared.onEnd = { _ in
+            await CallSessionShared.shared.endActive()
         }
 
         PushDispatcher.shared.configure(
@@ -30,15 +35,27 @@ struct PerX_LiteApp: App {
             appIdentifier: "perx_lite",
             environment: "production"
         )
-        CallSessionShared.shared.api = LitePushAPI.shared
-        PushDispatcher.shared.incomingCallHandler = { payload, completion in
-            CallProviderShared.shared.reportIncomingCall(payload) { _ in completion() }
-        }
-        CallProviderShared.shared.onAnswer = { sessionId in
-            await CallSessionShared.shared.connect(toSessionId: sessionId)
-        }
-        CallProviderShared.shared.onEnd = { _ in
-            await CallSessionShared.shared.endActive()
+
+        RealtimeService.shared.onEvent = { event in
+            switch event.type {
+            case "task_updated":
+                NotificationCenter.default.post(name: .perxRealtimeTaskUpdated, object: nil, userInfo: event.payload)
+            case "claim_updated":
+                NotificationCenter.default.post(name: .perxRealtimeClaimUpdated, object: nil, userInfo: event.payload)
+            case "incoming_call":
+                // SSE path (app in foreground) — also triggers CallKit UI.
+                let payload = IncomingCallPayload.parse(from: event.payload)
+                CallProviderShared.shared.reportIncomingCall(payload) { error in
+                    if let error {
+                        logger.error("CallKit reportIncomingCall (SSE) failed: \(error.localizedDescription)")
+                    }
+                }
+                NotificationCenter.default.post(name: .perxRealtimeIncomingCall, object: nil, userInfo: event.payload)
+            case "chat_message":
+                NotificationCenter.default.post(name: .perxRealtimeChatMessage, object: nil, userInfo: event.payload)
+            default:
+                break
+            }
         }
     }
 

@@ -69,6 +69,7 @@ async def notify_incoming_call(db: AsyncSession, session_id: str) -> int:
 
     display_name = session.display_name or "Chiamata in arrivo"
     caller_handle = call.from_value if call else ""
+    env_label = "sandbox" if settings.APNS_USE_SANDBOX else "production"
     sent = 0
     for tok in tokens:
         payload = {
@@ -86,8 +87,9 @@ async def notify_incoming_call(db: AsyncSession, session_id: str) -> int:
         )
         if ok:
             sent += 1
+            logger.info("VoIP push sent: token=%s… env=%s session=%s", tok.token[:8], env_label, session_id)
         else:
-            logger.info("VoIP push failed for token=%s…", tok.token[:8])
+            logger.warning("VoIP push failed: token=%s… env=%s session=%s", tok.token[:8], env_label, session_id)
     return sent
 
 

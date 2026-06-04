@@ -2,24 +2,29 @@
 import Foundation
 import CallKit
 import AVFAudio
+import os.log
 #if canImport(UIKit)
 import UIKit
 #endif
 
+private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "perx", category: "CallKit")
+
 /// iOS/iPadOS only. Bridges VoIP pushes to the native CallKit UI.
 /// Mac uses `MacCallNotifier` instead.
-@MainActor
+///
+/// NOT @MainActor — CXProvider is thread-safe and PushKit callbacks arrive on
+/// background queues. `activeSessions` is protected by `sessionsLock`.
 public final class CallProviderShared: NSObject {
     public static let shared = CallProviderShared()
 
     private let provider: CXProvider
     private let callController = CXCallController()
+    private let sessionsLock = NSLock()
     private var activeSessions: [UUID: String] = [:]
 
-    /// Called when the user answers from CallKit. Receiver should connect LiveKit
-    /// and call `markActive` if needed.
+    /// Called when the user answers from CallKit. Invoked on @MainActor.
     public var onAnswer: ((String) async -> Void)?
-    /// Called when the user hangs up from CallKit.
+    /// Called when the user hangs up from CallKit. Invoked on @MainActor.
     public var onEnd: ((String) async -> Void)?
 
     private override init() {
@@ -36,12 +41,16 @@ public final class CallProviderShared: NSObject {
 #endif
         self.provider = CXProvider(configuration: config)
         super.init()
+        // nil queue → CXProvider uses its own internal serial queue
         provider.setDelegate(self, queue: nil)
     }
 
+    /// Thread-safe. Safe to call directly from PushKit delegate (background queue).
     public func reportIncomingCall(_ payload: IncomingCallPayload, completion: @escaping (Error?) -> Void) {
         let uuid = UUID()
+        sessionsLock.lock()
         activeSessions[uuid] = payload.sessionId
+        sessionsLock.unlock()
 
         let update = CXCallUpdate()
         update.remoteHandle = CXHandle(
@@ -56,13 +65,21 @@ public final class CallProviderShared: NSObject {
         update.supportsUngrouping = false
 
         provider.reportNewIncomingCall(with: uuid, update: update) { [weak self] error in
-            if error != nil { self?.activeSessions.removeValue(forKey: uuid) }
+            if let error {
+                logger.error("reportNewIncomingCall failed: \(error.localizedDescription)")
+                self?.sessionsLock.withLock { self?.activeSessions.removeValue(forKey: uuid) }
+            } else {
+                logger.info("CallKit incoming call reported, uuid=\(uuid), session=\(payload.sessionId)")
+            }
             completion(error)
         }
     }
 
     public func endActive() {
-        for uuid in activeSessions.keys {
+        sessionsLock.lock()
+        let keys = Array(activeSessions.keys)
+        sessionsLock.unlock()
+        for uuid in keys {
             let transaction = CXTransaction(action: CXEndCallAction(call: uuid))
             callController.request(transaction) { _ in }
         }
@@ -70,31 +87,28 @@ public final class CallProviderShared: NSObject {
 }
 
 extension CallProviderShared: CXProviderDelegate {
-    nonisolated public func providerDidReset(_ provider: CXProvider) {
-        Task { @MainActor in self.activeSessions.removeAll() }
+    public func providerDidReset(_ provider: CXProvider) {
+        sessionsLock.withLock { activeSessions.removeAll() }
     }
 
-    nonisolated public func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
-        Task { @MainActor in
-            if let sid = self.activeSessions[action.callUUID], let cb = self.onAnswer {
-                await cb(sid)
-            }
-            action.fulfill()
-        }
+    public func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
+        let sid: String? = sessionsLock.withLock { activeSessions[action.callUUID] }
+        action.fulfill()
+        guard let sid else { return }
+        Task { @MainActor in await self.onAnswer?(sid) }
     }
 
-    nonisolated public func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
-        Task { @MainActor in
-            let sid = self.activeSessions.removeValue(forKey: action.callUUID)
-            if let sid = sid, let cb = self.onEnd { await cb(sid) }
-            action.fulfill()
-        }
+    public func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
+        let sid: String? = sessionsLock.withLock { activeSessions.removeValue(forKey: action.callUUID) }
+        action.fulfill()
+        guard let sid else { return }
+        Task { @MainActor in await self.onEnd?(sid) }
     }
 
-    nonisolated public func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
+    public func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
         // LiveKit consumes the active AVAudioSession automatically.
     }
 
-    nonisolated public func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {}
+    public func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {}
 }
 #endif

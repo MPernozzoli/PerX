@@ -122,6 +122,10 @@ class APNsService:
                 )
             else:
                 topic = settings.APNS_BUNDLE_ID
+        # VoIP push requires "<bundle>.voip" topic — clients register their
+        # plain app bundle id, so append the suffix here if it's missing.
+        if topic and push_type == "voip" and not topic.endswith(".voip"):
+            topic = f"{topic}.voip"
         if not topic:
             logger.warning("APNs send skipped: no bundle id (push_type=%s)", push_type)
             return False
@@ -147,13 +151,16 @@ class APNsService:
             return False
 
         if 200 <= response.status_code < 300:
+            logger.info("APNs send ok: push_type=%s topic=%s token=%s…", push_type, topic, device_token[:8])
             return True
 
         # 410 → token invalid, caller should remove it
         body = response.text[:500] if response.content else ""
         logger.warning(
-            "APNs send failed: status=%d token=%s… body=%s",
+            "APNs send failed: status=%d push_type=%s topic=%s token=%s… body=%s",
             response.status_code,
+            push_type,
+            topic,
             device_token[:8],
             body,
         )

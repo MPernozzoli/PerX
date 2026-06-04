@@ -145,6 +145,8 @@ async def start_communication(
     # current user's tenant rather than rejecting as cross-tenant.
     if payload.destination.tenant_id in (None, "", "default"):
         payload.destination.tenant_id = current_user.tenant_id
+    if not payload.destination.display_name:
+        payload.destination.display_name = payload.destination.raw_value
     if payload.destination.tenant_id != current_user.tenant_id:
         # TODO(inter-tenant): future LiveKit federation must require explicit grants,
         # tenant-separated audit, and no implicit user discovery.

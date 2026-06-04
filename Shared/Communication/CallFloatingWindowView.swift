@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftUI
 import AVFoundation
 #if canImport(LiveKit)
@@ -365,3 +366,4 @@ final class CallFloatingViewModel: ObservableObject {
         #endif
     }
 }
+#endif

@@ -7,9 +7,12 @@
 
 import SwiftUI
 import CoreData
+import Combine
+import UserNotifications
 
 @main
 struct PerX_iPadApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegateAdapter.self) var appDelegate
     @StateObject private var sessionCoordinator = SessionCoordinator.shared
 
     init() {
@@ -17,7 +20,26 @@ struct PerX_iPadApp: App {
         VideoperiziaService.configure(transport: HubAPIClient.shared)
         CommunicationStartService.configure(transport: HubAPIClient.shared)
         CommunicationNotificationService.shared.registerNotificationCategories()
-        IncomingCallPoller.shared.start()
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
+
+        // CallKit + PushKit: VoIP push + UI di chiamata nativa iPadOS.
+        let pushAPI = IPadPushAPI(hub: HubAPIClient.shared)
+        PushDispatcher.shared.configure(
+            api: pushAPI,
+            bundleId: Bundle.main.bundleIdentifier,
+            appIdentifier: "perx_ipad",
+            environment: "production"
+        )
+        CallSessionShared.shared.api = pushAPI
+        PushDispatcher.shared.incomingCallHandler = { payload, completion in
+            CallProviderShared.shared.reportIncomingCall(payload) { _ in completion() }
+        }
+        CallProviderShared.shared.onAnswer = { sessionId in
+            await CallSessionShared.shared.connect(toSessionId: sessionId)
+        }
+        CallProviderShared.shared.onEnd = { _ in
+            await CallSessionShared.shared.endActive()
+        }
     }
 
     var body: some Scene {
@@ -32,7 +54,10 @@ struct PerX_iPadApp: App {
 
 struct RootView: View {
     @EnvironmentObject var session: SessionCoordinator
-    
+    @State private var incomingCall: CommunicationIncomingCallItem?
+    @State private var showIncomingCallAlert = false
+    @State private var activeIncomingToken: CommunicationLiveKitToken?
+
     var body: some View {
         Group {
             if session.isAuthenticated {
@@ -44,6 +69,62 @@ struct RootView: View {
             }
         }
         .animation(.easeInOut, value: session.isAuthenticated)
+        .onChange(of: session.isAuthenticated, initial: true) { _, isAuth in
+            if isAuth {
+                IncomingCallPoller.shared.start()
+                PushDispatcher.shared.start()
+            } else {
+                IncomingCallPoller.shared.stop()
+                Task { await PushDispatcher.shared.unregisterAll() }
+            }
+        }
+        .onReceive(IncomingCallPoller.shared.incomingCall) { item in
+            incomingCall = item
+            showIncomingCallAlert = true
+            RingbackPlayer.shared.start(incoming: true)
+        }
+        .alert(
+            "Chiamata in arrivo",
+            isPresented: $showIncomingCallAlert,
+            presenting: incomingCall
+        ) { item in
+            Button("Rispondi") {
+                RingbackPlayer.shared.stop()
+                Task {
+                    do {
+                        let result = try await CommunicationStartService.shared
+                            .performNotificationAction(sessionId: item.sessionId, actionType: .answer)
+                        if let token = result?.livekitToken {
+                            await MainActor.run { activeIncomingToken = token }
+                        }
+                    } catch {
+                        print("[iPad incoming] answer failed: \(error)")
+                    }
+                }
+            }
+            Button("Rifiuta", role: .destructive) {
+                RingbackPlayer.shared.stop()
+                Task {
+                    _ = try? await CommunicationStartService.shared
+                        .performNotificationAction(sessionId: item.sessionId, actionType: .end)
+                }
+            }
+        } message: { item in
+            Text(item.displayName ?? "Comunicazione PerX")
+        }
+        .sheet(item: $activeIncomingToken) { token in
+            CommunicationLiveKitCallView(
+                token: token,
+                displayName: incomingCall?.displayName ?? "Chiamata PerX"
+            ) {
+                let sid = token.sessionId
+                activeIncomingToken = nil
+                Task {
+                    _ = try? await CommunicationStartService.shared
+                        .performNotificationAction(sessionId: sid, actionType: .end)
+                }
+            }
+        }
     }
 }
 
