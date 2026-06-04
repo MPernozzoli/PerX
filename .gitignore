@@ -44,6 +44,9 @@ xcuserdata/
 .swiftpm/
 Package.resolved
 Packages/
+# Re-include monorepo packages/ (lowercase) — excluded by Packages/ on case-insensitive macOS
+!packages/
+!packages/**
 
 # =========================
 # CocoaPods (if used)
