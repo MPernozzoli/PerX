@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
+    "build:vercel": "node scripts/vercel-build.mjs",
     "lint": "turbo run lint",
     "check": "turbo run check"
   },
