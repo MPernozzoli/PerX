@@ -187,33 +187,40 @@ export async function getInspectionSchedulingOverview(
 
 export async function submitInspectionPreferences(
   session: PortalSession,
-  claimId: string,
-  prefs: {
-    preferred_slots?: Array<{ date: string; label: string; startTime: string; endTime: string }>;
+  params: {
+    selectedSlots: Array<{ date: string; startTime: string; endTime: string; label: string }>;
     notes?: string;
   },
+  claimId: string,
 ): Promise<void> {
   await portalFetch<unknown>(
     `${API_BASE}/claims/${encodeURIComponent(claimId)}/inspection/preferences`,
     {
       method: "POST",
       headers: authHeaders(session),
-      body: JSON.stringify(prefs),
+      body: JSON.stringify(params),
     },
   );
 }
 
 export async function updateInspectionLocation(
   session: PortalSession,
+  params: {
+    addressLine: string;
+    municipality: string;
+    province: string;
+    region: string;
+    latitude: number;
+    longitude: number;
+  },
   claimId: string,
-  coords: { lat: number; lng: number; accuracy?: number },
 ): Promise<void> {
   await portalFetch<unknown>(
     `${API_BASE}/claims/${encodeURIComponent(claimId)}/inspection/location`,
     {
       method: "PUT",
       headers: authHeaders(session),
-      body: JSON.stringify(coords),
+      body: JSON.stringify(params),
     },
   );
 }
@@ -222,8 +229,8 @@ export async function updateInspectionLocation(
 
 export async function submitBankAccount(
   session: PortalSession,
-  claimId: string,
   params: { iban: string },
+  claimId: string,
 ): Promise<PortalBankAccountSubmission> {
   return portalFetch<PortalBankAccountSubmission>(
     `${API_BASE}/claims/${encodeURIComponent(claimId)}/bank-account`,
@@ -252,9 +259,9 @@ export async function downloadPortalDocument(
 
 export async function createUploadIntent(
   session: PortalSession,
+  params: { fileName: string; mimeType: string; sizeBytes: number; category: string },
   claimId: string,
-  params: { file_name: string; category: string; kind: string; [key: string]: unknown },
-): Promise<{ upload_id: string; upload_url?: string; [key: string]: unknown }> {
+): Promise<{ document_id: string; upload_url?: string }> {
   return portalFetch(
     `${API_BASE}/claims/${encodeURIComponent(claimId)}/documents/upload-intent`,
     {
@@ -267,16 +274,20 @@ export async function createUploadIntent(
 
 export async function uploadPortalDocumentFile(
   session: PortalSession,
-  uploadId: string,
-  file: File,
-): Promise<{ document_id: string; [key: string]: unknown }> {
+  params: { documentId: string; file: File },
+  claimId: string,
+): Promise<{ document_id: string; file_name: string; status: string; uploaded_at?: string; storage_path?: string }> {
   const form = new FormData();
-  form.append("file", file);
-  const response = await fetch(`${API_BASE}/uploads/${encodeURIComponent(uploadId)}/file`, {
-    method: "PUT",
-    headers: { Authorization: `Bearer ${session.token}` },
-    body: form,
-  });
+  form.append("file", params.file);
+  form.append("document_id", params.documentId);
+  const response = await fetch(
+    `${API_BASE}/claims/${encodeURIComponent(claimId)}/documents/${encodeURIComponent(params.documentId)}/upload`,
+    {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${session.token}` },
+      body: form,
+    },
+  );
   if (!response.ok) {
     let message = `HTTP ${response.status}`;
     try {
@@ -285,42 +296,38 @@ export async function uploadPortalDocumentFile(
     } catch { /* ignore */ }
     throw new Error(message);
   }
-  return response.json() as Promise<{ document_id: string }>;
+  return response.json() as Promise<{ document_id: string; file_name: string; status: string }>;
 }
 
 export async function getDocumentCollectionDraft(
   session: PortalSession,
   claimId: string,
-): Promise<Record<string, unknown> | null> {
-  try {
-    return await portalFetch(
-      `${API_BASE}/claims/${encodeURIComponent(claimId)}/documents/collection-draft`,
-      { headers: authHeaders(session) },
-    );
-  } catch {
-    return null;
-  }
+): Promise<{ draft_json: unknown }> {
+  return portalFetch(
+    `${API_BASE}/claims/${encodeURIComponent(claimId)}/documents/collection-draft`,
+    { headers: authHeaders(session) },
+  );
 }
 
 export async function saveDocumentCollectionDraft(
   session: PortalSession,
+  params: { draftJson: unknown },
   claimId: string,
-  draft: Record<string, unknown>,
 ): Promise<void> {
   await portalFetch<unknown>(
     `${API_BASE}/claims/${encodeURIComponent(claimId)}/documents/collection-draft`,
     {
       method: "PUT",
       headers: authHeaders(session),
-      body: JSON.stringify(draft),
+      body: JSON.stringify(params),
     },
   );
 }
 
 export async function submitDocumentCollection(
   session: PortalSession,
-  claimId: string,
   data: Record<string, unknown>,
+  claimId: string,
 ): Promise<{ status: string }> {
   return portalFetch(
     `${API_BASE}/claims/${encodeURIComponent(claimId)}/documents/collection`,
@@ -334,8 +341,8 @@ export async function submitDocumentCollection(
 
 export async function submitAdditionalDocuments(
   session: PortalSession,
+  params: { note?: string; documentIds: string[]; requestedItems: string[] },
   claimId: string,
-  params: { documents: Array<{ document_id: string; file_name: string }>; note?: string },
 ): Promise<{ status: string }> {
   return portalFetch(
     `${API_BASE}/claims/${encodeURIComponent(claimId)}/documents/additional`,
