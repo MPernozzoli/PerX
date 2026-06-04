@@ -174,3 +174,4 @@ whatsapp-bridge-win/
 **.node-persist**
 **_IGNORE_**
 # end managed by open-wa
+.vercel

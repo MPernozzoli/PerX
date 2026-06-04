@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Newsreader } from "next/font/google";
 import { headers } from "next/headers";
 import type { ReactNode } from "react";
+import { Analytics } from "@vercel/analytics/next";
 
 import { getPortalTenantContext } from "@/lib/tenant";
 
@@ -46,7 +47,10 @@ export default async function RootLayout({
           <link rel="stylesheet" href={`/tenant-themes/${tenant.themeId}.css`} />
         ) : null}
       </head>
-      <body className={`${displayFont.variable} ${bodyFont.variable} ${monoFont.variable}`}>{children}</body>
+      <body className={`${displayFont.variable} ${bodyFont.variable} ${monoFont.variable}`}>
+        {children}
+        <Analytics />
+      </body>
     </html>
   );
 }
