@@ -55,6 +55,7 @@ export interface PortalClaimSummary {
   iban_status?: string;
   documentation_uploaded?: number;
   documentation_required?: number;
+  documentation_mode?: "collection" | "additional";
   inspection_mode?: "fieldwork" | "desktop" | "video";
   inspection_status?: string;
   inspection_scheduled_at?: string;
@@ -97,5 +98,74 @@ export interface PortalInspectionSchedulingOverview {
   scheduled_at?: string;
   address?: string;
   inspector_name?: string;
-  available_slots?: Array<{ slot_id: string; datetime: string }>;
+  available_slots?: Array<{ slot_id: string; datetime: string; label?: string }>;
+  preferred_slots?: Array<{ date: string; label: string; startTime: string; endTime: string }>;
+  notes?: string;
+}
+
+export interface PortalBankAccountSubmission {
+  iban: string;
+  status: string;
+  submitted_at?: string;
+  verified_at?: string;
+  masked_iban?: string;
+}
+
+export interface PortalMeDeletionRequest {
+  id: string;
+  status: "pending" | "confirmed" | "cancelled";
+  requested_at: string;
+  scheduled_deletion_at?: string;
+  reason?: string;
+}
+
+export type PortalMeNotificationChannel = "email" | "sms" | "push";
+
+export interface PortalMeNotificationPrefs {
+  channels: PortalMeNotificationChannel[];
+  claim_updates?: boolean;
+  inspection_reminders?: boolean;
+  document_requests?: boolean;
+  messages?: boolean;
+}
+
+export interface PortalMePolicy {
+  policy_number?: string;
+  product_name?: string;
+  company?: string;
+  start_date?: string;
+  end_date?: string;
+  insured_name?: string;
+  coverage_summary?: string;
+}
+
+export interface PortalMeProfile {
+  full_name?: string;
+  email?: string;
+  phone_number?: string;
+  tax_code?: string;
+}
+
+export interface PortalMeSessionInfo {
+  session_id: string;
+  created_at: string;
+  last_seen_at?: string;
+  user_agent?: string;
+  ip_address?: string;
+  is_current?: boolean;
+}
+
+export interface PortalVideoperiziaSession {
+  session_id: string;
+  state: "scheduled" | "lobby_open" | "live" | "ended" | "aborted";
+  scheduled_at?: string;
+  started_at?: string;
+  ended_at?: string;
+  room_name?: string;
+}
+
+export interface PortalVideoperiziaToken {
+  token: string;
+  room_name: string;
+  server_url?: string;
 }

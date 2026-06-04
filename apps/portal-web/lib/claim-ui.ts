@@ -146,6 +146,22 @@ export function getInspectionSummary(
   };
 }
 
+export function isDocumentCollectionMode(summary: PortalClaimSummary | null): boolean {
+  return summary?.documentation_mode === "collection";
+}
+
+export function formatInspectionDayLabel(isoDate: string): string {
+  try {
+    return new Intl.DateTimeFormat("it-IT", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+    }).format(new Date(isoDate));
+  } catch {
+    return isoDate;
+  }
+}
+
 export function getActSummary(summary: PortalClaimSummary | null): ClaimSectionSummary {
   if (!summary) {
     return { title: "Atto", description: "Caricamento in corso...", emphasis: false };
