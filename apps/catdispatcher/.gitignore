@@ -28,3 +28,4 @@ ModaleDinamica JFISH/
 
 # Supabase CLI local cache
 supabase/.temp/
+.vercel

@@ -54,7 +54,7 @@ un progetto Vercel tecnico separato finché l'integrazione nel gateway non è co
 | Portale assicurati | `assicurati.<tenant_domain>` | Route del gateway con tenant da host |
 | Riunioni esterne | `riunioni.<tenant_domain>` | Route del gateway con invito firmato e token LiveKit |
 | CatDispatcher | `catdispatcher.it` | Da integrare nel gateway |
-| Bignami Online | `bignamionline.it` | Da integrare nel gateway se deve condividere SSO e policy |
+| Bignami Online | `bignami.perx.it` | Da integrare nel gateway se deve condividere SSO e policy |
 | PerX Insight Studio | dominio marketing PerX | Può restare progetto Next.js separato |
 | Randa | `randapro.it` | Può restare progetto Next.js separato |
 

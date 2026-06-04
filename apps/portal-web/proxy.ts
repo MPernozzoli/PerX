@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 type RouteResolution = {
   found: boolean;
   hostname: string;
-  app: "catdispatcher" | "perx_admin" | "insured_portal";
+  app: "bignami" | "catdispatcher" | "insight_studio" | "perx_admin" | "randa" | "insured_portal";
   tenant_id?: string | null;
   tenant_slug?: string | null;
   tenant_name?: string | null;
@@ -13,8 +13,11 @@ type RouteResolution = {
 
 const ROUTING_API_URL = process.env.ROUTING_API_URL;
 const ROUTING_RESOLVE_SECRET = process.env.ROUTING_RESOLVE_SECRET;
+const BIGNAMI_ORIGIN = process.env.BIGNAMI_ORIGIN;
 const CATDISPATCHER_ORIGIN = process.env.CATDISPATCHER_ORIGIN;
+const INSIGHT_STUDIO_ORIGIN = process.env.INSIGHT_STUDIO_ORIGIN;
 const PERX_ADMIN_ORIGIN = process.env.PERX_ADMIN_ORIGIN;
+const RANDA_ORIGIN = process.env.RANDA_ORIGIN;
 
 function normalizeHost(value: string | null): string {
   return (value ?? "")
@@ -26,13 +29,22 @@ function normalizeHost(value: string | null): string {
 }
 
 function localFallback(hostname: string): RouteResolution {
+  if (hostname === "perx.it" || hostname === "www.perx.it") {
+    return { found: true, hostname, app: "insight_studio", destination_url: INSIGHT_STUDIO_ORIGIN ?? null };
+  }
+  if (hostname === "randapro.it" || hostname === "www.randapro.it") {
+    return { found: true, hostname, app: "randa", destination_url: RANDA_ORIGIN ?? null };
+  }
+  if (hostname === "bignami.perx.it") {
+    return { found: true, hostname, app: "bignami", destination_url: BIGNAMI_ORIGIN ?? null };
+  }
   if (hostname === "catdispatcher.it" || hostname === "www.catdispatcher.it") {
     return { found: true, hostname, app: "catdispatcher", destination_url: CATDISPATCHER_ORIGIN ?? null };
   }
-  if (hostname === "admin.perx.it") {
+  if (hostname === "admin.perx.it" || hostname.startsWith("admin.")) {
     return { found: true, hostname, app: "perx_admin", destination_url: PERX_ADMIN_ORIGIN ?? null };
   }
-  if (hostname.startsWith("assicurati.")) {
+  if (hostname.startsWith("assicurati.") || hostname.startsWith("riunioni.")) {
     return {
       found: true,
       hostname,
@@ -55,7 +67,8 @@ async function resolveRoute(hostname: string): Promise<RouteResolution> {
       next: { revalidate: 60 }
     });
     if (!response.ok) return localFallback(hostname);
-    return (await response.json()) as RouteResolution;
+    const route = (await response.json()) as RouteResolution;
+    return route.found ? route : localFallback(hostname);
   } catch {
     return localFallback(hostname);
   }
@@ -128,6 +141,21 @@ export default async function proxy(request: NextRequest) {
 
   const route = await resolveRoute(hostname);
 
+  if (route.app === "insight_studio") {
+    const origin = route.destination_url ?? INSIGHT_STUDIO_ORIGIN;
+    if (origin) return rewriteToOrigin(request, origin);
+  }
+
+  if (route.app === "randa") {
+    const origin = route.destination_url ?? RANDA_ORIGIN;
+    if (origin) return rewriteToOrigin(request, origin);
+  }
+
+  if (route.app === "bignami") {
+    const origin = route.destination_url ?? BIGNAMI_ORIGIN;
+    if (origin) return rewriteToOrigin(request, origin);
+  }
+
   if (route.app === "catdispatcher") {
     const origin = route.destination_url ?? CATDISPATCHER_ORIGIN;
     if (origin) return rewriteToOrigin(request, origin);
@@ -150,5 +178,5 @@ export default async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|robots.txt|tenant-themes|.*\\..*).*)"]
+  matcher: ["/:path*"]
 };

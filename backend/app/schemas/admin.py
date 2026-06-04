@@ -34,7 +34,7 @@ class AdminUserResponse(BaseModel):
         from_attributes = True
 
 
-DomainRouteApp = Literal["catdispatcher", "perx_admin", "insured_portal"]
+DomainRouteApp = Literal["bignami", "catdispatcher", "insight_studio", "perx_admin", "randa", "insured_portal"]
 
 
 class DomainRouteResponse(BaseModel):

@@ -2,5 +2,5 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "npm install",
   "buildCommand": "npm run build:vercel",
-  "outputDirectory": "apps/perx-insight-studio/.next"
+  "outputDirectory": "apps/portal-web/.next"
 }

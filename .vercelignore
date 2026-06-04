@@ -1,0 +1,17 @@
+.git
+.next
+.turbo
+.vercel
+.build
+DerivedData
+build
+node_modules
+xcuserdata
+
+*.log
+*.tmp
+*.tsbuildinfo
+
+.env
+.env.local
+.env.*.local

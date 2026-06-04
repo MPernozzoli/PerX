@@ -4,7 +4,18 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "env": ["ROUTING_API_URL", "ROUTING_RESOLVE_SECRET"],
+      "env": [
+        "BIGNAMI_ORIGIN",
+        "CATDISPATCHER_ORIGIN",
+        "INSIGHT_STUDIO_ORIGIN",
+        "NEXT_PUBLIC_SITE_URL",
+        "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
+        "NEXT_PUBLIC_SUPABASE_URL",
+        "PERX_ADMIN_ORIGIN",
+        "RANDA_ORIGIN",
+        "ROUTING_API_URL",
+        "ROUTING_RESOLVE_SECRET"
+      ],
       "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
     },
     "dev": {

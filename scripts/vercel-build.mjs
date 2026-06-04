@@ -4,6 +4,7 @@ const projectToWorkspace = {
   "bignami-online": "@perx/bignami-online",
   catdispatcher: "@perx/catdispatcher",
   "insight-studio": "@perx/insight-studio",
+  perx: "@perx/portal-web",
   "perx-insight-studio": "@perx/insight-studio",
   "portal-web": "@perx/portal-web",
   randa: "@perx/randa",
@@ -13,7 +14,7 @@ const projectName = process.env.VERCEL_PROJECT_NAME;
 const workspace =
   process.env.VERCEL_BUILD_WORKSPACE ??
   projectToWorkspace[projectName] ??
-  "@perx/insight-studio";
+  "@perx/portal-web";
 
 console.log(`Building ${workspace} for Vercel project ${projectName ?? "<missing>"}.`);
 

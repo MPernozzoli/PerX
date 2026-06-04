@@ -23,7 +23,7 @@ type AdminUser = {
 type DomainRoute = {
   id: string;
   hostname: string;
-  app: "catdispatcher" | "perx_admin" | "insured_portal";
+  app: "bignami" | "catdispatcher" | "insight_studio" | "perx_admin" | "randa" | "insured_portal";
   tenant_id?: string | null;
   tenant_name?: string | null;
   destination_url?: string | null;
@@ -527,6 +527,9 @@ export function AdminDomainRoutes() {
               onChange={(event) => setRouteForm({ ...routeForm, app: event.target.value as DomainRoute["app"] })}
             >
               <option value="insured_portal">Portale assicurati</option>
+              <option value="insight_studio">PerX Insight Studio</option>
+              <option value="randa">Randa Pro</option>
+              <option value="bignami">Bignami Online</option>
               <option value="catdispatcher">CatDispatcher</option>
               <option value="perx_admin">PerX Admin</option>
             </select>
