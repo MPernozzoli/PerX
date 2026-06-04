@@ -210,4 +210,5 @@ struct MeProfileDTO: Decodable, Hashable {
     let extension_number: String?
     let extension_enabled: Bool?
     let extension_display_name: String?
+    let roles: [String]?
 }

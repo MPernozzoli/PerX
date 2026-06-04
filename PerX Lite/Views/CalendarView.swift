@@ -152,4 +152,5 @@ extension Notification.Name {
     static let perxRealtimeTaskUpdated = Notification.Name("perxRealtimeTaskUpdated")
     static let perxRealtimeClaimUpdated = Notification.Name("perxRealtimeClaimUpdated")
     static let perxRealtimeIncomingCall = Notification.Name("perxRealtimeIncomingCall")
+    static let perxRealtimeCallEnded = Notification.Name("perxRealtimeCallEnded")
 }

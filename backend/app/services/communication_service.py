@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 from datetime import datetime, timezone, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update as sql_update
 
 from app.models.communication import (
     Call,
@@ -206,16 +206,31 @@ class CommunicationService:
         db: AsyncSession,
         current_user: User,
     ) -> CommunicationIncomingCallListResponse:
+        # Lazily expire sessions still stuck in ringing/pending after the cutoff.
+        # This handles callers who abandoned without sending an explicit end action.
+        _cutoff = datetime.now(timezone.utc) - timedelta(seconds=45)
+        await db.execute(
+            sql_update(CommunicationSession)
+            .where(
+                CommunicationSession.tenant_id == current_user.tenant_id,
+                CommunicationSession.transport == "livekit",
+                CommunicationSession.state.in_(["pending", "ringing"]),
+                CommunicationSession.created_at < _cutoff,
+            )
+            .values(state="expired", ended_at=datetime.now(timezone.utc))
+        )
+        await db.commit()
+
         result = await db.execute(
             select(CommunicationSession, Call.id)
             .join(CallParticipant, CallParticipant.session_id == CommunicationSession.id)
             .outerjoin(Call, Call.session_id == CommunicationSession.id)
             .where(
-            CommunicationSession.tenant_id == current_user.tenant_id,
+                CommunicationSession.tenant_id == current_user.tenant_id,
                 CommunicationSession.transport == "livekit",
                 CommunicationSession.state.in_(["pending", "ringing"]),
-                # Discard calls older than 90 s — they timed out without answer
-                CommunicationSession.created_at >= datetime.now(timezone.utc) - timedelta(seconds=90),
+                # Accept only sessions within the expiry window
+                CommunicationSession.created_at >= _cutoff,
                 CallParticipant.user_id == current_user.id,
                 CallParticipant.role == "callee",
             )
@@ -426,6 +441,7 @@ class CommunicationService:
         provider_action: dict = {}
         open_claim = False
         state = session.state
+        _call_ended_user_ids: list[str] = []
 
         if action_type in {
             CommunicationNotificationActionType.answer,
@@ -453,6 +469,14 @@ class CommunicationService:
                 call.state = "ended"
                 call.completed_at = datetime.now(timezone.utc)
             state = "ended"
+            # Collect participant IDs now so we can broadcast after commit
+            _p_result = await db.execute(
+                select(CallParticipant).where(
+                    CallParticipant.session_id == session.id,
+                    CallParticipant.user_id.is_not(None),
+                )
+            )
+            _call_ended_user_ids = [p.user_id for p in _p_result.scalars().all() if p.user_id]
         elif action_type == CommunicationNotificationActionType.open_claim_only:
             open_claim = bool(session.claim_id)
         elif action_type == CommunicationNotificationActionType.send_to_voicemail_ai_triage:
@@ -486,7 +510,23 @@ class CommunicationService:
             state,
             {"open_claim": open_claim, "provider_action": provider_action},
         )
+        _ended_session_id = session.id
+        _ended_tenant_id = session.tenant_id
         await db.commit()
+
+        # Notify all participants via SSE so foreground clients dismiss the ringing banner
+        if _call_ended_user_ids:
+            try:
+                from app.api.v1.routes_realtime import sse_manager
+                await sse_manager.broadcast_to_users(
+                    _ended_tenant_id,
+                    _call_ended_user_ids,
+                    "call_ended",
+                    {"session_id": _ended_session_id, "reason": "ended"},
+                )
+            except Exception as e:
+                logger.warning("SSE call_ended dispatch failed for session %s: %s", _ended_session_id, e)
+
         return CommunicationSessionActionResponse(
             session_id=session.id,
             call_id=call.id if call else None,

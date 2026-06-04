@@ -21,6 +21,28 @@ struct PerX_LiteApp: App {
                 }
                 completion()
             }
+            // Validate that the session is still active on the backend.
+            // VoIP pushes can be queued by APNs while the device is offline and
+            // delivered late — after the call has already ended. If that's the case,
+            // immediately dismiss the CallKit UI we just reported.
+            let sessionId = payload.sessionId
+            Task { @MainActor in
+                struct IncomingResp: Decodable {
+                    struct Item: Decodable { let session_id: String }
+                    let items: [Item]
+                }
+                let isActive: Bool
+                do {
+                    let resp: IncomingResp = try await APIClient.shared.get("/api/v1/communications/incoming")
+                    isActive = resp.items.contains { $0.session_id == sessionId }
+                } catch {
+                    isActive = true // network error — be optimistic and let CallKit handle it
+                }
+                if !isActive {
+                    logger.info("Stale VoIP push for session \(sessionId) — terminating CallKit call")
+                    CallProviderShared.shared.endCall(forSession: sessionId)
+                }
+            }
         }
         CallProviderShared.shared.onAnswer = { sessionId in
             await CallSessionShared.shared.connect(toSessionId: sessionId)
@@ -49,6 +71,15 @@ struct PerX_LiteApp: App {
                 let payload = IncomingCallPayload.parse(from: event.payload)
                 IncomingCallBannerState.shared.show(payload)
                 NotificationCenter.default.post(name: .perxRealtimeIncomingCall, object: nil, userInfo: event.payload)
+            case "call_ended":
+                // The caller ended the call (or the backend expired it).
+                // Dismiss any in-app banner and close the CallKit UI if present.
+                let endedSessionId = (event.payload["session_id"] as? String) ?? ""
+                IncomingCallBannerState.shared.dismiss()
+                if !endedSessionId.isEmpty {
+                    CallProviderShared.shared.endCall(forSession: endedSessionId)
+                }
+                NotificationCenter.default.post(name: .perxRealtimeCallEnded, object: nil, userInfo: event.payload)
             case "chat_message":
                 NotificationCenter.default.post(name: .perxRealtimeChatMessage, object: nil, userInfo: event.payload)
             default:

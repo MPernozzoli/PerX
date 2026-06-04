@@ -10,6 +10,11 @@ final class AuthStore: ObservableObject {
     @Published var myExtension: String?
     @Published var myExtensionEnabled: Bool = false
     @Published var tenantId: String?
+    @Published var roles: [String] = []
+
+    var isCATUser: Bool {
+        roles.map { $0.trimmingCharacters(in: .whitespaces).lowercased() }.contains("cat")
+    }
 
     init() {
         self.isAuthenticated = APIClient.shared.isLoggedIn
@@ -34,6 +39,7 @@ final class AuthStore: ObservableObject {
         self.displayName = nil
         self.myExtension = nil
         self.myExtensionEnabled = false
+        self.roles = []
         self.isAuthenticated = false
     }
 
@@ -43,6 +49,7 @@ final class AuthStore: ObservableObject {
             self.myExtension = me.extension_number
             self.myExtensionEnabled = me.extension_enabled ?? false
             self.tenantId = me.tenant_id
+            self.roles = me.roles ?? []
             let full = [me.first_name, me.last_name]
                 .compactMap { $0?.trimmingCharacters(in: .whitespaces) }
                 .filter { !$0.isEmpty }

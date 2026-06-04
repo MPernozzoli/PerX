@@ -84,6 +84,21 @@ public final class CallProviderShared: NSObject {
             callController.request(transaction) { _ in }
         }
     }
+
+    /// End the CallKit call associated with a specific session ID.
+    /// Used to dismiss a stale incoming-call UI when the session has already ended on the backend.
+    public func endCall(forSession sessionId: String) {
+        sessionsLock.lock()
+        let uuid = activeSessions.first(where: { $0.value == sessionId })?.key
+        sessionsLock.unlock()
+        guard let uuid else { return }
+        let transaction = CXTransaction(action: CXEndCallAction(call: uuid))
+        callController.request(transaction) { error in
+            if let error {
+                logger.warning("endCall(forSession:) failed: \(error.localizedDescription)")
+            }
+        }
+    }
 }
 
 extension CallProviderShared: CXProviderDelegate {
