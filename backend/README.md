@@ -122,7 +122,7 @@ Il backend include ora un perimetro dedicato al portale web assicurati:
 
 In ambiente `dev` e con `PORTAL_DEV_CLAIM_REFERENCE_ONLY_AUTH=True`, il portale puo creare al volo un accesso partendo dal solo riferimento sinistro e mostrare direttamente il magic link di anteprima senza ulteriori verifiche. Questa scorciatoia e pensata solo per sviluppo locale.
 
-Per il dettaglio funzionale e dei flussi, vedere anche `Documentation/insured-portal-architecture.md`.
+Per il dettaglio funzionale e dei flussi, vedere anche `Documentation/Piattaforme/Portal-Web-Assicurati.md` (vault Obsidian).
 
 ## CatDispatcher
 

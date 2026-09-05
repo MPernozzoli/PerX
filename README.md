@@ -19,6 +19,9 @@ Questa repo è strutturata come **monorepo** e contiene sia l’applicazione des
 
 Ogni componente più complesso ha (o può avere) un proprio `README` locale con dettagli specifici.
 
+Per l'architettura completa, lo stack tecnologico e lo stato di avanzamento dello sviluppo, vedi
+il vault Obsidian in [`Documentation/`](Documentation/Home.md), ci impegnano a tenerlo sempre aggiornato.
+
 ---
 
 ## Applicazione PerX (macOS / iPad)

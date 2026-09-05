@@ -212,10 +212,16 @@ export interface PortalMePolicy {
 }
 
 export interface PortalMeProfile {
-  full_name?: string;
+  actor_id?: string;
+  display_name: string;
+  actor_type?: string;
+  codice_fiscale_masked?: string;
+  partita_iva_masked?: string;
+  data_nascita?: string;
+  luogo_nascita?: string;
   email?: string;
-  phone_number?: string;
-  tax_code?: string;
+  phone?: string;
+  pec?: string;
 }
 
 export interface PortalMeSessionInfo {
