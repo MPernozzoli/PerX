@@ -202,6 +202,12 @@ export interface PortalMeNotificationPrefs {
 }
 
 export interface PortalMePolicy {
+  id?: string;
+  version?: number;
+  title?: string;
+  summary?: string;
+  content_md?: string;
+  effective_from?: string;
   policy_number?: string;
   product_name?: string;
   company?: string;
