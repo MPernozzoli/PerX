@@ -1,5 +1,6 @@
 import type {
   PortalAccessibleClaim,
+  PortalAuthRequestOtpResponse,
   PortalAuthStartResponse,
   PortalBankAccountSubmission,
   PortalClaimSummary,
@@ -21,9 +22,27 @@ import type {
 export type { PortalSession };
 
 export interface PortalTenantBranding {
-  primary_color?: string;
-  logo_url?: string;
-  company_name?: string;
+  tenant_name?: string | null;
+  icon_data_url?: string | null;
+  badge_data_url?: string | null;
+  logo_data_url?: string | null;
+  primary_color?: string | null;
+}
+
+export interface PortalUploadIntent {
+  document_id: string;
+  upload_mode: "signed-url" | "server-proxy";
+  upload_url?: string;
+  storage_path: string;
+  expires_in: number;
+}
+
+export interface PortalUploadedDocument {
+  document_id: string;
+  file_name: string;
+  status: string;
+  storage_path: string;
+  uploaded_at?: string;
 }
 
 const API_BASE =
@@ -48,7 +67,36 @@ async function portalFetch<T>(url: string, options?: RequestInit): Promise<T> {
     }
     throw new Error(message);
   }
-  return response.json() as Promise<T>;
+  if (response.status === 204) {
+    return undefined as T;
+  }
+  const text = await response.text();
+  if (!text) {
+    return undefined as T;
+  }
+  return JSON.parse(text) as T;
+}
+
+/** Claim-scoped endpoints derive the claim from the session by default;
+ * `claimId` is only needed to view a *different* accessible claim. */
+function claimUrl(path: string, claimId?: string): string {
+  if (!claimId) return `${API_BASE}${path}`;
+  const sep = path.includes("?") ? "&" : "?";
+  return `${API_BASE}${path}${sep}claim_id=${encodeURIComponent(claimId)}`;
+}
+
+function toPortalSession(data: {
+  access_token: string;
+  expires_in: number;
+  claim_id: string;
+  portal_access_id: string;
+}): PortalSession {
+  return {
+    token: data.access_token,
+    claimId: data.claim_id,
+    portalAccessId: data.portal_access_id,
+    expiresAt: new Date(Date.now() + data.expires_in * 1000).toISOString(),
+  };
 }
 
 // --- Auth ---
@@ -62,26 +110,46 @@ export async function startPortalAuth(params: {
   return portalFetch<PortalAuthStartResponse>(`${API_BASE}/auth/start`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(params),
+    body: JSON.stringify({
+      claim_reference: params.claimReference,
+      tax_code: params.taxCode || undefined,
+      full_name: params.fullName || undefined,
+      phone_number: params.phoneNumber || undefined,
+      channel: "email",
+    }),
   });
 }
 
-export async function exchangePortalToken(token: string): Promise<PortalSession> {
-  return portalFetch<PortalSession>(
-    `${API_BASE}/auth/exchange/${encodeURIComponent(token)}`,
-    { method: "POST", headers: { "Content-Type": "application/json" } },
-  );
+export async function exchangePortalToken(
+  token: string,
+  rememberMe = false,
+): Promise<PortalSession> {
+  const data = await portalFetch<{
+    access_token: string;
+    expires_in: number;
+    claim_id: string;
+    portal_access_id: string;
+  }>(`${API_BASE}/auth/exchange`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, remember_me: rememberMe }),
+  });
+  return toPortalSession(data);
 }
 
 export async function requestPortalOtp(params: {
   claimReference: string;
   phoneNumber: string;
   channel: string;
-}): Promise<{ masked_destination?: string; delivery_channel?: string; preview_otp_code?: string }> {
+}): Promise<PortalAuthRequestOtpResponse> {
   return portalFetch(`${API_BASE}/auth/request-otp`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(params),
+    body: JSON.stringify({
+      claim_reference: params.claimReference,
+      phone_number: params.phoneNumber,
+      channel: params.channel,
+    }),
   });
 }
 
@@ -91,11 +159,22 @@ export async function verifyPortalOtp(params: {
   otpCode: string;
   rememberMe: boolean;
 }): Promise<PortalSession> {
-  return portalFetch<PortalSession>(`${API_BASE}/auth/verify-otp`, {
+  const data = await portalFetch<{
+    access_token: string;
+    expires_in: number;
+    claim_id: string;
+    portal_access_id: string;
+  }>(`${API_BASE}/auth/verify-otp`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(params),
+    body: JSON.stringify({
+      claim_reference: params.claimReference,
+      phone_number: params.phoneNumber,
+      otp_code: params.otpCode,
+      remember_me: params.rememberMe,
+    }),
   });
+  return toPortalSession(data);
 }
 
 // --- Tenant branding ---
@@ -105,7 +184,7 @@ export async function getPortalTenantBranding(host?: string): Promise<PortalTena
     host ?? (typeof window !== "undefined" ? window.location.hostname : "");
   try {
     return await portalFetch<PortalTenantBranding>(
-      `${API_BASE}/tenant-branding?host=${encodeURIComponent(resolvedHost)}`,
+      `${API_BASE}/tenant/branding?portal_host=${encodeURIComponent(resolvedHost)}`,
     );
   } catch {
     return {};
@@ -124,40 +203,36 @@ export async function getPortalClaimSummaryForClaim(
   session: PortalSession,
   claimId: string,
 ): Promise<PortalClaimSummary> {
-  return portalFetch<PortalClaimSummary>(
-    `${API_BASE}/claims/${encodeURIComponent(claimId)}`,
-    { headers: authHeaders(session) },
-  );
+  return portalFetch<PortalClaimSummary>(claimUrl("/claim", claimId), {
+    headers: authHeaders(session),
+  });
 }
 
 export async function getPortalTimeline(
   session: PortalSession,
   claimId: string,
 ): Promise<PortalTimelineEvent[]> {
-  return portalFetch<PortalTimelineEvent[]>(
-    `${API_BASE}/claims/${encodeURIComponent(claimId)}/timeline`,
-    { headers: authHeaders(session) },
-  );
+  return portalFetch<PortalTimelineEvent[]>(claimUrl("/claim/timeline", claimId), {
+    headers: authHeaders(session),
+  });
 }
 
 export async function getPortalDocuments(
   session: PortalSession,
   claimId: string,
 ): Promise<PortalDocument[]> {
-  return portalFetch<PortalDocument[]>(
-    `${API_BASE}/claims/${encodeURIComponent(claimId)}/documents`,
-    { headers: authHeaders(session) },
-  );
+  return portalFetch<PortalDocument[]>(claimUrl("/claim/documents", claimId), {
+    headers: authHeaders(session),
+  });
 }
 
 export async function listPortalMessages(
   session: PortalSession,
   claimId: string,
 ): Promise<PortalMessageList> {
-  return portalFetch<PortalMessageList>(
-    `${API_BASE}/claims/${encodeURIComponent(claimId)}/messages`,
-    { headers: authHeaders(session) },
-  );
+  return portalFetch<PortalMessageList>(claimUrl("/claim/chat/messages", claimId), {
+    headers: authHeaders(session),
+  });
 }
 
 export async function createPortalMessage(
@@ -165,14 +240,11 @@ export async function createPortalMessage(
   params: { bodyText: string },
   claimId: string,
 ): Promise<PortalMessage> {
-  return portalFetch<PortalMessage>(
-    `${API_BASE}/claims/${encodeURIComponent(claimId)}/messages`,
-    {
-      method: "POST",
-      headers: authHeaders(session),
-      body: JSON.stringify(params),
-    },
-  );
+  return portalFetch<PortalMessage>(claimUrl("/claim/chat/messages", claimId), {
+    method: "POST",
+    headers: authHeaders(session),
+    body: JSON.stringify({ body_text: params.bodyText }),
+  });
 }
 
 export async function getInspectionSchedulingOverview(
@@ -180,7 +252,7 @@ export async function getInspectionSchedulingOverview(
   claimId: string,
 ): Promise<PortalInspectionSchedulingOverview> {
   return portalFetch<PortalInspectionSchedulingOverview>(
-    `${API_BASE}/claims/${encodeURIComponent(claimId)}/inspection`,
+    claimUrl("/claim/inspection-scheduling", claimId),
     { headers: authHeaders(session) },
   );
 }
@@ -190,15 +262,25 @@ export async function submitInspectionPreferences(
   params: {
     selectedSlots: Array<{ date: string; startTime: string; endTime: string; label: string }>;
     notes?: string;
+    requestedDurationMinutes?: number;
   },
   claimId: string,
-): Promise<void> {
-  await portalFetch<unknown>(
-    `${API_BASE}/claims/${encodeURIComponent(claimId)}/inspection/preferences`,
+): Promise<PortalInspectionSchedulingOverview> {
+  return portalFetch<PortalInspectionSchedulingOverview>(
+    claimUrl("/claim/inspection-scheduling/preferences", claimId),
     {
-      method: "POST",
+      method: "PUT",
       headers: authHeaders(session),
-      body: JSON.stringify(params),
+      body: JSON.stringify({
+        selected_slots: params.selectedSlots.map((slot) => ({
+          date: slot.date,
+          start_time: slot.startTime,
+          end_time: slot.endTime,
+          label: slot.label,
+        })),
+        notes: params.notes,
+        requested_duration_minutes: params.requestedDurationMinutes,
+      }),
     },
   );
 }
@@ -206,21 +288,28 @@ export async function submitInspectionPreferences(
 export async function updateInspectionLocation(
   session: PortalSession,
   params: {
-    addressLine: string;
-    municipality: string;
-    province: string;
-    region: string;
-    latitude: number;
-    longitude: number;
+    addressLine?: string;
+    municipality?: string;
+    province?: string;
+    region?: string;
+    latitude?: number;
+    longitude?: number;
   },
   claimId: string,
-): Promise<void> {
-  await portalFetch<unknown>(
-    `${API_BASE}/claims/${encodeURIComponent(claimId)}/inspection/location`,
+): Promise<PortalInspectionSchedulingOverview> {
+  return portalFetch<PortalInspectionSchedulingOverview>(
+    claimUrl("/claim/inspection-scheduling/location", claimId),
     {
       method: "PUT",
       headers: authHeaders(session),
-      body: JSON.stringify(params),
+      body: JSON.stringify({
+        address_line: params.addressLine,
+        municipality: params.municipality,
+        province: params.province,
+        region: params.region,
+        latitude: params.latitude,
+        longitude: params.longitude,
+      }),
     },
   );
 }
@@ -229,17 +318,14 @@ export async function updateInspectionLocation(
 
 export async function submitBankAccount(
   session: PortalSession,
-  params: { iban: string },
+  params: { iban: string; accountHolder?: string },
   claimId: string,
 ): Promise<PortalBankAccountSubmission> {
-  return portalFetch<PortalBankAccountSubmission>(
-    `${API_BASE}/claims/${encodeURIComponent(claimId)}/bank-account`,
-    {
-      method: "POST",
-      headers: authHeaders(session),
-      body: JSON.stringify(params),
-    },
-  );
+  return portalFetch<PortalBankAccountSubmission>(claimUrl("/claim/bank-accounts", claimId), {
+    method: "POST",
+    headers: authHeaders(session),
+    body: JSON.stringify({ iban: params.iban, account_holder: params.accountHolder }),
+  });
 }
 
 // --- Documents ---
@@ -250,7 +336,7 @@ export async function downloadPortalDocument(
   claimId: string,
 ): Promise<Blob> {
   const response = await fetch(
-    `${API_BASE}/claims/${encodeURIComponent(claimId)}/documents/${encodeURIComponent(params.documentId)}/download`,
+    claimUrl(`/claim/documents/${encodeURIComponent(params.documentId)}/download`, claimId),
     { headers: { Authorization: `Bearer ${session.token}` } },
   );
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -259,15 +345,38 @@ export async function downloadPortalDocument(
 
 export async function createUploadIntent(
   session: PortalSession,
-  params: { fileName: string; mimeType: string; sizeBytes: number; category: string },
+  params: { fileName: string; mimeType?: string; sizeBytes?: number; category?: string },
   claimId: string,
-): Promise<{ document_id: string; upload_url?: string }> {
-  return portalFetch(
-    `${API_BASE}/claims/${encodeURIComponent(claimId)}/documents/upload-intent`,
+): Promise<PortalUploadIntent> {
+  return portalFetch<PortalUploadIntent>(claimUrl("/claim/upload-intents", claimId), {
+    method: "POST",
+    headers: authHeaders(session),
+    body: JSON.stringify({
+      file_name: params.fileName,
+      mime_type: params.mimeType,
+      size_bytes: params.sizeBytes ?? 0,
+      category: params.category,
+    }),
+  });
+}
+
+/** Confirms a direct-to-storage upload (`upload_mode: "signed-url"`) once the
+ * browser has PUT the file straight to the signed URL from createUploadIntent. */
+export async function confirmPortalDocumentUpload(
+  session: PortalSession,
+  params: { documentId: string; fileName: string; mimeType?: string; sizeBytes: number },
+  claimId: string,
+): Promise<PortalUploadedDocument> {
+  return portalFetch<PortalUploadedDocument>(
+    claimUrl(`/claim/documents/${encodeURIComponent(params.documentId)}/confirm-upload`, claimId),
     {
       method: "POST",
       headers: authHeaders(session),
-      body: JSON.stringify(params),
+      body: JSON.stringify({
+        file_name: params.fileName,
+        mime_type: params.mimeType,
+        size_bytes: params.sizeBytes,
+      }),
     },
   );
 }
@@ -276,14 +385,13 @@ export async function uploadPortalDocumentFile(
   session: PortalSession,
   params: { documentId: string; file: File },
   claimId: string,
-): Promise<{ document_id: string; file_name: string; status: string; uploaded_at?: string; storage_path?: string }> {
+): Promise<PortalUploadedDocument> {
   const form = new FormData();
   form.append("file", params.file);
-  form.append("document_id", params.documentId);
   const response = await fetch(
-    `${API_BASE}/claims/${encodeURIComponent(claimId)}/documents/${encodeURIComponent(params.documentId)}/upload`,
+    claimUrl(`/claim/documents/${encodeURIComponent(params.documentId)}/upload`, claimId),
     {
-      method: "PUT",
+      method: "POST",
       headers: { Authorization: `Bearer ${session.token}` },
       body: form,
     },
@@ -296,106 +404,171 @@ export async function uploadPortalDocumentFile(
     } catch { /* ignore */ }
     throw new Error(message);
   }
-  return response.json() as Promise<{ document_id: string; file_name: string; status: string }>;
+  return response.json() as Promise<PortalUploadedDocument>;
+}
+
+/** Uploads a file via the fastest transport createUploadIntent granted us:
+ * a direct PUT to storage when a signed URL is available, otherwise the
+ * server-proxied multipart upload. */
+export async function uploadPortalDocumentViaIntent(
+  session: PortalSession,
+  intent: PortalUploadIntent,
+  file: File,
+  claimId: string,
+): Promise<PortalUploadedDocument> {
+  if (intent.upload_mode === "signed-url" && intent.upload_url) {
+    const putResponse = await fetch(intent.upload_url, {
+      method: "PUT",
+      headers: { "Content-Type": file.type || "application/octet-stream" },
+      body: file,
+    });
+    if (!putResponse.ok) {
+      throw new Error(`Caricamento file non riuscito (HTTP ${putResponse.status})`);
+    }
+    return confirmPortalDocumentUpload(
+      session,
+      {
+        documentId: intent.document_id,
+        fileName: file.name,
+        mimeType: file.type,
+        sizeBytes: file.size,
+      },
+      claimId,
+    );
+  }
+  return uploadPortalDocumentFile(session, { documentId: intent.document_id, file }, claimId);
 }
 
 export async function getDocumentCollectionDraft(
   session: PortalSession,
   claimId: string,
-): Promise<{ draft_json: unknown }> {
-  return portalFetch(
-    `${API_BASE}/claims/${encodeURIComponent(claimId)}/documents/collection-draft`,
-    { headers: authHeaders(session) },
-  );
+): Promise<{ status: string; draft_json: unknown; updated_at?: string }> {
+  return portalFetch(claimUrl("/claim/document-collection-draft", claimId), {
+    headers: authHeaders(session),
+  });
 }
 
 export async function saveDocumentCollectionDraft(
   session: PortalSession,
   params: { draftJson: unknown },
   claimId: string,
-): Promise<void> {
-  await portalFetch<unknown>(
-    `${API_BASE}/claims/${encodeURIComponent(claimId)}/documents/collection-draft`,
-    {
-      method: "PUT",
-      headers: authHeaders(session),
-      body: JSON.stringify(params),
-    },
-  );
+): Promise<{ status: string; draft_json: unknown; updated_at?: string }> {
+  return portalFetch(claimUrl("/claim/document-collection-draft", claimId), {
+    method: "PUT",
+    headers: authHeaders(session),
+    body: JSON.stringify({ draft_json: params.draftJson }),
+  });
 }
 
 export async function submitDocumentCollection(
   session: PortalSession,
-  data: Record<string, unknown>,
+  params: {
+    notes?: string;
+    photosCount: number;
+    items: Array<{ name: string; brand?: string; model?: string; purchaseYear?: number; quantity?: number }>;
+    metadataJson?: Record<string, unknown>;
+    locationLatitude?: number;
+    locationLongitude?: number;
+  },
   claimId: string,
-): Promise<{ status: string; document_count?: number; submitted_at?: string }> {
-  return portalFetch(
-    `${API_BASE}/claims/${encodeURIComponent(claimId)}/documents/collection`,
-    {
-      method: "POST",
-      headers: authHeaders(session),
-      body: JSON.stringify(data),
-    },
-  );
+): Promise<{ id: string; status: string; submitted_at: string }> {
+  return portalFetch(claimUrl("/claim/document-collection-submissions", claimId), {
+    method: "POST",
+    headers: authHeaders(session),
+    body: JSON.stringify({
+      items: params.items.map((item) => ({
+        name: item.name,
+        brand: item.brand,
+        model: item.model,
+        purchase_year: item.purchaseYear,
+        quantity: item.quantity ?? 1,
+      })),
+      notes: params.notes,
+      location_latitude: params.locationLatitude,
+      location_longitude: params.locationLongitude,
+      photos_count: params.photosCount,
+      metadata_json: params.metadataJson,
+    }),
+  });
 }
 
 export async function submitAdditionalDocuments(
   session: PortalSession,
   params: { note?: string; documentIds: string[]; requestedItems: string[] },
   claimId: string,
-): Promise<{ status: string; document_count?: number; submitted_at?: string }> {
-  return portalFetch(
-    `${API_BASE}/claims/${encodeURIComponent(claimId)}/documents/additional`,
-    {
-      method: "POST",
-      headers: authHeaders(session),
-      body: JSON.stringify(params),
-    },
-  );
+): Promise<{ status: string; submitted_at: string; document_count: number }> {
+  return portalFetch(claimUrl("/claim/additional-document-submissions", claimId), {
+    method: "POST",
+    headers: authHeaders(session),
+    body: JSON.stringify({
+      note: params.note,
+      document_ids: params.documentIds,
+      requested_items: params.requestedItems,
+    }),
+  });
 }
 
 // --- Videoperizia ---
+// Session-scoped: the active claim already comes from the portal session, so
+// none of these take a claimId.
 
 export async function getVideoperiziaSession(
   session: PortalSession,
-  claimId: string,
 ): Promise<PortalVideoperiziaSession | null> {
-  try {
-    return await portalFetch<PortalVideoperiziaSession>(
-      `${API_BASE}/claims/${encodeURIComponent(claimId)}/videoperizia`,
-      { headers: authHeaders(session) },
-    );
-  } catch {
-    return null;
-  }
+  const data = await portalFetch<{ session: PortalVideoperiziaSession | null }>(
+    `${API_BASE}/claim/videoperizia/session`,
+    { headers: authHeaders(session) },
+  );
+  return data.session;
 }
 
 export async function joinVideoperiziaLobby(
   session: PortalSession,
-  claimId: string,
-): Promise<void> {
-  await portalFetch<unknown>(
-    `${API_BASE}/claims/${encodeURIComponent(claimId)}/videoperizia/join`,
-    { method: "POST", headers: authHeaders(session) },
+  params: { userAgent?: string | null },
+): Promise<PortalVideoperiziaSession> {
+  const data = await portalFetch<{ session: PortalVideoperiziaSession }>(
+    `${API_BASE}/claim/videoperizia/lobby`,
+    {
+      method: "POST",
+      headers: authHeaders(session),
+      body: JSON.stringify({
+        client_meta: params.userAgent ? { user_agent: params.userAgent } : undefined,
+      }),
+    },
   );
+  return data.session;
 }
 
 export async function mintVideoperiziaToken(
   session: PortalSession,
-  claimId: string,
 ): Promise<PortalVideoperiziaToken> {
-  return portalFetch<PortalVideoperiziaToken>(
-    `${API_BASE}/claims/${encodeURIComponent(claimId)}/videoperizia/token`,
-    { method: "POST", headers: authHeaders(session) },
-  );
+  return portalFetch<PortalVideoperiziaToken>(`${API_BASE}/claim/videoperizia/token`, {
+    method: "POST",
+    headers: authHeaders(session),
+  });
+}
+
+export async function leaveVideoperiziaSession(session: PortalSession): Promise<void> {
+  await portalFetch<unknown>(`${API_BASE}/claim/videoperizia/leave`, {
+    method: "POST",
+    headers: authHeaders(session),
+  });
 }
 
 export async function publishVideoperiziaLocationPing(
   session: PortalSession,
-  coords: { lat: number; lng: number; accuracy?: number },
+  coords: {
+    latitude: number;
+    longitude: number;
+    accuracy_m?: number | null;
+    altitude_m?: number | null;
+    speed_mps?: number | null;
+    heading_deg?: number | null;
+    recorded_at?: string;
+  },
 ): Promise<void> {
   try {
-    await portalFetch<unknown>(`${API_BASE}/videoperizia/location-ping`, {
+    await portalFetch<unknown>(`${API_BASE}/claim/videoperizia/location-ping`, {
       method: "POST",
       headers: authHeaders(session),
       body: JSON.stringify(coords),
@@ -407,26 +580,34 @@ export async function publishVideoperiziaLocationPing(
 
 // --- Push notifications ---
 
-export async function getPortalVapidPublicKey(): Promise<string> {
-  const result = await portalFetch<{ public_key: string }>(`${API_BASE}/push/vapid-key`);
+export async function getPortalVapidPublicKey(): Promise<string | null> {
+  const result = await portalFetch<{ public_key: string | null }>(
+    `${API_BASE}/push/vapid-public-key`,
+  );
   return result.public_key;
 }
 
 export async function subscribePortalPush(
   session: PortalSession,
-  subscription: PushSubscription,
+  subscription: { endpoint: string; p256dh: string; auth: string; userAgent?: string },
 ): Promise<void> {
   await portalFetch<unknown>(`${API_BASE}/push/subscribe`, {
     method: "POST",
     headers: authHeaders(session),
-    body: JSON.stringify(subscription.toJSON()),
+    body: JSON.stringify({
+      endpoint: subscription.endpoint,
+      p256dh: subscription.p256dh,
+      auth: subscription.auth,
+      user_agent: subscription.userAgent,
+    }),
   });
 }
 
-export async function unsubscribePortalPush(session: PortalSession): Promise<void> {
+export async function unsubscribePortalPush(session: PortalSession, endpoint: string): Promise<void> {
   await portalFetch<unknown>(`${API_BASE}/push/unsubscribe`, {
     method: "POST",
     headers: authHeaders(session),
+    body: JSON.stringify({ endpoint }),
   });
 }
 
@@ -440,7 +621,7 @@ export async function getPortalMeProfile(session: PortalSession): Promise<Portal
 
 export async function updatePortalMeProfile(
   session: PortalSession,
-  profile: Partial<PortalMeProfile>,
+  profile: { email?: string; phone?: string },
 ): Promise<PortalMeProfile> {
   return portalFetch<PortalMeProfile>(`${API_BASE}/me/profile`, {
     method: "PATCH",
@@ -450,7 +631,7 @@ export async function updatePortalMeProfile(
 }
 
 export async function getPortalMePolicy(session: PortalSession): Promise<PortalMePolicy> {
-  return portalFetch<PortalMePolicy>(`${API_BASE}/me/policy`, {
+  return portalFetch<PortalMePolicy>(`${API_BASE}/me/privacy/policy`, {
     headers: authHeaders(session),
   });
 }
@@ -466,9 +647,9 @@ export async function getPortalMeNotifications(
 export async function updatePortalMeNotifications(
   session: PortalSession,
   prefs: Partial<PortalMeNotificationPrefs>,
-): Promise<void> {
-  await portalFetch<unknown>(`${API_BASE}/me/notifications`, {
-    method: "PATCH",
+): Promise<PortalMeNotificationPrefs> {
+  return portalFetch<PortalMeNotificationPrefs>(`${API_BASE}/me/notifications`, {
+    method: "PUT",
     headers: authHeaders(session),
     body: JSON.stringify(prefs),
   });
@@ -496,7 +677,7 @@ export async function getActiveDeletionRequest(
   session: PortalSession,
 ): Promise<PortalMeDeletionRequest | null> {
   try {
-    return await portalFetch<PortalMeDeletionRequest>(`${API_BASE}/me/deletion-request`, {
+    return await portalFetch<PortalMeDeletionRequest | null>(`${API_BASE}/me/deletion-request`, {
       headers: authHeaders(session),
     });
   } catch {
@@ -520,7 +701,7 @@ export async function cancelDeletionRequest(
   requestId: string,
 ): Promise<void> {
   await portalFetch<unknown>(
-    `${API_BASE}/me/deletion-request/${encodeURIComponent(requestId)}/cancel`,
-    { method: "POST", headers: authHeaders(session) },
+    `${API_BASE}/me/deletion-request/${encodeURIComponent(requestId)}`,
+    { method: "DELETE", headers: authHeaders(session) },
   );
 }

@@ -11,6 +11,7 @@ from app.core.database import get_db
 from app.core.security import get_current_active_user
 from app.models.claim_event import ClaimEvent
 from app.models.internal_chat import InternalChatMember, InternalChatMessage, InternalChatThread
+from app.models.portal import PortalConversation, PortalConversationMessage
 from app.models.user import User
 from app.schemas.collab import (
     InternalChatMessageCreate,
@@ -161,9 +162,55 @@ async def create_message(
                 source="chat",
             )
         )
+
+    portal_conversation = None
+    if thread.thread_type == "portal":
+        portal_result = await db.execute(
+            select(PortalConversation).where(PortalConversation.internal_thread_id == thread.id)
+        )
+        portal_conversation = portal_result.scalar_one_or_none()
+        if portal_conversation:
+            db.add(
+                PortalConversationMessage(
+                    id=str(uuid.uuid4()),
+                    tenant_id=current_user.tenant_id,
+                    conversation_id=portal_conversation.id,
+                    claim_id=portal_conversation.claim_id,
+                    author_type="staff",
+                    body_text=payload.body_text,
+                    internal_chat_message_id=message.id,
+                    metadata_json={"source": "internal_chat", "sender_user_id": current_user.id},
+                )
+            )
+
     await db.commit()
     await db.refresh(message)
     response = InternalChatMessageResponse.model_validate(message)
+
+    if portal_conversation:
+        try:
+            from app.services.insured_notification_service import (
+                InsuredNotificationService,
+                build_portal_deeplink,
+            )
+
+            portal_claim = await ClaimService.get_claim(
+                db, current_user.tenant_id, portal_conversation.claim_id
+            )
+            if portal_claim:
+                preview = (payload.body_text or "").strip()
+                if len(preview) > 140:
+                    preview = preview[:137] + "…"
+                await InsuredNotificationService.notify(
+                    db,
+                    portal_claim,
+                    kind="portal_chat_reply",
+                    title=current_user.full_name or "Il tuo perito ti ha scritto",
+                    body=preview or "Hai un nuovo messaggio nel portale.",
+                    deeplink=build_portal_deeplink(portal_claim, "chat"),
+                )
+        except Exception:
+            pass
     try:
         from app.api.v1.routes_realtime import sse_manager
         await sse_manager.broadcast(

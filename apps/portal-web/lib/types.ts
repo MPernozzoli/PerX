@@ -1,185 +1,240 @@
 export interface PortalSession {
-  claimId: string;
   token: string;
-  expiresAt?: string;
+  claimId: string;
+  portalAccessId: string;
+  expiresAt: string;
 }
 
 export interface PortalAuthStartResponse {
   status: string;
+  challenge_id?: string;
+  delivery_channel?: string;
   masked_destination?: string;
+  expires_at?: string;
   preview_magic_link_url?: string;
 }
 
-export interface PortalAccessibleClaim {
-  claim_id: string;
-  reference: string;
-  description?: string;
-  status?: string;
-}
-
-export interface PortalExpert {
-  full_name?: string;
-  job_title?: string;
-  email?: string;
-  phone_number?: string;
-  is_available_now?: boolean;
-  availability_note?: string;
+export interface PortalAuthRequestOtpResponse {
+  status: string;
+  challenge_id?: string;
+  delivery_channel?: string;
+  masked_destination?: string;
+  expires_at?: string;
+  preview_otp_code?: string;
 }
 
 export interface PortalMacroState {
+  code: string;
   label: string;
   description: string;
-  internal_state: string;
+  needs_action: boolean;
+  internal_state?: string;
+}
+
+export interface PortalExpert {
+  user_id?: string;
+  full_name?: string;
+  email?: string;
+  phone_number?: string;
+  job_title?: string;
+  is_available_now: boolean;
+  is_online: boolean;
+  availability_note?: string;
 }
 
 export interface PortalRequirement {
   key: string;
   label: string;
+  status: string;
   description: string;
 }
 
+export interface PortalAppointment {
+  id: string;
+  title: string;
+  starts_at: string;
+  ends_at: string;
+  location?: string;
+  status: string;
+}
+
+export interface PortalDocumentCollectionDraftInfo {
+  available: boolean;
+  status: string;
+  current_step?: string;
+  updated_at?: string;
+  submitted_at?: string;
+}
+
 export interface PortalActFlow {
+  status: string;
   label: string;
   provider?: string;
+  signing_url?: string;
+  provider_reference?: string;
+  request_id?: string;
+  act_document_id?: string;
+  signed_document_id?: string;
+  countersigned_document_id?: string;
   signed_at?: string;
   countersigned_at?: string;
-  signing_url?: string;
-  countersigned_document_id?: string;
 }
 
-export interface PortalAdditionalDocumentRequest {
-  id?: string;
-  label?: string;
-  description?: string;
-  category?: string;
-  [key: string]: unknown;
-}
-
-export interface PortalClaimSummary {
+export interface PortalAccessibleClaim {
   claim_id: string;
-  reference?: string;
+  tenant_id: string;
   external_ref?: string;
   numero_sinistro?: string;
   compagnia?: string;
   nome_assicurato?: string;
-  contraente_name?: string;
   data_sinistro?: string;
-  expert: PortalExpert;
+  updated_at?: string;
   macro_state: PortalMacroState;
-  requirements: PortalRequirement[];
-  additional_document_requests: string[];
-  chat_enabled?: boolean;
+  has_pending_actions: boolean;
   requested_amount?: number;
-  estimated_damage_amount?: number;
   liquidated_amount?: number;
-  iban_value_masked?: string;
-  iban_status?: string;
-  documentation_uploaded?: number;
-  documentation_required?: number;
-  documentation_mode?: "collection" | "additional";
-  inspection_mode?: "fieldwork" | "desktop" | "video";
-  inspection_status?: string;
-  inspection_scheduled_at?: string;
-  inspection_scheduling_enabled?: boolean;
-  act_status?: string;
+  estimated_damage_amount?: number;
+}
+
+export interface PortalClaimSummary {
+  claim_id: string;
+  tenant_id: string;
+  external_ref?: string;
+  numero_sinistro?: string;
+  compagnia?: string;
+  nome_assicurato?: string;
+  data_sinistro?: string;
+  macro_state: PortalMacroState;
+  expert: PortalExpert;
+  requirements: PortalRequirement[];
+  upcoming_appointment?: PortalAppointment;
+  chat_enabled: boolean;
+  document_upload_enabled: boolean;
+  act_signature_enabled: boolean;
+  inspection_scheduling_enabled: boolean;
+  requested_amount?: number;
+  liquidated_amount?: number;
+  estimated_damage_amount?: number;
   act_sent_at?: string;
   act_signed_at?: string;
+  contraente_name?: string;
+  iban_value_masked?: string;
+  iban_required_for_progress: boolean;
+  document_collection_draft: PortalDocumentCollectionDraftInfo;
+  additional_document_requests: string[];
   act_flow?: PortalActFlow;
 }
 
 export interface PortalTimelineEvent {
   id: string;
-  label: string;
+  event_type: string;
   event_time: string;
+  label: string;
   description?: string;
+  source: string;
 }
 
 export interface PortalDocument {
   id: string;
-  name: string;
   file_name: string;
   category?: string;
-  status?: string;
-  uploaded_at?: string;
-  url?: string;
-  required?: boolean;
-  uploaded?: boolean;
-}
-
-export interface PortalMessageList {
-  items: PortalMessage[];
-  total?: number;
+  status: string;
+  uploaded_at: string;
 }
 
 export interface PortalMessage {
   id: string;
+  author_type: string;
+  body_text: string;
   created_at: string;
-  body: string;
-  body_text?: string;
-  author_type?: string;
-  sender?: string;
-  read?: boolean;
+}
+
+export interface PortalMessageList {
+  items: PortalMessage[];
+  total: number;
+}
+
+export interface PortalInspectionLocation {
+  address_line?: string;
+  municipality?: string;
+  province?: string;
+  region?: string;
+  latitude?: number;
+  longitude?: number;
+  confirmed_at?: string;
 }
 
 export interface PortalInspectionSlot {
-  slot_id?: string;
+  id: string;
   date: string;
+  start_at: string;
+  end_at: string;
   label: string;
-  start_at?: string;
-  end_at?: string;
+}
+
+export interface PortalInspectionAvailabilitySlot extends PortalInspectionSlot {
+  available_cat_count: number;
+  candidate_user_ids: string[];
 }
 
 export interface PortalInspectionAvailabilityDay {
   date: string;
-  label: string;
-  slots: PortalInspectionSlot[];
-}
-
-export interface PortalInspectionLocation {
-  confirmed_at?: string;
-  address_line?: string;
-  latitude?: number;
-  longitude?: number;
-  municipality?: string;
-  province?: string;
-  region?: string;
+  weekday_label: string;
+  is_available: boolean;
+  slot_count: number;
+  slots: PortalInspectionAvailabilitySlot[];
 }
 
 export interface PortalInspectionCandidateCat {
-  id?: string;
-  name?: string;
-  [key: string]: unknown;
+  user_id: string;
+  full_name: string;
+  email?: string;
+  phone_number?: string;
+  job_title?: string;
+  comune?: string;
+  provincia?: string;
+  regione?: string;
+  distance_km?: number;
+  is_primary_zone: boolean;
 }
 
 export interface PortalInspectionSchedulingOverview {
-  enabled?: boolean;
-  preparation_items: string[];
-  address_confirmed?: boolean;
-  instructions?: string;
+  enabled: boolean;
+  mode: string;
+  status: string;
+  workflow_stage?: string;
+  instructions: string;
   pending_confirmation_message?: string;
-  route_review_deadline?: string;
-  availability_days: PortalInspectionAvailabilityDay[];
-  selected_slots: PortalInspectionSlot[];
-  candidate_cats: PortalInspectionCandidateCat[];
+  address_confirmed: boolean;
   location: PortalInspectionLocation;
-  status?: string;
-  scheduled_at?: string;
-  inspector_name?: string;
+  selected_slots: PortalInspectionSlot[];
+  availability_days: PortalInspectionAvailabilityDay[];
+  candidate_cats: PortalInspectionCandidateCat[];
+  route_review_deadline?: string;
+  route_proposal_event_id?: string;
+  slot_duration_minutes: number;
+  assignment_run_hour: number;
+  assigned_expert_name?: string;
+  assigned_expert_retained: boolean;
+  preparation_items: string[];
 }
 
 export interface PortalBankAccountValidation {
   is_valid: boolean;
   normalized_iban: string;
+  country_code?: string;
+  check_digits?: string;
+  cin?: string;
   abi?: string;
   cab?: string;
+  account_number?: string;
+  reason?: string;
 }
 
 export interface PortalBankAccountSubmission {
-  iban: string;
+  id: string;
   status: string;
-  submitted_at?: string;
-  verified_at?: string;
-  masked_iban?: string;
+  submitted_at: string;
   validation: PortalBankAccountValidation;
 }
 
@@ -196,7 +251,6 @@ export interface PortalMeDeletionRequest {
 export type PortalMeNotificationChannel = "email" | "whatsapp" | "sms" | "push";
 
 export interface PortalMeNotificationPrefs {
-  channels?: PortalMeNotificationChannel[];
   channel_email: boolean;
   channel_whatsapp: boolean;
   channel_sms: boolean;
@@ -207,28 +261,17 @@ export interface PortalMeNotificationPrefs {
   call_window_end?: string | null;
   quiet_hours_start?: string | null;
   quiet_hours_end?: string | null;
-  documents_via_email?: boolean;
-  claim_updates?: boolean;
-  inspection_reminders?: boolean;
-  document_requests?: boolean;
-  messages?: boolean;
+  documents_via_email: boolean;
   updated_at?: string;
 }
 
 export interface PortalMePolicy {
-  id?: string;
-  version?: number;
+  id: string;
+  version: number;
   title?: string;
   summary?: string;
-  content_md?: string;
-  effective_from?: string;
-  policy_number?: string;
-  product_name?: string;
-  company?: string;
-  start_date?: string;
-  end_date?: string;
-  insured_name?: string;
-  coverage_summary?: string;
+  content_md: string;
+  effective_from: string;
 }
 
 export interface PortalMeProfile {
@@ -246,27 +289,35 @@ export interface PortalMeProfile {
 
 export interface PortalMeSessionInfo {
   id: string;
-  created_at: string;
-  last_seen_at?: string;
-  user_agent?: string;
   device_label?: string;
   ip_address?: string;
-  is_current?: boolean;
+  user_agent?: string;
+  created_at: string;
+  last_seen_at: string;
+  is_current: boolean;
 }
 
 export interface PortalVideoperiziaSession {
-  session_id: string;
+  id: string;
+  claim_id: string;
+  livekit_room_name: string;
   state: "scheduled" | "lobby_open" | "live" | "ended" | "aborted";
-  scheduled_at?: string;
+  lobby_joined_at?: string;
   started_at?: string;
   ended_at?: string;
-  room_name?: string;
+  perito_user_id?: string;
+  insured_disconnected_at?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface PortalVideoperiziaToken {
   token: string;
+  livekit_url: string;
   room_name: string;
-  server_url?: string;
-  livekit_url?: string;
-  can_publish?: boolean;
+  identity: string;
+  expires_at: string;
+  can_publish: boolean;
+  can_subscribe: boolean;
+  session: PortalVideoperiziaSession;
 }

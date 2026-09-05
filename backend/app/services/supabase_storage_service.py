@@ -43,6 +43,10 @@ class SupabaseStorageService:
     def _bucket() -> str:
         return settings.SUPABASE_STORAGE_BUCKET or "perx-portal-uploads"
 
+    @classmethod
+    def bucket_name(cls) -> str:
+        return cls._bucket()
+
     @staticmethod
     def is_configured() -> bool:
         return bool(
@@ -89,6 +93,40 @@ class SupabaseStorageService:
             checksum_sha256=checksum,
             mime_type=mime,
         )
+
+    @classmethod
+    async def download(cls, object_path: str) -> bytes:
+        bucket = cls._bucket()
+        async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0)) as client:
+            resp = await client.get(
+                f"{cls._base_url()}/object/{bucket}/{object_path}",
+                headers=cls._headers(),
+            )
+            resp.raise_for_status()
+            return resp.content
+
+    @classmethod
+    async def create_signed_upload_url(cls, object_path: str) -> str:
+        """Returns a signed upload URL the browser can PUT the file bytes to
+        directly, bypassing the backend as a proxy for the raw file content."""
+        bucket = cls._bucket()
+        async with httpx.AsyncClient(timeout=httpx.Timeout(15.0)) as client:
+            resp = await client.post(
+                f"{cls._base_url()}/object/upload/sign/{bucket}/{object_path}",
+                headers={**cls._headers(), "Content-Type": "application/json"},
+                json={},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+        signed_url = data.get("url") or data.get("signedURL") or data.get("signedUrl") or ""
+        if not signed_url:
+            raise RuntimeError(f"Supabase did not return a signed upload URL for {object_path}")
+
+        supabase_url = (settings.SUPABASE_URL or "").rstrip("/")
+        if signed_url.startswith("/"):
+            return f"{supabase_url}{signed_url}"
+        return signed_url
 
     @classmethod
     async def create_signed_url(cls, object_path: str, expires_in_seconds: int = 86400) -> str:

@@ -33,16 +33,24 @@ comunicazioni e CAT dispatcher). La struttura della repo può ancora essere rior
 
 ### Implementato
 - Backend `portal`: modelli, API, token flow, migration dedicate.
-- Web app dedicata (`apps/portal-web`) con pagine, sessione locale, integrazione API.
+- Web app dedicata (`apps/portal-web`) con pagine, sessione locale, integrazione API — contratto
+  frontend↔backend riconciliato il 2026-09-05 (vedi [[06-Decisioni-e-Intenzioni-Future]]):
+  `lib/api.ts`/`lib/types.ts` ora rispecchiano esattamente gli schemi Pydantic del backend.
+  `tsc --noEmit` pulito su tutta l'app.
 - Schedulazione sopralluogo: conferma posizione, pin interattivo, selezione multi-slot.
-- Typecheck frontend e audit puliti.
+- Invio e-mail automatico del magic link, sia per link generati dallo staff sia per il resend
+  self-service dall'assicurato (via `ResendEmailService`, richiede `RESEND_API_KEY` configurata).
+- Signed upload URL reali verso Supabase Storage (con fallback al proxy server quando Supabase
+  non è configurato).
+- Canalizzazione delle risposte staff → assicurato nella chat portale (mirror in
+  `PortalConversationMessage` + notifica push/email all'assicurato).
+- Antifrode di base per la documentale fotografica (EXIF/GPS, hash percettivo per duplicati) —
+  segnalazione non bloccante, dietro `FF_PORTAL_PHOTO_ANTIFRAUD_ENABLED`.
 
 ### Non ancora collegato
-- Invio e-mail automatico del magic link (oggi solo preview in ambiente dev).
-- OTP SMS.
-- Signed upload URL reali verso Supabase Storage.
-- Canalizzazione delle risposte staff → assicurato nella chat portale.
-- Antifrode forte per la documentale fotografica.
+- OTP SMS: nessun provider (Twilio/Vonage/...) integrato nel backend — solo preview in ambiente
+  dev. Decisione esplicita dell'utente (2026-09-05) di rimandarlo; da riprendere quando si sceglie
+  un provider e si configurano le relative credenziali.
 
 ## Migrazione web → Next.js App Router — dettaglio stato
 

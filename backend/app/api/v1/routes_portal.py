@@ -51,6 +51,7 @@ from app.schemas.portal import (
     PortalSignatureRequestCreate,
     PortalSignatureRequestResponse,
     PortalTimelineEventResponse,
+    PortalUploadConfirmRequest,
     PortalUploadedDocumentResponse,
     PortalUploadIntentCreate,
     PortalUploadIntentResponse,
@@ -95,7 +96,7 @@ async def create_claim_access_link(
     access, challenge, raw_token = await PortalService.issue_access_link(
         db,
         current_user.tenant_id,
-        claim.id,
+        claim,
         payload,
     )
     return PortalAccessInviteResponse(
@@ -478,6 +479,29 @@ async def upload_document_file(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return PortalUploadedDocumentResponse.model_validate(uploaded)
+
+
+@router.post("/claim/documents/{document_id}/confirm-upload", response_model=PortalUploadedDocumentResponse)
+async def confirm_document_upload(
+    document_id: str,
+    payload: PortalUploadConfirmRequest,
+    claim_id: str | None = Query(default=None),
+    session: PortalSessionContext = Depends(get_current_portal_session),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        confirmed = await PortalService.confirm_document_upload(
+            db,
+            session,
+            document_id=document_id,
+            file_name=payload.file_name,
+            mime_type=payload.mime_type,
+            size_bytes=payload.size_bytes,
+            claim_id=claim_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return PortalUploadedDocumentResponse.model_validate(confirmed)
 
 
 @router.post(

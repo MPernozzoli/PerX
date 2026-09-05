@@ -126,7 +126,7 @@ export function AuthEntry() {
               <div>
                 <div className="hero__highlight-title">Accesso senza credenziali</div>
                 <div className="hero__highlight-desc">
-                  Riferimento sinistro + codice di conferma via SMS. Niente password da ricordare.
+                  Riferimento sinistro + link di accesso via email. Niente password da ricordare.
                 </div>
               </div>
             </div>

@@ -58,6 +58,7 @@ from app.core.portal_security import generate_otp_code
 from app.services.iban_service import IbanService
 from app.services.inspection_workflow_service import InspectionWorkflowService
 from app.services.video_inspection_workflow_service import VideoInspectionWorkflowService
+from app.services.photo_antifraud_service import PhotoAntifraudService
 from app.services.portal_status_service import PortalStatusService
 from app.services.process_job_service import ProcessJobService
 from app.services.resend_email_service import ResendEmailMessage, ResendEmailService
@@ -454,11 +455,23 @@ class PortalService:
         document.status = "uploaded"
         document.checksum_sha256 = checksum_sha256
         document.uploaded_at = datetime.now(timezone.utc)
+
+        antifraud = None
+        if settings.FF_PORTAL_PHOTO_ANTIFRAUD_ENABLED:
+            antifraud = await PhotoAntifraudService.evaluate(
+                db,
+                tenant_id=session.tenant_id,
+                claim_id=claim.id,
+                document_id=document.id,
+                content=content,
+                mime_type=document.mime_type,
+            )
         document.metadata_json = PortalService._merge_metadata(
             document.metadata_json,
             portal_access_id=access.id,
             uploaded_via="portal",
             audience="insured",
+            antifraud=antifraud,
         )
 
         await PortalService._create_claim_event(
@@ -727,10 +740,10 @@ class PortalService:
     async def issue_access_link(
         db: AsyncSession,
         tenant_id: str,
-        claim_id: str,
+        claim: Claim,
         payload: PortalAccessInviteRequest,
     ) -> tuple[PortalClaimAccess, PortalAuthChallenge, str]:
-        access = await PortalService.create_or_update_access(db, tenant_id, claim_id, payload)
+        access = await PortalService.create_or_update_access(db, tenant_id, claim.id, payload)
         challenge, raw_token = await PortalService.create_magic_link_challenge(
             db,
             access,
@@ -739,11 +752,20 @@ class PortalService:
         await PortalService._create_claim_event(
             db,
             tenant_id,
-            claim_id,
+            claim.id,
             "portal_access_issued",
             "portal",
             {"portal_access_id": access.id, "challenge_id": challenge.id},
         )
+        if access.email:
+            magic_link_url = await PortalService.build_magic_link_url_for_tenant(db, tenant_id, raw_token)
+            await PortalService._send_portal_welcome_email(
+                email=access.email,
+                full_name=access.full_name,
+                claim=claim,
+                magic_link_url=magic_link_url,
+            )
+            access.last_delivery_status = "access_link_email_sent"
         await db.commit()
         await db.refresh(access)
         await db.refresh(challenge)
@@ -894,7 +916,23 @@ class PortalService:
                 "portal_host": PortalService.normalize_portal_host(payload.portal_host),
             },
         )
-        access.last_delivery_status = "pending_integration"
+        if payload.channel == "email" and access.email:
+            claim = await PortalService.get_claim_for_tenant(db, access.tenant_id, access.claim_id)
+            if claim:
+                magic_link_url = await PortalService.build_magic_link_url_for_tenant(
+                    db, access.tenant_id, raw_token, payload.portal_host,
+                )
+                await PortalService._send_portal_welcome_email(
+                    email=access.email,
+                    full_name=access.full_name,
+                    claim=claim,
+                    magic_link_url=magic_link_url,
+                )
+                access.last_delivery_status = "access_link_email_sent"
+            else:
+                access.last_delivery_status = "pending_integration"
+        else:
+            access.last_delivery_status = "pending_integration"
         await db.commit()
         await db.refresh(challenge)
         return access, challenge, raw_token
@@ -1859,18 +1897,40 @@ class PortalService:
     ) -> dict:
         claim, access = await PortalService.resolve_claim_for_session(db, session, claim_id)
         document_id = str(uuid.uuid4())
-        storage_path = f"portal/{session.tenant_id}/{claim.id}/{document_id}/{payload.file_name}"
+        safe_name = PortalService._safe_filename(payload.file_name, document_id)
+
+        upload_mode = "server-proxy"
+        upload_url: str | None = None
+        expires_in = 3600
+        if SupabaseStorageService.is_configured():
+            claim_ref = PortalService._claim_reference_for_paths(claim)
+            storage_path = SupabaseStorageService.build_object_path(
+                session.tenant_id, claim_ref, document_id, safe_name
+            )
+            storage_provider = "supabase"
+            storage_bucket = SupabaseStorageService.bucket_name()
+            try:
+                upload_url = await SupabaseStorageService.create_signed_upload_url(storage_path)
+                upload_mode = "signed-url"
+            except Exception:
+                # Falls back to the server-proxied multipart upload below.
+                upload_url = None
+        else:
+            storage_path = f"portal/{session.tenant_id}/{claim.id}/{document_id}/{safe_name}"
+            storage_provider = "local"
+            storage_bucket = None
+
         document = Document(
             id=document_id,
             tenant_id=session.tenant_id,
             claim_id=claim.id,
             source_type="portal",
-            file_name=payload.file_name,
-            original_file_name=payload.file_name,
+            file_name=safe_name,
+            original_file_name=safe_name,
             mime_type=payload.mime_type,
             size_bytes=payload.size_bytes,
-            storage_provider="supabase",
-            storage_bucket=settings.STORAGE_BUCKET_NAME,
+            storage_provider=storage_provider,
+            storage_bucket=storage_bucket,
             storage_path=storage_path,
             status="pending_upload",
             category=payload.category,
@@ -1888,10 +1948,92 @@ class PortalService:
         await db.commit()
         return {
             "document_id": document.id,
-            "upload_mode": "signed-url-pending",
-            "upload_url": None,
+            "upload_mode": upload_mode,
+            "upload_url": upload_url,
             "storage_path": storage_path,
-            "expires_in": 3600,
+            "expires_in": expires_in,
+        }
+
+    @staticmethod
+    async def confirm_document_upload(
+        db: AsyncSession,
+        session: PortalSessionContext,
+        *,
+        document_id: str,
+        file_name: str | None,
+        mime_type: str | None,
+        size_bytes: int,
+        claim_id: str | None = None,
+    ) -> dict:
+        """Finalizes a document uploaded by the browser directly to a signed
+        storage URL (see create_upload_intent's upload_mode="signed-url").
+        The backend never saw the bytes in transit, so it fetches them back
+        once to run the same antifraud checks as the server-proxied path."""
+        claim, access = await PortalService.resolve_claim_for_session(db, session, claim_id)
+        result = await db.execute(
+            select(Document).where(
+                Document.id == document_id,
+                Document.tenant_id == session.tenant_id,
+                Document.claim_id == claim.id,
+            )
+        )
+        document = result.scalar_one_or_none()
+        if not document:
+            raise ValueError("Documento non trovato.")
+        if document.storage_provider != "supabase":
+            raise ValueError("Questo documento non e' stato creato per un upload diretto.")
+
+        insured_folder = await PortalService._ensure_insured_claim_folder(db, session.tenant_id, claim)
+        safe_name = PortalService._safe_filename(file_name or document.file_name, document.id)
+
+        antifraud = None
+        if settings.FF_PORTAL_PHOTO_ANTIFRAUD_ENABLED:
+            try:
+                content = await SupabaseStorageService.download(document.storage_path)
+                antifraud = await PhotoAntifraudService.evaluate(
+                    db,
+                    tenant_id=session.tenant_id,
+                    claim_id=claim.id,
+                    document_id=document.id,
+                    content=content,
+                    mime_type=mime_type or document.mime_type,
+                )
+            except Exception:
+                pass  # non-blocking: the upload itself already succeeded
+
+        document.file_name = safe_name
+        document.original_file_name = safe_name
+        document.mime_type = mime_type or document.mime_type
+        document.extension = Path(safe_name).suffix.lstrip(".") or None
+        document.size_bytes = size_bytes
+        document.folder_id = insured_folder.id
+        document.logical_path = f"{insured_folder.path}/{safe_name}"
+        document.status = "uploaded"
+        document.uploaded_at = datetime.now(timezone.utc)
+        document.metadata_json = PortalService._merge_metadata(
+            document.metadata_json,
+            portal_access_id=access.id,
+            uploaded_via="portal",
+            audience="insured",
+            antifraud=antifraud,
+        )
+
+        await PortalService._create_claim_event(
+            db,
+            session.tenant_id,
+            claim.id,
+            "portal_document_uploaded",
+            "portal",
+            {"document_id": document.id, "file_name": document.file_name},
+        )
+        await db.commit()
+        await db.refresh(document)
+        return {
+            "document_id": document.id,
+            "file_name": document.file_name,
+            "status": document.status,
+            "storage_path": document.storage_path,
+            "uploaded_at": document.uploaded_at,
         }
 
     @staticmethod

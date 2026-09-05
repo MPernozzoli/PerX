@@ -76,8 +76,8 @@ class PortalAuthRequestOtpResponse(BaseModel):
 
 class PortalPushSubscribeRequest(BaseModel):
     endpoint: str
-    p256dh: str
-    auth: str
+    p256dh: Optional[str] = None
+    auth: Optional[str] = None
     user_agent: Optional[str] = None
 
 
@@ -322,6 +322,12 @@ class PortalUploadIntentResponse(BaseModel):
     upload_url: Optional[str] = None
     storage_path: str
     expires_in: int
+
+
+class PortalUploadConfirmRequest(BaseModel):
+    file_name: Optional[str] = None
+    mime_type: Optional[str] = None
+    size_bytes: int = Field(default=0, ge=0)
 
 
 class PortalUploadedDocumentResponse(BaseModel):

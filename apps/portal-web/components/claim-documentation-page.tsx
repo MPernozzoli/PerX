@@ -11,7 +11,7 @@ import {
   createUploadIntent,
   downloadPortalDocument,
   submitAdditionalDocuments,
-  uploadPortalDocumentFile
+  uploadPortalDocumentViaIntent
 } from "@/lib/api";
 import {
   formatDateTime,
@@ -155,14 +155,7 @@ export function ClaimDocumentationPage() {
                               },
                               summary.claim_id
                             );
-                            await uploadPortalDocumentFile(
-                              session,
-                              {
-                                documentId: intent.document_id,
-                                file
-                              },
-                              summary.claim_id
-                            );
+                            await uploadPortalDocumentViaIntent(session, intent, file, summary.claim_id);
                             uploaded.push({
                               documentId: intent.document_id,
                               fileName: file.name

@@ -7,7 +7,7 @@ import {
   getDocumentCollectionDraft,
   saveDocumentCollectionDraft,
   submitDocumentCollection,
-  uploadPortalDocumentFile
+  uploadPortalDocumentViaIntent
 } from "@/lib/api";
 import type { PortalSession } from "@/lib/types";
 
@@ -616,14 +616,7 @@ export function DocumentCollectionWizard({
           },
           claimId
         );
-        const uploaded = await uploadPortalDocumentFile(
-          session,
-          {
-            documentId: intent.document_id,
-            file
-          },
-          claimId
-        );
+        const uploaded = await uploadPortalDocumentViaIntent(session, intent, file, claimId);
         uploadedArtifacts.push(
           toUploadedArtifact({
             documentId: uploaded.document_id,

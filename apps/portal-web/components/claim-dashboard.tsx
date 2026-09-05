@@ -17,8 +17,17 @@ import {
 } from "@/lib/claim-ui";
 
 export function ClaimDashboard() {
-  const { accessibleClaims, error, isLoading, session, signOut, summary, switchClaim, timeline } =
-    usePortalClaimData();
+  const {
+    accessibleClaims,
+    error,
+    inspectionOverview,
+    isLoading,
+    session,
+    signOut,
+    summary,
+    switchClaim,
+    timeline,
+  } = usePortalClaimData();
 
   if (!session) {
     return <SessionMissingState />;
@@ -26,7 +35,7 @@ export function ClaimDashboard() {
 
   const documentationSummary = getDocumentationSummary(summary);
   const ibanSummary = getIbanSummary(summary);
-  const inspectionSummary = getInspectionSummary(summary);
+  const inspectionSummary = getInspectionSummary(inspectionOverview);
   const actSummary = getActSummary(summary);
 
   return (

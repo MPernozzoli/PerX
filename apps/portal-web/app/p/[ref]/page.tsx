@@ -78,6 +78,7 @@ export default function ClaimPortalEntryPage() {
         atto: "/claim/atto",
         videoperizia: "/claim/videoperizia",
         sopralluogo: "/claim/sopralluogo",
+        chat: "/claim/chat",
       };
       const destination = (focus && focusDestinations[focus]) || "/claim";
       router.replace(destination);

@@ -3,6 +3,11 @@ tags: [perx, piattaforma, web, portale, assicurati]
 updated: 2026-09-05
 ---
 
+> [!note] Contratto API frontend↔backend riconciliato (2026-09-05)
+> Fino a questa data `apps/portal-web/lib/api.ts`/`lib/types.ts` non corrispondevano al backend
+> reale (URL, metodi, casing dei body tutti sbagliati) — vedi la voce datata in
+> [[06-Decisioni-e-Intenzioni-Future]]. Ora sono allineati; `tsc --noEmit` è pulito su tutta l'app.
+
 # Portale Web Assicurati (`apps/portal-web`)
 
 Applicazione **Next.js App Router** dedicata agli assicurati, per consultare e gestire il proprio
@@ -62,15 +67,22 @@ Vercel principale — vedi [[04-Infrastruttura-e-Deploy]]).
 - Sessione portale separata dalla sessione degli utenti interni.
 - Stato assicurato basato su mapping a macrostati, mai sugli `SVxxx` grezzi.
 - Schedulazione sopralluogo agganciata al workflow CAT esistente e ai calendari interni.
-- Upload firmati storage predisposti ma non ancora collegati (vedi stato sotto).
+- Upload documenti: se Supabase Storage è configurato, il browser carica direttamente su uno
+  signed upload URL (`create_upload_intent` → `upload_mode: "signed-url"`), poi conferma con
+  `POST /claim/documents/{id}/confirm-upload`; altrimenti fallback al proxy multipart esistente
+  attraverso il backend (`upload_mode: "server-proxy"`).
+- Antifrode fotografica: controllo offline non bloccante ad ogni upload immagine (EXIF/GPS
+  confrontato con la posizione di sopralluogo confermata, hash percettivo per rilevare foto
+  riciclate sullo stesso sinistro), risultato salvato in `Document.metadata_json.antifraud` per il
+  perito. Dietro `FF_PORTAL_PHOTO_ANTIFRAUD_ENABLED` (default `True`).
 
 ## Stato
 
 Vedi il dettaglio "Implementato / Non ancora collegato" in
-[[05-Stato-Sviluppo-e-Roadmap]]. In sintesi: architettura, API, migration e web app iniziali sono
-implementate; restano da collegare invio e-mail automatico del magic link, OTP SMS, signed upload
-URL reali, canalizzazione risposte staff→assicurato in chat, antifrode forte sulla documentale
-fotografica.
+[[05-Stato-Sviluppo-e-Roadmap]]. In sintesi: architettura, API, migration, contratto frontend↔backend
+e web app sono implementati e verificati; invio e-mail del magic link, signed upload URL,
+canalizzazione risposte staff→assicurato in chat e antifrode di base sono collegati. Resta fuori
+scope solo l'OTP via SMS (nessun provider integrato).
 
 ---
 Ultimo aggiornamento: 2026-09-05

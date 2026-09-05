@@ -22,6 +22,38 @@ Motivazione: ...
 
 ---
 
+## 2026-09-05 — Riconciliazione contratto API portale assicurati + completamento gap documentati
+Contesto: nel completare i gap "non ancora collegato" del portale assicurati (vedi
+[[Portal-Web-Assicurati]]) è emerso che `apps/portal-web/lib/api.ts` e `lib/types.ts` non
+corrispondevano affatto al backend reale (`routes_portal.py`/`routes_portal_me.py`): URL (plurale
+`/claims/{id}/...` invece di `/claim/...` con `claim_id` opzionale in query), metodi HTTP, e body
+in camelCase invece di snake_case (nessun alias generator nei modelli Pydantic). `tsc --noEmit`
+falliva già prima di qualunque modifica (confermato: l'affermazione "typecheck puliti" nello stato
+del progetto non era più vera). La maggior parte dei componenti pagina (`claim-chat-page`,
+`claim-iban-page`, `claim-act-page`, `claim-documentation-page`, `claim-inspection-page`,
+`auth-entry`, `push-prompt`, videoperizia) usava già i campi reali corretti: il problema era
+isolato quasi interamente in `lib/api.ts`/`lib/types.ts`/`lib/claim-ui.ts`.
+Decisione: riscritti `lib/types.ts` e `lib/api.ts` per rispecchiare esattamente gli schemi Pydantic
+del backend (percorso, metodo, snake_case, gestione 204). Riscritte le funzioni derivate in
+`lib/claim-ui.ts` (riepiloghi documentazione/IBAN/sopralluogo/atto) per usare solo campi realmente
+esposti dal backend invece di campi mai esistiti (`documentation_uploaded`, `iban_status`,
+`inspection_mode` su `PortalClaimSummary`, ecc.) — erano bug silenziosi, non solo errori di tipo.
+Rimossi (spostati fuori repo, non eliminati) `lib/mocks.ts` e un `claim-dashboard 2.tsx` non
+tracciati in git, entrambi già rotti e non referenziati da nessun import. `tsc --noEmit` ora è
+pulito su tutto `apps/portal-web`.
+Contestualmente completati i gap approvati dall'utente: invio email reale del magic link (sia
+per link generati dallo staff sia per il resend self-service — riusa `ResendEmailService`), signed
+upload URL reali verso Supabase Storage con endpoint di conferma dedicato (fallback al proxy
+server esistente quando Supabase non è configurato), canalizzazione delle risposte staff→assicurato
+nella chat portale (mirroring in `PortalConversationMessage` + notifica push/email), e un primo
+livello di antifrode offline sulle foto caricate (EXIF/GPS vs posizione sopralluogo confermata,
+hash percettivo per duplicati — dietro `FF_PORTAL_PHOTO_ANTIFRAUD_ENABLED`, default `True`; solo
+segnalazione, nessun blocco). OTP SMS resta esplicitamente fuori scope: nessun provider integrato,
+da decidere con l'utente quando servirà.
+Motivazione: senza questa riconciliazione nessuna funzionalità del portale (dashboard, documenti,
+chat, IBAN, sopralluogo) avrebbe mai funzionato contro il backend reale — priorità più alta dei
+gap stessi. Vedi [[Portal-Web-Assicurati]] e [[05-Stato-Sviluppo-e-Roadmap]] per lo stato aggiornato.
+
 ## 2026-06 — Un solo progetto Vercel come gateway multi-dominio
 Contesto: più app Next.js (`portal-web`, `catdispatcher`, `bignami-online`, `perx-insight-studio`,
 `randa`) devono convivere nello stesso repo e condividere SSO/policy.
