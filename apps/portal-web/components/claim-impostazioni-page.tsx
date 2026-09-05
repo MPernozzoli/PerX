@@ -293,7 +293,9 @@ function PrivacySection({
           <>
             <p style={{ color: "var(--text-muted, #666)", fontSize: 14 }}>
               Versione {policy.version} · in vigore dal{" "}
-              {new Date(policy.effective_from).toLocaleDateString("it-IT")}
+              {policy.effective_from
+                ? new Date(policy.effective_from).toLocaleDateString("it-IT")
+                : ""}
             </p>
             {policy.summary && <p>{policy.summary}</p>}
             <div style={{ marginTop: 12, maxHeight: policyExpanded ? "none" : 280, overflow: "auto", border: "1px solid var(--border, #e5e5e5)", padding: 12, borderRadius: 8, whiteSpace: "pre-wrap", fontSize: 13 }}>
@@ -417,8 +419,7 @@ function ComunicazioniSection({
     if (!prefs) return;
     setIsSaving(true);
     try {
-      const updated = await updatePortalMeNotifications(session, prefs);
-      setPrefs(updated);
+      await updatePortalMeNotifications(session, prefs);
       setError(null);
     } catch (e) {
       setError((e as Error).message);
@@ -609,7 +610,9 @@ function SicurezzaSection({
                 </p>
                 <p style={{ margin: 0, fontSize: 12, color: "var(--text-muted, #666)" }}>
                   {s.ip_address ?? "IP sconosciuto"} · ultimo accesso{" "}
-                  {new Date(s.last_seen_at).toLocaleString("it-IT")}
+                  {s.last_seen_at
+                    ? new Date(s.last_seen_at).toLocaleString("it-IT")
+                    : "—"}
                 </p>
               </div>
               {!s.is_current && (

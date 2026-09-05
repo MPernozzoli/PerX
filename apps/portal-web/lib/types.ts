@@ -187,18 +187,32 @@ export interface PortalMeDeletionRequest {
   id: string;
   status: "pending" | "confirmed" | "cancelled";
   requested_at: string;
+  eligible_from: string;
   scheduled_deletion_at?: string;
   reason?: string;
+  processed_at?: string;
 }
 
-export type PortalMeNotificationChannel = "email" | "sms" | "push";
+export type PortalMeNotificationChannel = "email" | "whatsapp" | "sms" | "push";
 
 export interface PortalMeNotificationPrefs {
-  channels: PortalMeNotificationChannel[];
+  channels?: PortalMeNotificationChannel[];
+  channel_email: boolean;
+  channel_whatsapp: boolean;
+  channel_sms: boolean;
+  channel_push: boolean;
+  preferred_channel: PortalMeNotificationChannel;
+  allow_phone_calls: boolean;
+  call_window_start?: string | null;
+  call_window_end?: string | null;
+  quiet_hours_start?: string | null;
+  quiet_hours_end?: string | null;
+  documents_via_email?: boolean;
   claim_updates?: boolean;
   inspection_reminders?: boolean;
   document_requests?: boolean;
   messages?: boolean;
+  updated_at?: string;
 }
 
 export interface PortalMePolicy {
@@ -231,7 +245,7 @@ export interface PortalMeProfile {
 }
 
 export interface PortalMeSessionInfo {
-  session_id: string;
+  id: string;
   created_at: string;
   last_seen_at?: string;
   user_agent?: string;
