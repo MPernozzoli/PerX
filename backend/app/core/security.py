@@ -2,6 +2,7 @@
 Security utilities: JWT, password hashing, RBAC
 """
 import asyncio
+import secrets
 from datetime import datetime, timedelta
 from typing import Optional
 import json
@@ -9,7 +10,7 @@ from urllib import error as urlerror
 from urllib import request as urlrequest
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -213,4 +214,47 @@ async def get_current_platform_admin(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Platform admin access required"
         )
+    return current_user
+
+
+# Non-persisted sentinel returned when a request authenticates via
+# PLATFORM_ADMIN_API_KEY instead of a human session. Never added to a DB
+# session — it only needs to satisfy `current_user.is_platform_admin` checks
+# in route bodies (routes_admin.py doesn't read anything else off it).
+PLATFORM_BRIDGE_USER = User(
+    id="perx-service-pynkstudio",
+    tenant_id=None,
+    email="service-bridge@pynkstudio.internal",
+    full_name="PynkStudio Service Bridge",
+    is_active=True,
+    is_platform_admin=True,
+)
+
+
+async def require_platform_admin_or_api_key(
+    x_perx_admin_key: Optional[str] = Header(default=None, alias="X-PerX-Admin-Key"),
+    authorization: Optional[str] = Header(default=None),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """Platform-admin gate for external server-to-server callers (PynkStudio).
+
+    Accepts either the existing human JWT flow (same rules as
+    get_current_platform_admin) or a valid X-PerX-Admin-Key header. Kept
+    separate from get_current_platform_admin/oauth2_scheme so this addition
+    can't change behavior for any existing JWT-authenticated route.
+    """
+    if x_perx_admin_key and settings.PLATFORM_ADMIN_API_KEY:
+        if secrets.compare_digest(x_perx_admin_key, settings.PLATFORM_ADMIN_API_KEY):
+            return PLATFORM_BRIDGE_USER
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid admin key")
+
+    if not authorization:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+
+    token = authorization.removeprefix("Bearer ").strip()
+    current_user = await get_current_user(token=token, db=db)
+    if not current_user.is_active:
+        raise HTTPException(status_code=400, detail="Inactive user")
+    if not current_user.is_platform_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Platform admin access required")
     return current_user

@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.security import get_current_platform_admin
+from app.core.security import require_platform_admin_or_api_key
 from app.models.tenant import Tenant, TenantPortalDomain
 from app.models.user import User
 from app.schemas.admin import AdminUserResponse, DomainRouteResponse, DomainRouteUpsert, TenantResponse, TenantUpsert
@@ -23,7 +23,7 @@ router = APIRouter()
 @router.get("/tenants", response_model=list[TenantResponse])
 async def list_tenants(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_platform_admin)
+    _: User = Depends(require_platform_admin_or_api_key)
 ):
     query = select(Tenant).order_by(Tenant.name.asc())
     if settings.SINGLE_TENANT_MODE:
@@ -52,7 +52,7 @@ async def _ensure_unique_tenant_slug(db: AsyncSession, slug: str, tenant_id: str
 async def create_tenant(
     payload: TenantUpsert,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_platform_admin),
+    _: User = Depends(require_platform_admin_or_api_key),
 ):
     if settings.SINGLE_TENANT_MODE:
         raise HTTPException(status_code=403, detail="Single-tenant mode is enabled")
@@ -79,7 +79,7 @@ async def update_tenant(
     tenant_id: str,
     payload: TenantUpsert,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_platform_admin),
+    _: User = Depends(require_platform_admin_or_api_key),
 ):
     result = await db.execute(select(Tenant).where(Tenant.id == tenant_id))
     tenant = result.scalar_one_or_none()
@@ -106,7 +106,7 @@ async def update_tenant(
 async def get_tenant_settings(
     tenant_id: str,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_platform_admin),
+    _: User = Depends(require_platform_admin_or_api_key),
 ):
     result = await db.execute(select(Tenant).where(Tenant.id == tenant_id))
     tenant = result.scalar_one_or_none()
@@ -121,7 +121,7 @@ async def update_tenant_settings(
     tenant_id: str,
     payload: TenantMailSettingsPayload,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_platform_admin),
+    _: User = Depends(require_platform_admin_or_api_key),
 ):
     result = await db.execute(select(Tenant).where(Tenant.id == tenant_id))
     tenant = result.scalar_one_or_none()
@@ -178,7 +178,7 @@ async def update_tenant_settings(
 async def list_users(
     tenant_id: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_platform_admin)
+    _: User = Depends(require_platform_admin_or_api_key)
 ):
     query = select(User).order_by(User.email.asc())
     if tenant_id:
@@ -213,7 +213,7 @@ def _domain_route_response(row) -> DomainRouteResponse:
 @router.get("/domain-routes", response_model=list[DomainRouteResponse])
 async def list_domain_routes(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_platform_admin),
+    _: User = Depends(require_platform_admin_or_api_key),
 ):
     result = await db.execute(
         text(
@@ -232,7 +232,7 @@ async def list_domain_routes(
 async def create_domain_route(
     payload: DomainRouteUpsert,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_platform_admin),
+    _: User = Depends(require_platform_admin_or_api_key),
 ):
     hostname = _normalize_hostname(payload.hostname)
     if not hostname:
@@ -274,7 +274,7 @@ async def update_domain_route(
     route_id: str,
     payload: DomainRouteUpsert,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_platform_admin),
+    _: User = Depends(require_platform_admin_or_api_key),
 ):
     hostname = _normalize_hostname(payload.hostname)
     result = await db.execute(
@@ -321,7 +321,7 @@ async def update_domain_route(
 async def delete_domain_route(
     route_id: str,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_platform_admin),
+    _: User = Depends(require_platform_admin_or_api_key),
 ):
     result = await db.execute(text("DELETE FROM domain_routes WHERE id = :route_id"), {"route_id": route_id})
     if result.rowcount == 0:

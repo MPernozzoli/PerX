@@ -1,16 +1,21 @@
 """
 PerX Cloud API - Main application entry point
 """
-from fastapi import FastAPI
+import logging
+import traceback
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 
 from app.core.config import settings
-from app.core.database import engine, Base
+from app.core.database import engine, Base, get_db_context
 from app.core.logging import setup_logging
 from app.api.v1 import (
     routes_actors,
     routes_admin,
+    routes_admin_errors,
     routes_attachments,
     routes_auth,
     routes_bignami,
@@ -113,6 +118,7 @@ app.include_router(routes_planning.router, prefix="/api/v1", tags=["planning"])
 app.include_router(routes_portal.router, prefix="/api/v1/portal", tags=["portal"])
 app.include_router(routes_portal_me.router, prefix="/api/v1/portal/me", tags=["portal-me"])
 app.include_router(routes_admin.router, prefix="/api/v1/admin", tags=["admin"])
+app.include_router(routes_admin_errors.router, prefix="/api/v1/admin", tags=["admin-errors"])
 app.include_router(routes_invitations.router, prefix="/api/v1/invitations", tags=["invitations"])
 app.include_router(routes_tenants.router, prefix="/api/v1/tenants", tags=["tenants"])
 app.include_router(routes_routing.router, prefix="/api/v1/routing", tags=["routing"])
@@ -134,3 +140,31 @@ async def root():
 @app.get("/health")
 async def health():
     return {"status": "healthy"}
+
+
+@app.exception_handler(Exception)
+async def platform_error_log_handler(request: Request, exc: Exception):
+    """Log unhandled exceptions to platform_error_log, then respond 500 as usual.
+
+    Backend-only, first iteration of platform-wide error tracking — see
+    Documentation/06-Decisioni-e-Intenzioni-Future.md (2026-09-06) for the
+    intention to extend this to web apps, native apps and PerXHub later.
+    """
+    logging.getLogger("perx.errors").exception("Unhandled exception on %s %s", request.method, request.url.path)
+    try:
+        from app.api.v1.routes_admin_errors import log_platform_error
+
+        async with get_db_context() as db:
+            await log_platform_error(
+                db,
+                message=str(exc) or exc.__class__.__name__,
+                severity="critical",
+                source="backend",
+                stack_trace=traceback.format_exc(),
+                path=request.url.path,
+                method=request.method,
+            )
+    except Exception:
+        logging.getLogger("perx.errors").exception("Failed to persist platform_error_log row")
+
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})

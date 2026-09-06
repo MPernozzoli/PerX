@@ -10,7 +10,15 @@ updated: 2026-09-05
 Il backend FastAPI viene distribuito come immagine Docker su **Render** (`render.yaml`, root
 `backend`, `Dockerfile`), servizio `perx-api`, health check su `/health`. Variabili sensibili
 (`DATABASE_URL`, `SECRET_KEY`, credenziali Supabase) sono impostate come secret su Render, non nel
-repo. `SINGLE_TENANT_MODE` è configurabile per ambiente.
+repo. `SINGLE_TENANT_MODE` è configurabile per ambiente (in produzione è `False`, vedi
+[[Backend-Cloud-API]]).
+
+`PLATFORM_ADMIN_API_KEY` (nuova, 2026-09-06): chiave server-to-server per il bridge platform-admin
+usato dal portale PerX su `admin.pynkstudio.eu` (repo BePork). Va impostata su Render (dashboard,
+non tracciata in `render.yaml`) e, con lo stesso valore, come `PERX_ADMIN_API_KEY` **server-only**
+(non `NEXT_PUBLIC_`) sul progetto Vercel di BePork. Se assente/vuota il bridge è disabilitato e
+`/api/v1/admin/*` resta accessibile solo via JWT platform-admin umano. Dettagli →
+[[06-Decisioni-e-Intenzioni-Future]] e, lato BePork, `docs/perx-integration.md`.
 
 In locale: `alembic upgrade head` → `python scripts/bootstrap_single_tenant.py` →
 `uvicorn app.main:app --reload`. Dettagli → [[Backend-Cloud-API]].
@@ -93,4 +101,4 @@ tabella `process_jobs`; un worker sul Mac mini fa polling/lease con header
 `GET /api/v1/process-jobs/jobs/claim`. Vedi [[Backend-Cloud-API]] e [[AI-Locale-e-Cloud]].
 
 ---
-Ultimo aggiornamento: 2026-09-05
+Ultimo aggiornamento: 2026-09-06

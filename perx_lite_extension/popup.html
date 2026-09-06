@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8" />
+<title>PerX Lite</title>
+<link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header class="header">
+    <img src="icons/icon48.png" alt="" class="logo" />
+    <div>
+      <h1>PerX Lite</h1>
+      <p class="subtitle">Excel → compilazione pagina, tutto locale</p>
+    </div>
+  </header>
+
+  <section class="step">
+    <label class="field-label" for="excelInput">1. File Excel (Elaborato Peritale)</label>
+    <input type="file" id="excelInput" accept=".xlsx,.xlsm,.xls" />
+    <div id="excelStatus" class="status muted">Nessun file caricato</div>
+  </section>
+
+  <section class="step" id="sheetSection" hidden>
+    <label class="field-label" for="sheetSelect">Foglio</label>
+    <select id="sheetSelect"></select>
+  </section>
+
+  <section class="step">
+    <label class="field-label" for="photoInput">2. Foto da allegare (opzionale)</label>
+    <input type="file" id="photoInput" accept="image/*" />
+    <div id="photoStatus" class="status muted">Nessuna foto selezionata</div>
+  </section>
+
+  <section class="step" id="mappingSection" hidden>
+    <label class="field-label">3. Controlla la mappatura campi</label>
+    <p class="hint">Per ogni valore trovato nell'Excel, scegli in quale campo della pagina va inserito. La scelta viene ricordata per la prossima volta.</p>
+    <div id="mappingList" class="mapping-list"></div>
+  </section>
+
+  <section class="step">
+    <button id="fillButton" class="primary-button" disabled>4. Compila pagina</button>
+    <div id="fillStatus" class="status"></div>
+  </section>
+
+  <section id="fileInputChoice" class="step" hidden>
+    <label class="field-label">In quale campo va caricata la foto?</label>
+    <div id="fileInputList" class="mapping-list"></div>
+  </section>
+
+  <script src="vendor/xlsx.full.min.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

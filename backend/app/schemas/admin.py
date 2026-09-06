@@ -1,6 +1,7 @@
 """
 Schemas for platform-admin APIs
 """
+from datetime import datetime
 from pydantic import BaseModel, Field
 from typing import Any, Literal
 
@@ -57,3 +58,31 @@ class DomainRouteUpsert(BaseModel):
     is_active: bool = True
     notes: str | None = None
     metadata_json: dict[str, Any] | None = None
+
+
+ErrorSeverity = Literal["warning", "error", "critical"]
+
+
+class PlatformErrorResponse(BaseModel):
+    id: str
+    tenant_id: str | None = None
+    tenant_name: str | None = None
+    source: str
+    severity: ErrorSeverity
+    message: str
+    stack_trace: str | None = None
+    path: str | None = None
+    method: str | None = None
+    status_code: int | None = None
+    context_json: dict[str, Any] | None = None
+    resolved: bool
+    resolved_at: datetime | None = None
+    resolved_by_user_id: str | None = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class PlatformErrorResolvePayload(BaseModel):
+    resolved: bool = True

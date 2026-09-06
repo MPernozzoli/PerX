@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     LIVEKIT_API_SECRET: Optional[str] = None
     LIVEKIT_TOKEN_TTL_SECONDS: int = 3600
 
+    # Platform bridge: server-to-server key for external admin panels (PynkStudio)
+    # to call /api/v1/admin/* without a human JWT session. See routes_admin.py /
+    # require_platform_admin_or_api_key in security.py. None disables the bridge.
+    PLATFORM_ADMIN_API_KEY: Optional[str] = None
+
     # Platform admin / multi-tenant bootstrap
     APP_ADMIN_EMAIL: str = "info@pynkstudio.it"
     APP_ADMIN_FULL_NAME: str = "Pynk Studio Admin"

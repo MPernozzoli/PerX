@@ -1,6 +1,6 @@
 ---
 tags: [perx, moc]
-updated: 2026-09-05
+updated: 2026-09-06
 ---
 
 # PerX — Vault di documentazione
@@ -38,6 +38,7 @@ Dettagli → [[01-Panoramica]].
 - [[Portal-Web-Assicurati]] — portale self-service per gli assicurati (Next.js)
 - [[CatDispatcher]] — piattaforma di dispatch geografico dei periti (Next.js)
 - [[Altre-Web-App]] — Bignami Online, PerX Insight Studio, Randa
+- [[PerX-Lite-Extension]] — estensione Chrome standalone: Excel → compilazione pagina JFish
 
 ### Funzionalità trasversali
 - [[Gestione-Sinistri]] — ciclo di vita del sinistro, stati SVxxx, documentale
@@ -48,4 +49,4 @@ Dettagli → [[01-Panoramica]].
 - [[Login-Unificato-SSO]] — identity layer unico pianificato (`login.perx.it`)
 
 ---
-Ultimo aggiornamento: 2026-09-05
+Ultimo aggiornamento: 2026-09-06

@@ -1,6 +1,6 @@
 ---
 tags: [perx, stato, roadmap]
-updated: 2026-09-05
+updated: 2026-09-06
 ---
 
 # Stato di sviluppo e roadmap
@@ -23,11 +23,12 @@ comunicazioni e CAT dispatcher). La struttura della repo può ancora essere rior
 | [[PerX-App-Principale]] | Uso interno attivo, sviluppo continuo (modulo più grande della repo, ~505 file Swift) |
 | [[Varianti-iOS]] | Attive, subset di funzionalità rispetto all'app principale |
 | [[PerXHub]] | Operativo su Mac mini, direzione verso Supabase come source of truth dei dati (Hub resta nodo vault/AI locale) |
-| [[Backend-Cloud-API]] | Cuore attivo dello sviluppo: ~40 tabelle/modelli, 41+ migrazioni Alembic, aree recenti: videoperizia, comunicazioni, device token/push, AI prompt versioning, route planning CAT, GDPR |
+| [[Backend-Cloud-API]] | Cuore attivo dello sviluppo: ~40 tabelle/modelli, 41+ migrazioni Alembic, aree recenti: videoperizia, comunicazioni, device token/push, AI prompt versioning, route planning CAT, GDPR, bridge platform-admin + error-tracking backend-only per PynkStudio (2026-09-06) |
 | [[Portal-Web-Assicurati]] | Architettura iniziale implementata (vedi sezione dedicata sotto) |
 | [[CatDispatcher]] | Sviluppo attivo, migrato a Next.js App Router, dispatch engine deterministico come primo passo |
 | [[Altre-Web-App]] (Bignami, Insight Studio, Randa) | Migrate a Next.js App Router; grado di integrazione nel gateway variabile |
 | [[Login-Unificato-SSO]] | **Pianificato, non implementato**: solo le basi lato backend esistono (`/auth/login`, `/auth/me`, tabella `users` con i campi necessari) |
+| [[PerX-Lite-Extension]] | Implementata 2026-09-06, non ancora testata contro il DOM live di JFish; standalone, fuori dal resto della piattaforma |
 
 ## Portale assicurati — dettaglio stato
 
@@ -93,6 +94,24 @@ Vedi [[Login-Unificato-SSO]] per il piano completo (5 fasi). Ad oggi:
 - Debito minore noto nel codice: ~16 `TODO`/`FIXME` in `backend/app`, ~32 in `PerX/` (non
   triagati in questa nota; utile un passaggio dedicato se si vuole ridurre il debito).
 
+## Integrazione PynkStudio (admin.pynkstudio.eu) — dettaglio stato
+
+Vedi [[06-Decisioni-e-Intenzioni-Future]] (2026-09-06) per contesto e motivazione completi.
+
+- **Implementato**: bridge `X-PerX-Admin-Key` su `/api/v1/admin/*` (`require_platform_admin_or_api_key`
+  in `backend/app/core/security.py`), tabella `platform_error_log` + route
+  `/api/v1/admin/errors*` (solo eccezioni non gestite del backend cloud), portale
+  `admin.pynkstudio.eu/perx` lato BePork (tenant, utenti, errori, domain-routes), gate ristretto ai
+  ruoli `superadmin`/`admin`.
+- **Non ancora fatto** (richiede l'utente, fuori da questo repo): impostare
+  `PLATFORM_ADMIN_API_KEY` su Render e `PERX_ADMIN_API_KEY`/`PERX_ADMIN_API_URL` su Vercel
+  (BePork), applicare la migration `038_platform_error_log` in produzione, verifica sul campo del
+  portale con una sessione `superadmin` reale.
+- **Intenzione dichiarata, non pianificata**: estendere `platform_error_log` oltre il backend
+  cloud — ingestion da web app satellite, app iOS/macOS/iPad e [[PerXHub]], per coprire davvero
+  "tutto il flusso di errori del progetto" come richiesto dall'utente. La colonna `source` è già
+  pronta per questo (stringa libera, non enum).
+
 ## Decisioni ancora aperte
 
 - Provider di identità definitivo per il login unificato: Supabase Auth vs Auth0/Okta/Cognito vs
@@ -104,4 +123,4 @@ Vedi [[Login-Unificato-SSO]] per il piano completo (5 fasi). Ad oggi:
   `apps/portal-web`.
 
 ---
-Ultimo aggiornamento: 2026-09-05 (aggiunta sezione qualità/test/CI e default feature flag)
+Ultimo aggiornamento: 2026-09-06 (aggiunta sezione integrazione PynkStudio)

@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "PerX Lite - Compila da Excel",
+  "version": "1.0.0",
+  "description": "Legge un file Excel (Elaborato Peritale) e una foto, e compila i campi corrispondenti sulla pagina JFish aperta. Nessun account, nessun sync cloud: tutto resta nel browser.",
+
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    },
+    "default_title": "PerX Lite - Compila da Excel"
+  },
+
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ]
+}
