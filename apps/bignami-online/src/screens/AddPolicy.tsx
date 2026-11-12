@@ -46,13 +46,13 @@ import { usePolicies, useCreatePolicy, useCreatePolicyEdition } from "@/hooks/us
 
 const policySchema = z.object({
   action_type: z.enum(["new_policy", "new_edition"] as const, {
-    errorMap: () => ({ message: "Seleziona un'azione" })
+    error: "Seleziona un'azione",
   }),
   existing_policy_id: z.string().optional(),
   name: z.string().optional(),
   company_id: z.string().optional(),
   new_company_name: z.string().optional(),
-  type: z.enum(["domestica", "azienda", "agricola"] as const).optional(),
+  type: z.enum(["domestica", "condominio", "azienda", "agricola"] as const).optional(),
   description: z.string().optional(), // Sempre opzionale
   tags: z.string().optional(),
   year: z.number().min(2000, "Anno non valido").max(2030, "Anno non valido"),
@@ -295,6 +295,7 @@ export const AddPolicy = () => {
 
   const typeOptions: { value: PolicyType; label: string }[] = [
     { value: "domestica", label: "Domestica" },
+    { value: "condominio", label: "Condominio" },
     { value: "azienda", label: "Azienda" },
     { value: "agricola", label: "Agricola" },
   ];

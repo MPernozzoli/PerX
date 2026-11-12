@@ -1,0 +1,61 @@
+name: Apple CI
+
+on:
+  pull_request:
+    paths:
+      - "PerX/**"
+      - "PerXCore/**"
+      - "PerXHub/**"
+      - "PerXLocalAgentService/**"
+      - "PerXLocalAgentShared/**"
+      - "PerX.xcodeproj/**"
+      - ".github/workflows/apple-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "PerX/**"
+      - "PerXCore/**"
+      - "PerXHub/**"
+      - "PerXLocalAgentService/**"
+      - "PerXLocalAgentShared/**"
+      - "PerX.xcodeproj/**"
+      - ".github/workflows/apple-ci.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: apple-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  swift-packages:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache SwiftPM
+        uses: actions/cache@v4
+        with:
+          path: |
+            PerXCore/.build
+            PerXHub/.build
+          key: ${{ runner.os }}-swiftpm-${{ hashFiles('PerXCore/Package.resolved', 'PerXHub/Package.resolved', 'PerXCore/Package.swift', 'PerXHub/Package.swift') }}
+      - name: Test PerXCore
+        working-directory: PerXCore
+        run: swift test
+      - name: Build PerXHub
+        working-directory: PerXHub
+        run: swift build
+
+  app-build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the macOS app without signing
+        run: >-
+          xcodebuild
+          -project PerX.xcodeproj
+          -scheme PerX
+          -configuration Debug
+          -destination 'platform=macOS'
+          CODE_SIGNING_ALLOWED=NO
+          build
+

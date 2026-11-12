@@ -85,7 +85,7 @@ const normalizeName = (name: string): string => {
 // Verifica se un valore CAT indica "Non Disponibile" (N/D, ND, n.d., ecc.)
 const isNoCatValue = (value: string | undefined): boolean => {
   if (!value) return false;
-  const normalized = value.trim().toLowerCase().replace(/[.\-\/\\]/g, '');
+  const normalized = value.trim().toLowerCase().replace(/[.\\/-]/g, '');
   return normalized === 'nd' || normalized === 'na' || normalized === 'nessuno';
 };
 

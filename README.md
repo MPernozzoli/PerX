@@ -34,6 +34,36 @@ La configurazione dettagliata di schemi, bundle id, profili di provisioning e am
 
 ---
 
+## Verifiche locali
+
+I workflow in `.github/workflows/` eseguono gli stessi comandi disponibili in locale:
+
+```bash
+# Web workspace: typecheck, test, lint e build di tutte le app
+npm ci
+npm run ci:web
+
+# Backend: ambiente Python 3.11 con dipendenze di sviluppo
+cd backend
+python -m pip install -r requirements-dev.txt
+pytest --cov=app --cov-report=term-missing
+
+# Core Swift e Hub
+cd PerXCore && swift test
+cd ../PerXHub && swift build
+
+# App macOS senza firma (dalla root)
+cd ..
+xcodebuild -project PerX.xcodeproj -scheme PerX -configuration Debug \
+  -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build
+```
+
+Il lint Ruff del backend resta per ora una baseline osservativa per debito legacy; gli altri
+controlli sopra sono gate bloccanti. Stato e debiti residui sono documentati in
+`Documentation/05-Stato-Sviluppo-e-Roadmap.md`.
+
+---
+
 
 ## Altri componenti
 

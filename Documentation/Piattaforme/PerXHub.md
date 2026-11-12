@@ -1,6 +1,6 @@
 ---
 tags: [perx, piattaforma, hub, mac-mini]
-updated: 2026-09-05
+updated: 2026-11-07
 ---
 
 # PerXHub
@@ -39,6 +39,13 @@ Installato come **LaunchDaemon** (`sudo ./scripts/deploy.sh`): build release →
 `/opt/perx-hub/` → installazione plist → avvio. Gestione via `launchctl load/unload
 com.perx.hub.plist`; log in `/opt/perx-hub/logs/`.
 
+## Build e CI
+
+Dal 2026-11-07 `apple-ci.yml` compila `PerXHub` su runner macOS a ogni modifica pertinente. La
+baseline è verde ma segnala warning che diventeranno errori in Swift 6 (API Vapor sincrone usate
+da contesto async e un tipo `Status` non `Sendable`); sono debito noto da correggere prima del
+passaggio del package alla language mode Swift 6. Un test target Hub dedicato resta da aggiungere.
+
 ## Componenti satellite
 
 - **`PerXHubMonitor/`** (~4 file Swift): tool di monitoraggio/diagnostica per lo stato dell'hub,
@@ -49,4 +56,4 @@ com.perx.hub.plist`; log in `/opt/perx-hub/logs/`.
   Dettaglio → [[AI-Locale-e-Cloud]].
 
 ---
-Ultimo aggiornamento: 2026-09-05
+Ultimo aggiornamento: 2026-11-07

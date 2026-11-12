@@ -60,7 +60,7 @@ export const useSearchPolicies = (query: string, filters?: SearchFilters) => {
       // Transform data to match PolicyWithEditions interface
       return (data || []).map(policy => ({
         ...policy,
-        type: policy.type as 'domestica' | 'azienda' | 'agricola',
+        type: policy.type as 'domestica' | 'condominio' | 'azienda' | 'agricola',
         company: policy.companies,
         editions: policy.policy_editions.map(edition => ({
           ...edition,

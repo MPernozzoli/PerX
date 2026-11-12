@@ -46,8 +46,11 @@ backend/
 
 1. Install dependencies:
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 ```
+
+`requirements.txt` contiene solo le dipendenze runtime; `requirements-dev.txt` aggiunge pytest,
+coverage e Ruff per sviluppo e CI.
 
 2. Configure environment:
 ```bash
@@ -76,6 +79,17 @@ RESEND_SCHEDULED_EMAILS_ENABLED=True
 ```bash
 uvicorn app.main:app --reload
 ```
+
+## Test e qualità
+
+```bash
+pytest
+pytest --cov=app --cov-report=term-missing
+ruff check app tests
+```
+
+La CI esegue inoltre `alembic -c migrations/alembic.ini upgrade head` contro un Postgres vuoto,
+così una migration non applicabile blocca la verifica backend.
 
 ## API Endpoints
 

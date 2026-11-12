@@ -1,6 +1,6 @@
 ---
 tags: [perx, stato, roadmap]
-updated: 2026-09-06
+updated: 2026-11-07
 ---
 
 # Stato di sviluppo e roadmap
@@ -81,16 +81,25 @@ Vedi [[Login-Unificato-SSO]] per il piano completo (5 fasi). Ad oggi:
 
 ## Qualità, test e CI/CD
 
-- **Nessuna pipeline CI/CD**: non esiste una cartella `.github/workflows` né altro sistema di CI
-  nel repo. Le build/deploy (Render, Vercel) partono da push/hook della piattaforma, senza gate
-  automatico di test prima del deploy.
-- **Copertura di test minima**: `backend/tests` contiene solo 4 file di test; i target Apple
-  (`PerXTests`, `PerXUITests`, varianti Lite/iPad) hanno solo i file di test boilerplate generati
-  da Xcode (1 unit test + 2 UI test per target), non una suite reale. Nessuna delle app
-  `apps/*` ha uno script `test` in `package.json`.
-- **Implicazione pratica**: le verifiche di "funziona/non funziona" oggi si basano su uso reale e
-  controllo manuale (typecheck TS, audit occasionali), non su test automatizzati — un'area di
-  debito tecnico da tenere presente prima di refactoring ampi.
+- **Fondazioni CI implementate il 2026-11-07**: tre workflow GitHub Actions separati per backend,
+  web e Apple con path filtering, cache e concorrenza cancellabile. Dettagli e distinzione tra
+  gate bloccanti/osservativi in [[04-Infrastruttura-e-Deploy]].
+- **Backend**: 28 test pytest verdi nella baseline locale, coverage misurata (38% risultante dalle
+  importazioni dell'intera app, ancora poco rappresentativa delle route), smoke contract per
+  `/` e `/health`, migrazioni verificate in CI su Postgres vuoto. Mancano ancora fixture DB e test
+  API/auth/tenant reali.
+- **Web**: Vitest configurato in tutti i workspace; 7 test iniziali verdi su routing tenant del
+  portale e utility province CAT. Typecheck, test, lint e build production sono bloccanti su tutti
+  i workspace; Bignami usa ora tipi Supabase coerenti con lo schema `bignami`. Tre app accettano
+  ancora temporaneamente una suite vuota. Il lint è verde ma conserva warning non bloccanti su
+  dipendenze hook e Fast Refresh.
+- **Swift**: `PerXCore` ha ora un test target con 3 test verdi su stati sinistro e parsing HTML;
+  `PerXHub` e il target Xcode `PerX` compilano come gate CI. I duplicati videoperizia sono esclusi
+  dal target in favore di `Shared/Videoperizia/`. I target XCTest dell'app/varianti restano
+  boilerplate.
+- **CD non ancora protetta dai check**: Render e Vercel continuano a partire dai propri hook. Il
+  passo successivo è far eseguire i workflow su GitHub, stabilizzare i nomi dei check, impostare
+  branch protection su `main` e subordinare i deploy di produzione ai gate verdi.
 - Debito minore noto nel codice: ~16 `TODO`/`FIXME` in `backend/app`, ~32 in `PerX/` (non
   triagati in questa nota; utile un passaggio dedicato se si vuole ridurre il debito).
 
@@ -123,4 +132,4 @@ Vedi [[06-Decisioni-e-Intenzioni-Future]] (2026-09-06) per contesto e motivazion
   `apps/portal-web`.
 
 ---
-Ultimo aggiornamento: 2026-09-06 (aggiunta sezione integrazione PynkStudio)
+Ultimo aggiornamento: 2026-11-07 (fondazioni test e CI)

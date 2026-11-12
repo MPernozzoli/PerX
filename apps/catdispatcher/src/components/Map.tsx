@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { supabase } from '@/integrations/supabase/client';
 import type { PerXSession } from '@/lib/perxApi';
@@ -430,11 +430,11 @@ const Map = ({ session, mapData, mapDataLoading, onCommuneSelect, highlightedCom
     const style = map.current.getStyle();
     if (!style) return;
 
-    const fillOpacity = selectedCommuneId 
-      ? ['case', ['==', ['get', 'id'], selectedCommuneId], 0.25, 0.08]
+    const fillOpacity = selectedCommuneId
+      ? (['case', ['==', ['get', 'id'], selectedCommuneId], 0.25, 0.08] as maplibregl.ExpressionSpecification)
       : 0.25;
     const lineOpacity = selectedCommuneId
-      ? ['case', ['==', ['get', 'id'], selectedCommuneId], 1, 0.3]
+      ? (['case', ['==', ['get', 'id'], selectedCommuneId], 1, 0.3] as maplibregl.ExpressionSpecification)
       : 1;
 
     style.layers.forEach((layer) => {

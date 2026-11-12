@@ -140,7 +140,7 @@ export const HomePage = () => {
               {allPolicies.slice(0, 3).map(policy => {
                 const policyWithEditions: PolicyWithEditions = {
                   ...policy,
-                  type: policy.type as 'domestica' | 'azienda' | 'agricola',
+                  type: policy.type as 'domestica' | 'condominio' | 'azienda' | 'agricola',
                   company: policy.companies,
                   editions: policy.policy_editions.map(edition => ({
                     ...edition,

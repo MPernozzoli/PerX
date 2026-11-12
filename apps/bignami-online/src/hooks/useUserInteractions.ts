@@ -59,7 +59,7 @@ export const useRecentPolicies = (userId?: string) => {
         
         return {
           ...policy,
-          type: policy.type as 'domestica' | 'azienda' | 'agricola',
+          type: policy.type as 'domestica' | 'condominio' | 'azienda' | 'agricola',
           company: policy.companies,
           editions: policy.policy_editions.map(edition => ({
             ...edition,
@@ -117,7 +117,7 @@ export const useFrequentPolicies = (userId?: string) => {
         
         return {
           ...policy,
-          type: policy.type as 'domestica' | 'azienda' | 'agricola',
+          type: policy.type as 'domestica' | 'condominio' | 'azienda' | 'agricola',
           company: policy.companies,
           editions: policy.policy_editions.map(edition => ({
             ...edition,
@@ -175,7 +175,7 @@ export const useBookmarkedPolicies = (userId?: string) => {
         
         return {
           ...policy,
-          type: policy.type as 'domestica' | 'azienda' | 'agricola',
+          type: policy.type as 'domestica' | 'condominio' | 'azienda' | 'agricola',
           company: policy.companies,
           editions: policy.policy_editions.map(edition => ({
             ...edition,

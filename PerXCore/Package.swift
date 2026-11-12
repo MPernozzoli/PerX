@@ -18,5 +18,10 @@ let package = Package(
             ],
             path: "Sources/PerXCore"
         ),
+        .testTarget(
+            name: "PerXCoreTests",
+            dependencies: ["PerXCore"],
+            path: "Tests/PerXCoreTests"
+        ),
     ]
 )

@@ -80,6 +80,7 @@ export const SearchBar = ({ onSearch, className }: SearchBarProps) => {
     
     // Recognize types
     if (lowerQuery.includes('domestica')) terms.push('Tipo: domestica');
+    if (lowerQuery.includes('condomin')) terms.push('Tipo: condominio');
     if (lowerQuery.includes('azienda') || lowerQuery.includes('commerciale')) terms.push('Tipo: azienda');
     if (lowerQuery.includes('agricola')) terms.push('Tipo: agricola');
     
@@ -187,6 +188,7 @@ export const SearchBar = ({ onSearch, className }: SearchBarProps) => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="domestica">Domestica</SelectItem>
+                  <SelectItem value="condominio">Condominio</SelectItem>
                   <SelectItem value="azienda">Azienda</SelectItem>
                   <SelectItem value="agricola">Agricola</SelectItem>
                 </SelectContent>

@@ -1,6 +1,6 @@
 ---
 tags: [perx, piattaforma, backend, api]
-updated: 2026-09-05
+updated: 2026-11-07
 ---
 
 # Backend Cloud API
@@ -20,6 +20,15 @@ migrations/                # migrazioni Alembic (41+ revisioni)
 
 Stack e deploy → [[03-Stack-Tecnologico]], [[04-Infrastruttura-e-Deploy]]. Setup locale
 dettagliato → `backend/README.md`.
+
+## Test e CI
+
+`backend/requirements-dev.txt` estende le dipendenze runtime con pytest, pytest-asyncio,
+pytest-cov e Ruff; `pyproject.toml` contiene configurazione, marker e coverage. La baseline del
+2026-11-07 è di 28 test verdi, principalmente helper puri più i contratti health/root. Il workflow
+`backend-ci.yml` usa Python 3.11 e Postgres 16, applica tutte le migrazioni su database vuoto e
+pubblica `coverage.xml`. La coverage globale osservata (38%) deriva anche dall'import di tutte le
+route e non va interpretata come copertura funzionale: test API/DB/auth restano il prossimo passo.
 
 ## Aree funzionali principali (da `api/v1/`)
 
@@ -95,4 +104,4 @@ estensioni), **device token/push**, **AI prompt versioning & routing runs**, **r
 [[05-Stato-Sviluppo-e-Roadmap]].
 
 ---
-Ultimo aggiornamento: 2026-09-06
+Ultimo aggiornamento: 2026-11-07

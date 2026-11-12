@@ -1,9 +1,29 @@
 ---
 tags: [perx, infrastruttura, deploy]
-updated: 2026-09-05
+updated: 2026-11-07
 ---
 
 # Infrastruttura e deploy
+
+## Continuous integration (GitHub Actions)
+
+Dal 2026-11-07 la root contiene tre workflow con path filtering e cancellazione delle esecuzioni
+superseded:
+
+- `backend-ci.yml`: Python 3.11, Postgres 16 isolato, installazione da `requirements-dev.txt`,
+  applicazione completa delle migration Alembic su DB vuoto, pytest con coverage XML; Ruff misura
+  ancora una baseline non bloccante;
+- `web-ci.yml`: Node 22/npm cache; typecheck, test Vitest, lint e build production sono gate
+  bloccanti per tutti e cinque i workspace. Le app prive di test accettano ancora temporaneamente
+  una suite vuota, mentre `portal-web` e `catdispatcher` contengono i primi 7 test reali;
+- `apple-ci.yml`: test `PerXCore`, build `PerXHub` e build unsigned completa del target Xcode
+  `PerX` sono gate bloccanti su runner macOS. I duplicati videoperizia sono stati esclusi dalla
+  membership del target principale, mantenendo come sorgente canonica `Shared/Videoperizia/`.
+
+I workflow scattano su pull request, push a `main` e manualmente. La branch protection e il
+collegamento dei check al deploy di produzione vanno attivati dopo il primo run GitHub verde;
+Render e Vercel continuano nel frattempo a gestire il deploy con i meccanismi esistenti.
+Comandi equivalenti per l'esecuzione locale sono nel `README.md` root e in `backend/README.md`.
 
 ## Backend (Render)
 
@@ -101,4 +121,4 @@ tabella `process_jobs`; un worker sul Mac mini fa polling/lease con header
 `GET /api/v1/process-jobs/jobs/claim`. Vedi [[Backend-Cloud-API]] e [[AI-Locale-e-Cloud]].
 
 ---
-Ultimo aggiornamento: 2026-09-06
+Ultimo aggiornamento: 2026-11-07

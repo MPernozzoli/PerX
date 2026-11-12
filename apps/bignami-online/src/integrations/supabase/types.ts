@@ -12,7 +12,7 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "13.0.5"
   }
-  public: {
+  bignami: {
     Tables: {
       bulk_imports: {
         Row: {
@@ -208,6 +208,7 @@ export type Database = {
       }
       coverage_items: {
         Row: {
+          available_parties: string[] | null
           common_exclusions: string[] | null
           coverage_id: string
           created_at: string
@@ -238,6 +239,7 @@ export type Database = {
           value_type: string | null
         }
         Insert: {
+          available_parties?: string[] | null
           common_exclusions?: string[] | null
           coverage_id: string
           created_at?: string
@@ -268,6 +270,7 @@ export type Database = {
           value_type?: string | null
         }
         Update: {
+          available_parties?: string[] | null
           common_exclusions?: string[] | null
           coverage_id?: string
           created_at?: string
@@ -915,7 +918,7 @@ export type Database = {
           companies: string[] | null
           id: string
           joined_at: string
-          role: Database["public"]["Enums"]["studio_role"]
+          role: Database["bignami"]["Enums"]["studio_role"]
           studio_id: string
           user_id: string
         }
@@ -923,7 +926,7 @@ export type Database = {
           companies?: string[] | null
           id?: string
           joined_at?: string
-          role?: Database["public"]["Enums"]["studio_role"]
+          role?: Database["bignami"]["Enums"]["studio_role"]
           studio_id: string
           user_id: string
         }
@@ -931,7 +934,7 @@ export type Database = {
           companies?: string[] | null
           id?: string
           joined_at?: string
-          role?: Database["public"]["Enums"]["studio_role"]
+          role?: Database["bignami"]["Enums"]["studio_role"]
           studio_id?: string
           user_id?: string
         }
@@ -1115,19 +1118,19 @@ export type Database = {
         Row: {
           created_at: string
           id: string
-          role: Database["public"]["Enums"]["app_role"]
+          role: Database["bignami"]["Enums"]["app_role"]
           user_id: string
         }
         Insert: {
           created_at?: string
           id?: string
-          role?: Database["public"]["Enums"]["app_role"]
+          role?: Database["bignami"]["Enums"]["app_role"]
           user_id: string
         }
         Update: {
           created_at?: string
           id?: string
-          role?: Database["public"]["Enums"]["app_role"]
+          role?: Database["bignami"]["Enums"]["app_role"]
           user_id?: string
         }
         Relationships: []
@@ -1143,14 +1146,14 @@ export type Database = {
       }
       has_role: {
         Args: {
-          _role: Database["public"]["Enums"]["app_role"]
+          _role: Database["bignami"]["Enums"]["app_role"]
           _user_id: string
         }
         Returns: boolean
       }
       has_studio_role: {
         Args: {
-          _role: Database["public"]["Enums"]["studio_role"]
+          _role: Database["bignami"]["Enums"]["studio_role"]
           _studio_id: string
           _user_id: string
         }
@@ -1173,7 +1176,7 @@ export type Database = {
 
 type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
 
-type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "bignami">]
 
 export type Tables<
   DefaultSchemaTableNameOrOptions extends
@@ -1289,7 +1292,7 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  public: {
+  bignami: {
     Enums: {
       app_role: ["admin", "moderator", "user"],
       studio_role: ["admin", "team_leader", "moderator", "member"],

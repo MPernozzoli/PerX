@@ -92,7 +92,7 @@ const Admin = () => {
       const token = (await supabase.auth.getSession()).data.session?.access_token ?? '';
       const headers = { Authorization: `Bearer ${token}` };
       const mapKeys = await getMapKeysSession();
-      let body: { resource: string; sessionKey?: string } = { resource: 'my_roles' };
+      const body: { resource: string; sessionKey?: string } = { resource: 'my_roles' };
       if (mapKeys?.sessionKey) body.sessionKey = mapKeys.sessionKey;
 
       let { data, error } = await supabase.functions.invoke('get-admin-data', {

@@ -141,6 +141,8 @@
 				"Services/CloudKit/CloudKitTasksSyncService 2.swift",
 				"Services/CloudKit/CloudKitUserDefaultsSyncService 2.swift",
 				"Services/CloudKit/CloudKitWhatsAppSyncService 2.swift",
+				Services/Videoperizia/VideoperiziaRemoteCommand.swift,
+				Services/Videoperizia/VideoperiziaService.swift,
 				"Views/Settings/CloudSettingsView 2.swift",
 			);
 			target = 780395542CE509530093FAB4 /* PerX */;

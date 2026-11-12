@@ -1,6 +1,6 @@
 ---
 tags: [perx, piattaforma, ios, macos]
-updated: 2026-09-05
+updated: 2026-11-07
 ---
 
 # PerX — App principale (macOS / iPad)
@@ -61,5 +61,14 @@ Target principale configurato per **Developer ID diretto** con hardened runtime,
 assunzioni di sandbox App Store. Per il rilascio, l'intero bundle (app + XPC service annidato) va
 archiviato e notarizzato insieme, mantenendo hardened runtime sull'XPC service.
 
+## Test e CI
+
+Dal 2026-11-07 `PerXCore` contiene un test target Swift Testing con una prima copertura delle
+regole sugli stati del sinistro e dell'utility HTML. Il workflow Apple esegue `swift test` sul core
+e compila `PerXHub`. Anche la build unsigned completa del target `PerX` è bloccante: le vecchie
+copie in `PerX/Services/Videoperizia/` sono escluse dalla membership, mentre le implementazioni
+canoniche restano in `Shared/Videoperizia/`. I target `PerXTests`/`PerXUITests` restano per ora
+boilerplate.
+
 ---
-Ultimo aggiornamento: 2026-09-05
+Ultimo aggiornamento: 2026-11-07

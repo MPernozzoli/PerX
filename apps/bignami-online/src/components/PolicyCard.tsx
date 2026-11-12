@@ -35,6 +35,7 @@ export const PolicyCard = ({
   const getPolicyTypeColor = (type: string) => {
     switch(type) {
       case 'domestica': return 'bg-primary text-primary-foreground';
+      case 'condominio': return 'bg-secondary text-secondary-foreground border border-primary/40';
       case 'azienda': return 'bg-warning text-warning-foreground';
       case 'agricola': return 'bg-accent text-accent-foreground';
       default: return 'bg-secondary text-secondary-foreground';

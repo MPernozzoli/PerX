@@ -1,6 +1,6 @@
 ---
 tags: [perx, decisioni, adr]
-updated: 2026-09-06
+updated: 2026-11-07
 ---
 
 # Decisioni architetturali e intenzioni di sviluppo future
@@ -21,6 +21,89 @@ Motivazione: ...
 ```
 
 ---
+
+## 2026-11-07 — Piano incrementale per test automatici e CI/CD
+Contesto: dopo la valutazione sulla portabilità, l'utente ha chiesto di pianificare l'introduzione
+di test e CI/CD. La baseline verificata è debole: nessun workflow CI root, quattro file pytest con
+soli test helper e senza configurazione/dipendenze test dedicate, nessun test runner nelle web app,
+target XCTest dell'app Apple ancora boilerplate, nessun test target nei package `PerXCore` e
+`PerXHub`. Render e Vercel costruiscono dai push/hook senza un gate di test comune.
+
+Intenzione approvata per la pianificazione: procedere per gate progressivi, senza pretendere subito
+copertura uniforme su tutto il monorepo e senza bloccare `main` su problemi legacy non ancora
+misurati.
+
+1. **Baseline riproducibile e CI osservativa**: aggiungere comandi locali canonici e workflow
+   GitHub Actions separati per backend, web e Apple, con cache e path filtering. All'inizio i nuovi
+   controlli fotografano lo stato; diventano required checks solo quando verdi e stabili.
+2. **Backend come prima area bloccante**: separare dipendenze runtime/dev; introdurre pytest con
+   coverage, lint/format e type checking graduale; aggiungere fixture DB Postgres isolata e test di
+   API/auth/tenant/migrazioni oltre agli helper puri. Gate iniziale basato su test verdi e nessuna
+   riduzione della baseline di coverage, non su una percentuale arbitraria globale.
+3. **Web app**: standardizzare `lint`, `check`, `test` e `build` in ogni workspace; usare test
+   unitari/componenti per contratti API, trasformazioni e flussi critici, poi Playwright per pochi
+   smoke test end-to-end del gateway/portale. Build senza segreti reali tramite configurazioni di
+   test e mock espliciti.
+4. **Swift/Apple e Hub**: creare test target in `PerXCore` e `PerXHub`, spostando verso il core la
+   logica pura più importante; aggiungere unit test dell'app per adapter, parsing/import e state
+   machine. Mantenere una suite UI macOS minima e deterministica (avvio, login simulato, apertura
+   pratica), eseguita su runner macOS; evitare inizialmente test UI estesi e fragili.
+5. **Integrazione e contratti**: testare compatibilità backend-client con schema OpenAPI versionato
+   o validato in CI, migration Alembic `upgrade head` su database vuoto e workflow verticali
+   essenziali (auth, sinistro, documento, chat/portale).
+6. **CD controllata**: preservare inizialmente Vercel e Render come sistemi di deploy, ma consentire
+   la promozione da `main` solo dopo i required checks; usare preview web per le pull request,
+   smoke test post-deploy e rollback della piattaforma. Firma/notarizzazione dell'app Apple resta
+   una pipeline release separata, introdotta dopo la stabilizzazione della CI e con segreti fuori
+   dal repository.
+
+Ordine operativo raccomandato: fondazioni CI → backend → web → core Swift/Hub → E2E/contratti →
+CD e release native. Ogni fase deve consegnare test reali su rischi di prodotto, documentazione dei
+comandi locali, artefatti/report in caso di fallimento e branch protection aggiornata. Metriche:
+tempo e affidabilità della pipeline, regressioni intercettate, flakiness e coverage delle aree
+modificate; la percentuale globale di coverage non è l'obiettivo primario. Stima iniziale:
+circa 20–30 giornate-persona per arrivare ai gate principali e agli smoke E2E, da affinare dopo la
+prima baseline verde. Vedi [[04-Infrastruttura-e-Deploy]], [[05-Stato-Sviluppo-e-Roadmap]],
+[[Backend-Cloud-API]] e [[PerX-App-Principale]].
+
+Stato di attuazione al 2026-11-07: completata la prima fondazione. Sono presenti tre workflow;
+backend pytest/migrazioni, intera pipeline web e build/test Swift sono gate CI. Il web è stato
+portato a typecheck/build verdi anche sulle app satellite e le dipendenze con advisory critici o
+alti sono state aggiornate. Restano da realizzare le fasi di profondità: fixture DB e test
+API/auth/tenant, test reali nelle tre web app con suite vuota, test Hub/app, E2E/contratti e CD
+protetta da branch protection. Ruff backend resta una baseline osservativa per debito legacy.
+
+## 2026-11-07 — Valutazione Rust e portabilità desktop/web: no alla riscrittura integrale
+Contesto: l'utente ha chiesto se convertire PerX in Rust per renderlo compatibile anche con
+Windows, Linux e web, oltre a macOS, e quali vantaggi reali ne deriverebbero. L'app principale è
+oggi fortemente nativa Apple: SwiftUI, CoreData, CloudKit, XPC/Local Agent, integrazioni AppKit e
+gestione finestre macOS. Il backend FastAPI e le web app Next.js sono invece già multipiattaforma
+e accessibili da qualunque sistema tramite browser/API.
+
+Valutazione / intenzione: **non è raccomandata una riscrittura integrale in Rust**. Rust da solo
+non fornisce una UI unica per desktop e web e non rende portabile il codice SwiftUI: richiederebbe
+comunque la riscrittura della UI, della persistenza e delle integrazioni di sistema, con una lunga
+fase di parità funzionale e alto rischio di regressioni, aggravato dall'attuale copertura di test
+minima. La direzione raccomandata, se Windows/Linux diventano un requisito commerciale reale, è:
+
+- mantenere backend/API e portali web come superficie multipiattaforma principale;
+- separare progressivamente la logica di dominio dalle dipendenze Apple e colmare prima i test;
+- realizzare un client desktop multipiattaforma solo per i workflow che richiedono filesystem,
+  offline o integrazioni locali, valutando una shell Tauri con frontend web;
+- introdurre Rust in modo selettivo per un core condiviso o servizi locali dove sicurezza della
+  memoria, concorrenza o prestazioni siano misurabilmente utili, esposto a Swift e alla shell
+  desktop tramite API/FFI, senza riscrivere backend e web app;
+- mantenere adapter nativi per capacità non portabili (XPC/CloudKit su Apple e alternative per
+  Windows/Linux), accettando che la parità assoluta tra piattaforme potrebbe non essere utile.
+
+Motivazione: i vantaggi reali di Rust sarebbero binari nativi efficienti, buon controllo di
+memoria/concorrenza e riuso di logica non-UI tra desktop; non includono la portabilità automatica
+dell'intero prodotto. Per PerX il costo dominante è la riscrittura delle circa 500 sorgenti Swift
+dell'app principale e delle integrazioni Apple, non il linguaggio del core. Prima di avviare una
+migrazione va validata la domanda Windows/Linux, definito il sottoinsieme di funzioni necessario e
+costruito un proof of concept verticale; il web resta il percorso più economico per coprire subito
+tutte le piattaforme. Vedi [[02-Architettura]], [[03-Stack-Tecnologico]],
+[[PerX-App-Principale]] e [[05-Stato-Sviluppo-e-Roadmap]].
 
 ## 2026-09-06 — PerX integrato come piattaforma nel pannello admin PynkStudio; primo giro di error-tracking backend-only
 Contesto: l'utente ha chiesto di aggiungere **PerX** e **Studio Randa** come "ambiti di controllo"
@@ -209,4 +292,4 @@ Motivazione: evitare ambiguità nel flusso assicurato su quale canale usare per 
 Vedi [[Videoperizia]].
 
 ---
-Ultimo aggiornamento: 2026-09-06
+Ultimo aggiornamento: 2026-11-07

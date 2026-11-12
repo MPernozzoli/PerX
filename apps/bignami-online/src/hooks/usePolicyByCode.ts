@@ -7,7 +7,7 @@ export const usePolicyByCode = (companyCode?: string, policyCode?: string, editi
     queryFn: async () => {
       if (!companyCode || !policyCode) return null;
       
-      let query = supabase
+      const query = supabase
         .from("policies")
         .select(`
           *,

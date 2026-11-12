@@ -162,11 +162,12 @@ const GeoJSONUpload = () => {
           case 'provincia_sigla':
             mapped.provincia = String(value).toUpperCase();
             break;
-          case 'provincia_nome':
+          case 'provincia_nome': {
             // Convert nome to sigla for preview
             const convertedCode = getProvinceCode(String(value));
             mapped.provincia = convertedCode || (String(value).length <= 3 ? String(value).toUpperCase() : String(value));
             break;
+          }
           case 'regione':
             mapped.regione = String(value);
             break;
@@ -403,7 +404,7 @@ const GeoJSONUpload = () => {
           const centroid = calculateCentroid(geometry);
           
           // Get mapped values
-          let rawComuneName = getMappedValue(props, 'comune') || 'Sconosciuto';
+          const rawComuneName = getMappedValue(props, 'comune') || 'Sconosciuto';
           const provinciaSigla = getMappedValue(props, 'provincia_sigla');
           const provinciaNome = getMappedValue(props, 'provincia_nome');
           
@@ -446,7 +447,7 @@ const GeoJSONUpload = () => {
 
           // For neighborhoods, find existing commune
           let finalComuneName = quartiere ? communeName : communeName;
-          let finalQuartiere = quartiere;
+          const finalQuartiere = quartiere;
           let finalRegione = regione;
           let finalProvincia = provincia;
           

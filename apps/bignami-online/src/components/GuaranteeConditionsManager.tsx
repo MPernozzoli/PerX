@@ -216,18 +216,14 @@ export const GuaranteeConditionsManager = ({ guaranteeItem, isEditMode }: Guaran
   const handleSaveCondition = async (updates: any) => {
     if (!editingCondition) return;
     
-    try {
-      if (editingConditionType === 'maximum') {
-        await updateMaximum.mutateAsync({ id: editingCondition.id, updates });
-      } else if (editingConditionType === 'deductible') {
-        await updateDeductible.mutateAsync({ id: editingCondition.id, updates });
-      } else if (editingConditionType === 'exclusion') {
-        await updateExclusionGroup.mutateAsync({ id: editingCondition.id, updates });
-      } else if (editingConditionType === 'damage_definition') {
-        await updateDamageDefinition.mutateAsync({ id: editingCondition.id, updates });
-      }
-    } catch (error) {
-      throw error;
+    if (editingConditionType === 'maximum') {
+      await updateMaximum.mutateAsync({ id: editingCondition.id, updates });
+    } else if (editingConditionType === 'deductible') {
+      await updateDeductible.mutateAsync({ id: editingCondition.id, updates });
+    } else if (editingConditionType === 'exclusion') {
+      await updateExclusionGroup.mutateAsync({ id: editingCondition.id, updates });
+    } else if (editingConditionType === 'damage_definition') {
+      await updateDamageDefinition.mutateAsync({ id: editingCondition.id, updates });
     }
   };
 

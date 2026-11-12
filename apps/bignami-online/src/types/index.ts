@@ -29,7 +29,7 @@ export interface Company {
   aliases: string[];
 }
 
-export type PolicyType = 'domestica' | 'azienda' | 'agricola';
+export type PolicyType = 'domestica' | 'condominio' | 'azienda' | 'agricola';
 export type GuaranteeType = string;
 
 export interface Policy {

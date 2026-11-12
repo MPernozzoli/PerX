@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import type { Policy, PolicyEdition, Coverage } from "@/types";
+import type { TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
 
 export const usePolicies = () => {
   return useQuery({
@@ -48,7 +48,7 @@ export const useCreatePolicy = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: async (policy: Omit<Policy, "id" | "created_at">) => {
+    mutationFn: async (policy: TablesInsert<"policies">) => {
       const { data, error } = await supabase
         .from("policies")
         .insert([policy])
@@ -68,7 +68,7 @@ export const useCreatePolicyEdition = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: async (edition: Omit<PolicyEdition, "id" | "created_at">) => {
+    mutationFn: async (edition: TablesInsert<"policy_editions">) => {
       const { data, error } = await supabase
         .from("policy_editions")
         .insert([edition])
@@ -88,7 +88,7 @@ export const useUpdateCoverage = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: async ({ id, updates }: { id: string; updates: Partial<any> }) => {
+    mutationFn: async ({ id, updates }: { id: string; updates: TablesUpdate<"coverages"> }) => {
       const { data, error } = await supabase
         .from("coverages")
         .update(updates)
@@ -109,7 +109,7 @@ export const useUpdateSection = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: async ({ id, updates }: { id: string; updates: Partial<any> }) => {
+    mutationFn: async ({ id, updates }: { id: string; updates: TablesUpdate<"sections"> }) => {
       const { data, error } = await supabase
         .from("sections")
         .update(updates)
@@ -130,7 +130,7 @@ export const useUpdateCommonLimit = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: async ({ id, updates }: { id: string; updates: Partial<any> }) => {
+    mutationFn: async ({ id, updates }: { id: string; updates: TablesUpdate<"common_limits"> }) => {
       const { data, error } = await supabase
         .from("common_limits")
         .update(updates)
@@ -151,7 +151,7 @@ export const useCreateSection = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: async (section: any) => {
+    mutationFn: async (section: TablesInsert<"sections">) => {
       const { data, error } = await supabase
         .from("sections")
         .insert(section)
@@ -171,7 +171,7 @@ export const useCreateCoverage = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: async (coverage: Omit<Coverage, "id" | "created_at">) => {
+    mutationFn: async (coverage: TablesInsert<"coverages">) => {
       const { data, error } = await supabase
         .from("coverages")
         .insert(coverage)
@@ -191,7 +191,7 @@ export const useCreateCoverageItem = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: async (item: any) => {
+    mutationFn: async (item: TablesInsert<"coverage_items">) => {
       const { data, error } = await supabase
         .from("coverage_items")
         .insert(item)
@@ -211,7 +211,7 @@ export const useUpdateCoverageItem = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: async ({ id, updates }: { id: string; updates: Partial<any> }) => {
+    mutationFn: async ({ id, updates }: { id: string; updates: TablesUpdate<"coverage_items"> }) => {
       const { data, error } = await supabase
         .from("coverage_items")
         .update(updates)

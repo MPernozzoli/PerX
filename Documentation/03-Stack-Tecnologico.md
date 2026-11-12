@@ -1,6 +1,6 @@
 ---
 tags: [perx, stack, tecnologia]
-updated: 2026-09-05
+updated: 2026-11-07
 ---
 
 # Stack tecnologico
@@ -54,10 +54,10 @@ Dettagli → [[Backend-Cloud-API]].
 | Build system | Turborepo (`turbo.json`) + npm workspaces (`workspaces: ["apps/*"]`) |
 | Framework | Next.js 16 App Router (tutte le app, dopo migrazione da Vite/SPA) |
 | Linguaggio | TypeScript, React 18 |
-| Routing legacy | `react-router-dom` ancora presente come client boundary temporaneo in alcune app durante la migrazione a route App Router native |
+| Routing legacy | `react-router-dom` 7 ancora presente come client boundary temporaneo in alcune app durante la migrazione a route App Router native |
 | UI kit | Tailwind CSS, componenti shadcn/UI su Radix UI (in CatDispatcher) |
 | Data fetching | `@tanstack/react-query` |
-| Mappe (CatDispatcher) | `maplibre-gl`, `@turf/*` |
+| Mappe (CatDispatcher) | `maplibre-gl` 6, `@turf/*` |
 | Deploy | Vercel, progetto singolo `perx` con Root Directory = root del repo |
 
 Dettagli → [[Portal-Web-Assicurati]], [[CatDispatcher]], [[Altre-Web-App]], [[04-Infrastruttura-e-Deploy]].
@@ -72,4 +72,4 @@ Dettagli → [[Portal-Web-Assicurati]], [[CatDispatcher]], [[Altre-Web-App]], [[
 | Schemi dedicati per app satellite | es. `bignami` (Postgres schema separato da `public`) |
 
 ---
-Ultimo aggiornamento: 2026-09-05
+Ultimo aggiornamento: 2026-11-07

@@ -9,7 +9,11 @@ if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
   throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY");
 }
 
-export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+if (SUPABASE_DB_SCHEMA !== "bignami") {
+  throw new Error("Bignami requires NEXT_PUBLIC_SUPABASE_DB_SCHEMA=bignami");
+}
+
+export const supabase = createClient<Database, "bignami">(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   db: {
     schema: SUPABASE_DB_SCHEMA,
   },

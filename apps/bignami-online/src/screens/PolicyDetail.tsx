@@ -452,7 +452,7 @@ export const PolicyDetail = () => {
           deductible_page_reference: guaranteeData.deductible_page_reference,
           deductible_article_number: guaranteeData.deductible_article_number,
           guarantee_exclusions: guaranteeData.guarantee_exclusions || [],
-          exclusions_applies_to: guaranteeData.exclusions_applies_to ? [guaranteeData.exclusions_applies_to] : [],
+          exclusions_apply_to: guaranteeData.exclusions_applies_to ? [guaranteeData.exclusions_applies_to] : [],
           exclusions_page_reference: guaranteeData.exclusions_page_reference,
           exclusions_article_number: guaranteeData.exclusions_article_number,
         });
@@ -892,7 +892,7 @@ export const PolicyDetail = () => {
         deductible_page_reference: guaranteeData.deductible_page_reference,
         deductible_article_number: guaranteeData.deductible_article_number,
         guarantee_exclusions: guaranteeData.guarantee_exclusions,
-        exclusions_applies_to: guaranteeData.exclusions_apply_to,
+        exclusions_apply_to: guaranteeData.exclusions_apply_to,
         exclusions_page_reference: guaranteeData.exclusions_page_reference,
         exclusions_article_number: guaranteeData.exclusions_article_number
       });
