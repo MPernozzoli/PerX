@@ -1,7 +1,7 @@
 """Add PynkStudio product-domain aliases and merge migration heads.
 
 Revision ID: 040_pynkstudio_domains
-Revises: 014_domain_routing_apps, 039_bignami_policy_type_condominio
+Revises: 014_domain_routing_apps, 039_bignami_condominio
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 
 revision = "040_pynkstudio_domains"
-down_revision = ("014_domain_routing_apps", "039_bignami_policy_type_condominio")
+down_revision = ("014_domain_routing_apps", "039_bignami_condominio")
 branch_labels = None
 depends_on = None
 

@@ -10,7 +10,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "039_bignami_policy_type_condominio"
+revision = "039_bignami_condominio"
 down_revision = "038_platform_error_log"
 branch_labels = None
 depends_on = None
