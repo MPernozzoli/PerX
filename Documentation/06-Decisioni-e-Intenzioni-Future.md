@@ -88,6 +88,14 @@ Verifica production dello stesso giorno: upgrade riuscito a `040_pynkstudio_doma
 attive e health backend HTTP 200. Il gateway usa per ora il fallback locale perché il secret del
 resolver non è coordinato tra Render e Vercel; nessun secret è stato aggiunto al repository.
 
+Secondo incremento applicativo dello stesso giorno: aggiunto `GET /api/v1/admin/overview` come
+contratto di discovery del control plane. Restituisce KPI aggregati e capability CRUD esplicite;
+la dashboard `admin.pynkstudio.eu/perx` usa questo snapshot invece di ricostruire i conteggi con
+quattro chiamate separate. L'inventario rende visibile anche il limite corrente: la gestione
+utenti è ancora read-only. Restano quindi da implementare, in ordine, mutazioni utenti sicure,
+audit trail delle scritture e credenziali scoped/ruotabili prima di considerare il controllo
+PerX integralmente coperto.
+
 ## 2026-11-07 — Piano incrementale per test automatici e CI/CD
 Contesto: dopo la valutazione sulla portabilità, l'utente ha chiesto di pianificare l'introduzione
 di test e CI/CD. La baseline verificata è debole: nessun workflow CI root, quattro file pytest con

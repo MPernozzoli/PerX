@@ -13,11 +13,64 @@ from app.core.database import get_db
 from app.core.security import require_platform_admin_or_api_key
 from app.models.tenant import Tenant, TenantPortalDomain
 from app.models.user import User
-from app.schemas.admin import AdminUserResponse, DomainRouteResponse, DomainRouteUpsert, TenantResponse, TenantUpsert
+from app.schemas.admin import (
+    AdminCapability,
+    AdminOverviewCounts,
+    AdminOverviewResponse,
+    AdminUserResponse,
+    DomainRouteResponse,
+    DomainRouteUpsert,
+    TenantResponse,
+    TenantUpsert,
+)
 from app.schemas.tenant_settings import TenantMailSettingsPayload, TenantSettingsResponse
 from app.api.v1.routes_tenants import _normalize_portal_domains, _normalized_settings
 
 router = APIRouter()
+
+
+def _admin_capabilities() -> list[AdminCapability]:
+    """Declare the control-plane contract implemented by this API version.
+
+    Keep this explicit: the PynkStudio portal must not infer write support from
+    the presence of a list endpoint or expose controls the backend cannot honor.
+    """
+    return [
+        AdminCapability(resource="tenants", read=True, create=True, update=True),
+        AdminCapability(resource="tenant_settings", read=True, update=True),
+        AdminCapability(resource="users", read=True),
+        AdminCapability(resource="domain_routes", read=True, create=True, update=True, delete=True),
+        AdminCapability(resource="errors", read=True, update=True),
+    ]
+
+
+@router.get("/overview", response_model=AdminOverviewResponse)
+async def get_admin_overview(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_platform_admin_or_api_key),
+):
+    """Return one authoritative snapshot for the PynkStudio control plane."""
+    result = await db.execute(
+        text(
+            """
+            SELECT
+              (SELECT count(*) FROM tenants) AS tenants,
+              (SELECT count(*) FROM users) AS users,
+              (SELECT count(*) FROM users WHERE is_active = true) AS active_users,
+              (SELECT count(*) FROM domain_routes) AS domain_routes,
+              (SELECT count(*) FROM domain_routes WHERE is_active = true) AS active_domain_routes,
+              (SELECT count(*) FROM platform_error_log WHERE resolved = false) AS unresolved_errors,
+              (SELECT count(*) FROM platform_error_log
+                 WHERE resolved = false AND severity = 'critical') AS unresolved_critical_errors
+            """
+        )
+    )
+    counts = result.mappings().one()
+    return AdminOverviewResponse(
+        single_tenant_mode=settings.SINGLE_TENANT_MODE,
+        counts=AdminOverviewCounts(**counts),
+        capabilities=_admin_capabilities(),
+    )
 
 
 @router.get("/tenants", response_model=list[TenantResponse])

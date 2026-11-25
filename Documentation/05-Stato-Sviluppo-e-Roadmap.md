@@ -111,11 +111,9 @@ Vedi [[06-Decisioni-e-Intenzioni-Future]] (2026-09-06) per contesto e motivazion
   in `backend/app/core/security.py`), tabella `platform_error_log` + route
   `/api/v1/admin/errors*` (solo eccezioni non gestite del backend cloud), portale
   `admin.pynkstudio.eu/perx` lato BePork (tenant, utenti, errori, domain-routes), gate ristretto ai
-  ruoli `superadmin`/`admin`.
-- **Non ancora fatto** (richiede l'utente, fuori da questo repo): impostare
-  `PLATFORM_ADMIN_API_KEY` su Render e `PERX_ADMIN_API_KEY`/`PERX_ADMIN_API_URL` su Vercel
-  (BePork), applicare la migration `038_platform_error_log` in produzione, verifica sul campo del
-  portale con una sessione `superadmin` reale.
+  ruoli `superadmin`/`admin`. Dal 2026-11-25 è disponibile anche `GET /api/v1/admin/overview`,
+  snapshot unico con KPI e inventario delle capability; la dashboard BePork lo usa come fonte
+  autorevole e segnala esplicitamente che gli utenti sono ancora in sola lettura.
 - **Intenzione dichiarata, non pianificata**: estendere `platform_error_log` oltre il backend
   cloud — ingestion da web app satellite, app iOS/macOS/iPad e [[PerXHub]], per coprire davvero
   "tutto il flusso di errori del progetto" come richiesto dall'utente. La colonna `source` è già
@@ -126,8 +124,9 @@ Vedi [[06-Decisioni-e-Intenzioni-Future]] (2026-09-06) per contesto e motivazion
   tre alias attivi. I record DNS Register.it non sono ancora applicati. Il resolver remoto non è
   ancora usato dal gateway perché URL/secret non sono coordinati tra Vercel e Render; il fallback
   dual-host copre i tre prodotti. Il control plane API completo non è ancora realizzato:
-  il bridge PerX attuale copre tenant, utenti, errori e domain-routes e usa una API key globale;
-  restano capability mancanti, audit delle scritture e credenziali scoped/ruotabili. Vedi
+  il bridge PerX attuale copre tenant, impostazioni, utenti in sola lettura, errori e
+  domain-routes e usa una API key globale; l'inventario capability è ora implementato, mentre
+  restano mutazioni utenti, audit delle scritture e credenziali scoped/ruotabili. Vedi
   [[06-Decisioni-e-Intenzioni-Future]] (2026-11-25).
 
 ## Decisioni ancora aperte

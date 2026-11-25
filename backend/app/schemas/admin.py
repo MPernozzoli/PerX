@@ -35,6 +35,32 @@ class AdminUserResponse(BaseModel):
         from_attributes = True
 
 
+class AdminOverviewCounts(BaseModel):
+    tenants: int
+    users: int
+    active_users: int
+    domain_routes: int
+    active_domain_routes: int
+    unresolved_errors: int
+    unresolved_critical_errors: int
+
+
+class AdminCapability(BaseModel):
+    resource: str
+    read: bool = False
+    create: bool = False
+    update: bool = False
+    delete: bool = False
+
+
+class AdminOverviewResponse(BaseModel):
+    service: Literal["perx"] = "perx"
+    api_version: Literal["v1"] = "v1"
+    single_tenant_mode: bool
+    counts: AdminOverviewCounts
+    capabilities: list[AdminCapability]
+
+
 DomainRouteApp = Literal["bignami", "catdispatcher", "insight_studio", "perx_admin", "randa", "insured_portal"]
 
 

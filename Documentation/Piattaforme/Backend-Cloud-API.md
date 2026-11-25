@@ -70,6 +70,11 @@ assicurati, sessioni, notifiche, privacy), `videoperizia`, `case_task`, `process
 - **Platform admin** (`User.is_platform_admin=True`) ha accesso cross-tenant completo via
   `/api/v1/admin/*` (`routes_admin.py`, `routes_admin_errors.py`): tenant, settings (incluse le
   secret provider/AI), utenti, domain-routes, error log.
+- **Snapshot del control plane** (2026-11-25): `GET /api/v1/admin/overview` restituisce in una
+  sola risposta modalità single/multi-tenant, conteggi di tenant, utenti attivi, domain route ed
+  errori aperti/critici, più l'inventario esplicito delle capability CRUD realmente supportate.
+  La lista utenti è dichiarata read-only; il portale centrale non deve mostrare azioni che il
+  backend non può ancora eseguire.
 - **Tenant admin** (ruolo `admin_tenant`) è scoped al proprio tenant via `/api/v1/tenants/me/*`
   (`routes_tenants.py`) — bloccato esplicitamente da slug/domini/branding/secrets, che restano
   platform-admin-only anche da quell'endpoint.
@@ -104,4 +109,4 @@ estensioni), **device token/push**, **AI prompt versioning & routing runs**, **r
 [[05-Stato-Sviluppo-e-Roadmap]].
 
 ---
-Ultimo aggiornamento: 2026-11-07
+Ultimo aggiornamento: 2026-11-25
