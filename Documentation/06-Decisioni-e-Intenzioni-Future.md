@@ -76,7 +76,8 @@ esistenti. Il gateway riconosce sia gli host storici sia `perx.pynkstudio.eu`,
 `catdispatcher.pynkstudio.eu` e `bignamionline.pynkstudio.eu`; i tre runtime origin sono stati
 creati e distribuiti su Vercel (`perx-insight-studio`, `catdispatcher`, `bignami-online`) e il
 progetto `perx` usa origin server-side configurati. La migration `040_pynkstudio_domains` unifica
-i due head Alembic preesistenti e inserisce gli alias nel resolver backend. I domini nuovi sono
+i due head Alembic preesistenti, ripara in modo idempotente l'assenza di `domain_routes` rilevata
+nel database production e inserisce gli alias nel resolver backend. I domini nuovi sono
 associati al progetto Vercel `perx`, ma non sono ancora pubblici: il DNS autorevole è su
 Register.it e richiede record A verso `76.76.21.21`. Anche `perx.it` richiede la correzione del
 record A attuale; `catdispatcher.it` non risolve e il certificato di `bignami.perx.it` risulta

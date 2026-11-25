@@ -43,6 +43,12 @@ non tracciata in `render.yaml`) e, con lo stesso valore, come `PERX_ADMIN_API_KE
 In locale: `alembic upgrade head` → `python scripts/bootstrap_single_tenant.py` →
 `uvicorn app.main:app --reload`. Dettagli → [[Backend-Cloud-API]].
 
+Drift rilevato il 2026-11-25: il database production era marcato Alembic a
+`037_videoperizia_disconnect` ma non conteneva `domain_routes`, pur essendo questa prevista da
+`013_domain_routing`. `014_domain_routing_apps` è stato reso tollerante alla tabella assente e
+`040_pynkstudio_domains` la ricrea con schema/indici/constraint completi prima di inserire gli
+alias PynkStudio. Non usare `alembic stamp` per aggirare questo drift.
+
 ## Web app (Vercel)
 
 **Regola architetturale**: tutti i portali web devono essere Next.js App Router. Non si
