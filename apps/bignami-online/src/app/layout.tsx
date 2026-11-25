@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import "../index.css";
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://bignami.perx.it";
+const siteUrl =
+  process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://bignamionline.pynkstudio.eu";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),

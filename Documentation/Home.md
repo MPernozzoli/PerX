@@ -1,6 +1,6 @@
 ---
 tags: [perx, moc]
-updated: 2026-09-06
+updated: 2026-11-25
 ---
 
 # PerX — Vault di documentazione
@@ -46,7 +46,8 @@ Dettagli → [[01-Panoramica]].
 - [[Sistema-Task]] — task locali (iOS) + task server condivisi, sync offline-first
 - [[AI-Locale-e-Cloud]] — AI locale (Ollama via Local Agent XPC) e AI cloud
 - [[Videoperizia]] — perizia da remoto via videochiamata
-- [[Login-Unificato-SSO]] — identity layer unico pianificato (`login.perx.it`)
+- [[Login-Unificato-SSO]] — identity layer unico pianificato (target
+  `login.perx.pynkstudio.eu`; host storico `login.perx.it` durante la migrazione)
 
 ---
-Ultimo aggiornamento: 2026-09-06
+Ultimo aggiornamento: 2026-11-25

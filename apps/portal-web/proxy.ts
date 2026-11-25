@@ -28,17 +28,25 @@ function normalizeHost(value: string | null): string {
     .replace(/\.$/, "");
 }
 
-function localFallback(hostname: string): RouteResolution {
-  if (hostname === "perx.it" || hostname === "www.perx.it") {
+export function localFallback(hostname: string): RouteResolution {
+  if (
+    hostname === "perx.it" ||
+    hostname === "www.perx.it" ||
+    hostname === "perx.pynkstudio.eu"
+  ) {
     return { found: true, hostname, app: "insight_studio", destination_url: INSIGHT_STUDIO_ORIGIN ?? null };
   }
   if (hostname === "randapro.it" || hostname === "www.randapro.it") {
     return { found: true, hostname, app: "randa", destination_url: RANDA_ORIGIN ?? null };
   }
-  if (hostname === "bignami.perx.it") {
+  if (hostname === "bignami.perx.it" || hostname === "bignamionline.pynkstudio.eu") {
     return { found: true, hostname, app: "bignami", destination_url: BIGNAMI_ORIGIN ?? null };
   }
-  if (hostname === "catdispatcher.it" || hostname === "www.catdispatcher.it") {
+  if (
+    hostname === "catdispatcher.it" ||
+    hostname === "www.catdispatcher.it" ||
+    hostname === "catdispatcher.pynkstudio.eu"
+  ) {
     return { found: true, hostname, app: "catdispatcher", destination_url: CATDISPATCHER_ORIGIN ?? null };
   }
   if (hostname === "admin.perx.it" || hostname.startsWith("admin.")) {

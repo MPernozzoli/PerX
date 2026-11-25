@@ -1,6 +1,6 @@
 ---
 tags: [perx, architettura]
-updated: 2026-09-05
+updated: 2026-11-25
 ---
 
 # Architettura
@@ -72,9 +72,15 @@ tenant creato via `scripts/bootstrap_single_tenant.py`). Vedi [[05-Stato-Svilupp
 ## Identità e autenticazione
 
 Oggi ogni app fa login autonomo verso `/api/v1/auth/login` (JWT Bearer). È pianificato un identity
-layer unico (`login.perx.it`, OAuth2/OIDC + PKCE) per SSO tra app PerX, admin, CatDispatcher e
-futuri servizi — vedi [[Login-Unificato-SSO]] per lo stato (pianificazione, non ancora
-implementato).
+layer unico (target `login.perx.pynkstudio.eu`, con `login.perx.it` come host storico di
+transizione; OAuth2/OIDC + PKCE) per SSO tra app PerX, admin, CatDispatcher e futuri servizi —
+vedi [[Login-Unificato-SSO]] per lo stato (pianificazione, non ancora implementato).
+
+Il control plane trasversale dei prodotti è `admin.pynkstudio.eu` (repo BePork): integra ciascun
+backend tramite API admin server-to-server, senza accesso diretto ai database e senza segreti nel
+browser. I domini operativi dei tenant restano separati; la gerarchia
+`servizio.prodotto.pynkstudio.eu` è riservata ai prodotti PynkStudio. Dettagli e piano di
+migrazione → [[06-Decisioni-e-Intenzioni-Future]] (2026-11-25).
 
 ---
-Ultimo aggiornamento: 2026-09-05
+Ultimo aggiornamento: 2026-11-25

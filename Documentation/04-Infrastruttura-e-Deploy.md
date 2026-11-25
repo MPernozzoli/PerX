@@ -1,6 +1,6 @@
 ---
 tags: [perx, infrastruttura, deploy]
-updated: 2026-11-07
+updated: 2026-11-25
 ---
 
 # Infrastruttura e deploy
@@ -49,8 +49,37 @@ In locale: `alembic upgrade head` → `python scripts/bootstrap_single_tenant.py
 introducono nuove SPA Vite o runtime incompatibili col gateway Next.js (vedi anche
 [[06-Decisioni-e-Intenzioni-Future]]).
 
-Il deploy web gira su un **unico progetto Vercel**, nome progetto **`perx`**
-(`prj_4GoA9R3qLkHjnu7DgmBmcS7KmlR3`, team `team_Y4HXMUA0RyX5rQO1GZNOmmSc`):
+### Migrazione domini PynkStudio
+
+Dal 2026-11-25 il target è consolidare i prodotti proprietari sotto `pynkstudio.eu`: in prima
+battuta `perx.pynkstudio.eu`, `catdispatcher.pynkstudio.eu` e
+`bignamionline.pynkstudio.eu`. I servizi PerX diventano sub-subdomini
+(`app.perx.pynkstudio.eu`, `api.perx.pynkstudio.eu`,
+`login.perx.pynkstudio.eu`). `admin.pynkstudio.eu` rimane il pannello unico cross-product e
+dialoga con i backend esclusivamente tramite API server-to-server.
+
+I domini tenant e i loro prefissi (`admin`, `assicurati`, `riunioni`, ecc.) non vengono migrati
+sotto PynkStudio. I domini storici restano alias/redirect fino alla verifica di tutti i consumer.
+
+**Stato operativo 2026-11-25:** il codice dual-host e i deploy origin dei tre portali sono pronti;
+i nuovi host sono associati al progetto Vercel `perx`. Manca il DNS autorevole Register.it:
+
+| Host | Record richiesto | Stato |
+|---|---|---|
+| `perx.pynkstudio.eu` | `A 76.76.21.21` | associato a Vercel, DNS assente |
+| `catdispatcher.pynkstudio.eu` | `A 76.76.21.21` | associato a Vercel, DNS assente |
+| `bignamionline.pynkstudio.eu` | `A 76.76.21.21` | associato a Vercel, DNS assente |
+| `perx.it` | sostituire l'A attuale con `76.76.21.21` | DNS/certificato non validi |
+
+Gli origin Vercel production sono `perx-insight-studio.vercel.app`,
+`catdispatcher.vercel.app` e `bignami-online.vercel.app`; rispondono tutti HTTP 200 e non sono
+gli URL canonici da mostrare agli utenti. `catdispatcher.it` non risolve al 2026-11-25 e
+`bignami.perx.it` presenta un certificato scaduto. Dettagli →
+[[06-Decisioni-e-Intenzioni-Future]] (2026-11-25).
+
+L'ingresso pubblico web gira sul progetto gateway Vercel **`perx`**
+(`prj_4GoA9R3qLkHjnu7DgmBmcS7KmlR3`, team `team_Y4HXMUA0RyX5rQO1GZNOmmSc`); le app non ancora
+integrate nello stesso runtime usano progetti origin tecnici dietro al gateway:
 
 - `rootDirectory: null` → la Root Directory è la **root del repo**, non una singola app. Di
   conseguenza eventuali `vercel.json` dentro `apps/<app>/` **non vengono letti**: la config va
@@ -64,10 +93,13 @@ Il deploy web gira su un **unico progetto Vercel**, nome progetto **`perx`**
   `riunioni.<tenant_domain>`, `catdispatcher.it`, `www.catdispatcher.it`. Il gateway
   (`apps/portal-web`) legge l'host, interroga il resolver backend e seleziona il portale corretto
   (prefissi riservati: `admin.`, `assicurati.`, `riunioni.`).
-- Esiste un secondo progetto Vercel, **`be-pork`**, presumibilmente legato al backend (da
-  verificare/documentare meglio se torna rilevante).
+- Dal 2026-11-25 il gateway inoltra le app prodotto verso tre progetti origin dedicati, configurati
+  tramite `INSIGHT_STUDIO_ORIGIN`, `CATDISPATCHER_ORIGIN` e `BIGNAMI_ORIGIN` server-side. Questi
+  progetti sono unità tecniche di deploy, non nuovi ingressi pubblici o nuovi control plane.
+- Il portale `admin.pynkstudio.eu` è sul progetto Vercel **`menuary`** del repo BePork, separato
+  dal gateway PerX e integrato via API server-to-server.
 
-### Vincolo del progetto singolo
+### Vincolo del gateway singolo
 
 Convertire una cartella `apps/*` a Next.js **non** la rende automaticamente pubblicabile come
 progetto Vercel indipendente all'interno dello stesso progetto: un progetto Vercel ha una sola
@@ -121,4 +153,4 @@ tabella `process_jobs`; un worker sul Mac mini fa polling/lease con header
 `GET /api/v1/process-jobs/jobs/claim`. Vedi [[Backend-Cloud-API]] e [[AI-Locale-e-Cloud]].
 
 ---
-Ultimo aggiornamento: 2026-11-07
+Ultimo aggiornamento: 2026-11-25

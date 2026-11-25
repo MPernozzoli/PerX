@@ -1,6 +1,6 @@
 ---
 tags: [perx, decisioni, adr]
-updated: 2026-11-07
+updated: 2026-11-25
 ---
 
 # Decisioni architetturali e intenzioni di sviluppo future
@@ -21,6 +21,67 @@ Motivazione: ...
 ```
 
 ---
+
+## 2026-11-25 — Consolidamento dei portali prodotto sotto `pynkstudio.eu` e control plane admin unico
+Contesto: l'utente vuole ricondurre i portali di proprietà PynkStudio oggi distribuiti su domini
+separati (`perx.it`, `catdispatcher.it`, Bignami Online e gli altri prodotti da inventariare) sotto
+il dominio corporate `pynkstudio.eu`. I domini custom dei tenant, per esempio Studio Randa,
+devono invece restare indipendenti e continuare a esporre i propri sottodomini operativi.
+
+Decisione / intenzione:
+
+- ogni prodotto PynkStudio avrà un host di primo livello sotto il dominio corporate: target
+  iniziali `perx.pynkstudio.eu`, `catdispatcher.pynkstudio.eu` e
+  `bignamionline.pynkstudio.eu`;
+- i servizi appartenenti a un prodotto diventano sottodomini del relativo host prodotto, quindi
+  per PerX il target è `app.perx.pynkstudio.eu`, `api.perx.pynkstudio.eu` e
+  `login.perx.pynkstudio.eu`; eventuali altri host devono seguire lo stesso schema dopo
+  l'inventario completo;
+- `admin.pynkstudio.eu` è il **control plane unico** di PynkStudio: non va replicato come pannello
+  indipendente per ogni prodotto. Da qui gli amministratori PynkStudio devono poter osservare e
+  controllare integralmente tutti i prodotti tramite API server-to-server esposte dai rispettivi
+  backend;
+- il pannello centrale non deve accedere direttamente ai database dei prodotti e non deve
+  incorporare segreti nel browser. Ogni backend resta source of truth e authority delle proprie
+  regole di dominio; il portale BePork orchestra le API admin con credenziali server-only,
+  autorizzazioni per prodotto/azione e audit delle scritture. Il bridge statico
+  `X-PerX-Admin-Key` esistente è una base transitoria da evolvere verso credenziali ruotabili e
+  scoped, senza interrompere l'integrazione già presente;
+- i domini dei tenant non vengono assorbiti in `pynkstudio.eu`: per Studio Randa e gli altri
+  tenant restano il dominio custom e i relativi host (`admin.<dominio-tenant>`,
+  `assicurati.<dominio-tenant>`, `riunioni.<dominio-tenant>`, ecc.). La gerarchia
+  `servizio.prodotto.pynkstudio.eu` riguarda solo i prodotti PynkStudio;
+- i domini storici devono restare attivi durante la transizione come alias o redirect permanenti,
+  con migrazione graduale di callback OAuth, cookie, CORS/CSP, link email, canonical SEO,
+  configurazioni Vercel/Render/Supabase/Resend e client nativi. Il cambio dei portali web non
+  implica automaticamente la dismissione dei domini email (per esempio `@perx.it`), che richiede
+  una decisione separata.
+
+Prima dell'attuazione va prodotto un inventario completo di host, DNS, certificati, redirect URI,
+webhook e dipendenze hardcoded in tutti i repository. La sequenza raccomandata è: aggiungere e
+validare i nuovi host in parallelo; rendere configurabili le origini; aggiornare callback e
+integrazioni; eseguire smoke test; introdurre redirect dai domini storici; osservare traffico ed
+errori; dismettere i vecchi host solo con evidenza che non abbiano più consumer. Il portale admin
+centrale va esteso per capability, non tramite accesso indiscriminato: inventario/health,
+tenant/utenti/configurazione, errori e audit, operazioni mutative idempotenti, quindi funzioni più
+sensibili con approvazioni e rollback dove necessario.
+
+Motivazione: presentare PynkStudio come casa comune dei prodotti, ridurre la frammentazione di
+domini e pannelli amministrativi e mantenere al tempo stesso l'isolamento dei tenant e dei dati.
+Vedi [[04-Infrastruttura-e-Deploy]], [[Login-Unificato-SSO]], [[Backend-Cloud-API]] e la guida
+`docs/perx-integration.md` nel repo BePork.
+
+Stato di attuazione al 2026-11-25: completata la prima fase applicativa per i tre portali già
+esistenti. Il gateway riconosce sia gli host storici sia `perx.pynkstudio.eu`,
+`catdispatcher.pynkstudio.eu` e `bignamionline.pynkstudio.eu`; i tre runtime origin sono stati
+creati e distribuiti su Vercel (`perx-insight-studio`, `catdispatcher`, `bignami-online`) e il
+progetto `perx` usa origin server-side configurati. La migration `040_pynkstudio_domains` unifica
+i due head Alembic preesistenti e inserisce gli alias nel resolver backend. I domini nuovi sono
+associati al progetto Vercel `perx`, ma non sono ancora pubblici: il DNS autorevole è su
+Register.it e richiede record A verso `76.76.21.21`. Anche `perx.it` richiede la correzione del
+record A attuale; `catdispatcher.it` non risolve e il certificato di `bignami.perx.it` risulta
+scaduto. `app/api/login.perx.pynkstudio.eu` e il completamento del control plane admin restano
+nelle fasi successive.
 
 ## 2026-11-07 — Piano incrementale per test automatici e CI/CD
 Contesto: dopo la valutazione sulla portabilità, l'utente ha chiesto di pianificare l'introduzione
@@ -292,4 +353,4 @@ Motivazione: evitare ambiguità nel flusso assicurato su quale canale usare per 
 Vedi [[Videoperizia]].
 
 ---
-Ultimo aggiornamento: 2026-11-07
+Ultimo aggiornamento: 2026-11-25

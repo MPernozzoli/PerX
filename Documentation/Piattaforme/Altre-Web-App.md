@@ -1,6 +1,6 @@
 ---
 tags: [perx, piattaforma, web]
-updated: 2026-11-07
+updated: 2026-11-25
 ---
 
 # Altre web app satellite
@@ -16,15 +16,20 @@ Web app per consultare e gestire i "bignami" di polizza (riassunti/condizioni po
   dedicato **`bignami`** (non `public`), per non collidere con le tabelle applicative PerX.
 - Variabili chiave: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`,
   `NEXT_PUBLIC_SUPABASE_DB_SCHEMA=bignami`, `NEXT_PUBLIC_SITE_URL` (produzione:
-  `https://bignami.perx.it`).
+  `https://bignami.perx.it`; target 2026-11-25: `https://bignamionline.pynkstudio.eu`).
 - Lo schema `bignami` deve essere esposto nella Data API di Supabase e avere grant/RLS applicati
   dalle migrazioni PerX.
 - Stack: Next.js App Router (migrato da Vite, `react-router-dom` ancora presente), React,
   TypeScript.
 - Dal 2026-11-07 il client e i tipi generati puntano coerentemente allo schema `bignami` (incluse
   le mutation tipizzate); il typecheck globale è tornato verde.
-- Dominio previsto: `bignami.perx.it`, da integrare nel gateway se deve condividere SSO/policy con
-  gli altri portali (vedi [[05-Stato-Sviluppo-e-Roadmap]]).
+- Dominio configurato/storico: `bignami.perx.it`; target:
+  `bignamionline.pynkstudio.eu`, da integrare nel gateway se deve condividere SSO/policy con gli
+  altri portali (vedi
+  [[05-Stato-Sviluppo-e-Roadmap]] e [[06-Decisioni-e-Intenzioni-Future]]).
+- Dal 2026-11-25 l'origin Vercel `bignami-online.vercel.app` è in produzione e il gateway è
+  configurato per inoltrarlo; il nuovo dominio è associato a Vercel ma attende il record DNS su
+  Register.it. Il canonical di default dell'app punta già a `bignamionline.pynkstudio.eu`.
 
 ## PerX Insight Studio (`apps/perx-insight-studio`)
 
@@ -62,4 +67,4 @@ lato Studio Randa: piattaforma unica (app perito, hub comunicazioni, portale ass
 costante, scalabilità e trasparenza.
 
 ---
-Ultimo aggiornamento: 2026-11-07
+Ultimo aggiornamento: 2026-11-25

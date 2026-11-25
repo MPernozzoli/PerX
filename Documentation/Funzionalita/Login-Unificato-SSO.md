@@ -1,6 +1,6 @@
 ---
 tags: [perx, funzionalita, auth, sso, pianificato]
-updated: 2026-09-05
+updated: 2026-11-25
 ---
 
 # Login unificato / SSO
@@ -11,8 +11,10 @@ updated: 2026-09-05
 
 ## Obiettivo
 
-Creare un identity layer unico su **`login.perx.it`** per accedere con la stessa identità a: app
-PerX, portale admin PerX, [[CatDispatcher]] e altri servizi interni futuri.
+Creare un identity layer unico su **`login.perx.pynkstudio.eu`** per accedere con la stessa
+identità a: app PerX, portale admin PerX, [[CatDispatcher]] e altri servizi interni futuri.
+`login.perx.it` resta l'host storico da mantenere durante la migrazione e poi reindirizzare solo
+dopo l'aggiornamento verificato di tutte le callback.
 
 Flusso operativo previsto per gli utenti interni:
 1. Invito iniziale inviato alla mail personale.
@@ -33,10 +35,11 @@ Flusso operativo previsto per gli utenti interni:
 
 ## Architettura target
 
-- **`login.perx.it`**: identity portal centrale.
+- **`login.perx.pynkstudio.eu`**: identity portal centrale (target).
 - **PerX API**: resource server e authority applicativa per tenant, ruoli, profili, mail interne.
 - **Provider auth**: Supabase Auth o un IdP OIDC equivalente (raccomandazione: Supabase Auth).
-- **Client**: `app.perx.it`, `admin.perx.it`, `catdispatcher.perx.it`, app nativa PerX.
+- **Client**: `app.perx.pynkstudio.eu`, `admin.pynkstudio.eu/perx`,
+  `catdispatcher.pynkstudio.eu`, app nativa PerX.
 - Protocollo: **OAuth 2.1 / OpenID Connect**, Authorization Code + PKCE. Ogni client ha
   `client_id`, redirect URI esplicite, post-logout redirect URI, scope consentiti (minimi:
   `openid`, `profile`, `email`, `perx:app`, `perx:admin`, `perx:catdispatcher`).
@@ -47,7 +50,7 @@ Flusso operativo previsto per gli utenti interni:
 
 1. Admin crea utente con `personal_email`, nome, tenant, ruoli iniziali.
 2. Backend genera invito monouso con scadenza, inviato alla mail personale.
-3. Utente apre `login.perx.it/invite/{token}`.
+3. Utente apre `login.perx.pynkstudio.eu/invite/{token}`.
 4. L'identity portal valida il token e crea/collega l'account nel provider auth.
 5. L'utente imposta password o attiva magic link/passkey.
 6. Backend salva `idp_subject` su `users.idp_subject`.
@@ -71,7 +74,8 @@ professionale quando presente.
 
 ## Flussi SSO per app web (target)
 
-- **CatDispatcher**: redirect a `login.perx.it/oauth/authorize?client_id=catdispatcher&...` →
+- **CatDispatcher**: redirect a
+  `login.perx.pynkstudio.eu/oauth/authorize?client_id=catdispatcher&...` →
   callback → scambio `code` per token → `GET /api/v1/auth/me` → accesso consentito solo se
   `is_platform_admin` o ruolo in `admin`, `site_admin`, `cat_dispatcher`, `perito`.
 - **Admin**: stesso flusso, scope `perx:admin`, autorizzazione su `is_platform_admin`/ruolo admin
@@ -85,7 +89,7 @@ professionale quando presente.
 `POST /api/v1/invitations/{token}/accept`, `POST /api/v1/auth/refresh`,
 `POST /api/v1/auth/logout`, `GET /api/v1/auth/authorize-context`.
 
-## Endpoint da introdurre (`login.perx.it`)
+## Endpoint da introdurre (`login.perx.pynkstudio.eu`)
 
 `/login`, `/invite/[token]`, `/oauth/authorize`, `/oauth/callback`, `/logout`,
 `/account/security`.
@@ -104,8 +108,9 @@ Estensioni consigliate a `users`: `email_verified_at`, `professional_email_enabl
 1. **Consolidamento backend**: mantenere `/auth/login` per compatibilità; aggiungere inviti e
    accettazione; collegare sempre gli utenti via `idp_subject`; accettare login via
    `personal_email`, `professional_email`, `email`.
-2. **Login portal**: creare `login.perx.it`; schermata invito; provider auth e redirect URI per
-   client.
+2. **Login portal**: creare `login.perx.pynkstudio.eu`; schermata invito; provider auth e
+   redirect URI per client. Mantenere temporaneamente anche `login.perx.it` e migrare ogni
+   callback in modo esplicito.
 3. **Migrazione client web**: sostituire form locali in CatDispatcher/admin con redirect SSO;
    spostare token da localStorage a cookie/sessione dove possibile; fallback dev su `/auth/login`
    solo in locale.
@@ -119,7 +124,7 @@ Estensioni consigliate a `users`: `email_verified_at`, `professional_email_enabl
 - Provider definitivo (Supabase Auth vs Auth0/Okta/Cognito vs IdP custom).
 - Metodo primo accesso (password, magic link, OTP, passkey).
 - Dominio mail interna (`@perx.it` o tenant-specific).
-- Se `login.perx.it` è solo UI sopra Supabase Auth o anche authorization server custom.
+- Se `login.perx.pynkstudio.eu` è solo UI sopra Supabase Auth o anche authorization server custom.
 - Dove ospitare le sessioni web (cookie HttpOnly centralizzati o token per-app).
 
 ## Raccomandazione pratica
@@ -131,4 +136,4 @@ verrà attivata. Evita di costruire un sistema password custom e mantiene una vi
 completo.
 
 ---
-Ultimo aggiornamento: 2026-09-05
+Ultimo aggiornamento: 2026-11-25

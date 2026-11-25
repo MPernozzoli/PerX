@@ -1,6 +1,6 @@
 ---
 tags: [perx, piattaforma, web, catdispatcher]
-updated: 2026-09-05
+updated: 2026-11-25
 ---
 
 # CAT Dispatcher (`apps/catdispatcher`)
@@ -37,6 +37,14 @@ Il primo algoritmo di route planning è **volutamente deterministico** (ordina a
 schedulati poi richieste per priorità): la struttura dati è pronta per sostituirlo con un
 ottimizzatore geografico senza cambiare il contratto API.
 
+Dominio pubblico corrente: `catdispatcher.it`/`www.catdispatcher.it`. Target deciso il
+2026-11-25: `catdispatcher.pynkstudio.eu`, mantenendo i domini storici come alias/redirect durante
+la migrazione. Vedi [[06-Decisioni-e-Intenzioni-Future]].
+
+Stato 2026-11-25: l'origin `catdispatcher.vercel.app` è distribuito e risponde HTTP 200; il
+gateway e il manifest dell'estensione puntano al nuovo host. L'associazione Vercel è pronta, ma
+manca il record DNS Register.it. Il dominio storico `catdispatcher.it` al momento non risolve.
+
 ## Stack
 
 - Next.js 16 App Router (migrato da Vite/SPA — `react-router-dom` ancora presente come routing
@@ -58,4 +66,4 @@ visualizzazione/interrogazione mappa → supporto assegnazione geografica → fi
 [[05-Stato-Sviluppo-e-Roadmap]] per lo stato di integrazione nel gateway Vercel unico.
 
 ---
-Ultimo aggiornamento: 2026-09-05
+Ultimo aggiornamento: 2026-11-25
