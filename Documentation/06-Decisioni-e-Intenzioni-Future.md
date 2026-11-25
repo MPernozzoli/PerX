@@ -84,6 +84,10 @@ record A attuale; `catdispatcher.it` non risolve e il certificato di `bignami.pe
 scaduto. `app/api/login.perx.pynkstudio.eu` e il completamento del control plane admin restano
 nelle fasi successive.
 
+Verifica production dello stesso giorno: upgrade riuscito a `040_pynkstudio_domains`, tre route
+attive e health backend HTTP 200. Il gateway usa per ora il fallback locale perché il secret del
+resolver non è coordinato tra Render e Vercel; nessun secret è stato aggiunto al repository.
+
 ## 2026-11-07 — Piano incrementale per test automatici e CI/CD
 Contesto: dopo la valutazione sulla portabilità, l'utente ha chiesto di pianificare l'introduzione
 di test e CI/CD. La baseline verificata è debole: nessun workflow CI root, quattro file pytest con

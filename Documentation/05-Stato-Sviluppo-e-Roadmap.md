@@ -122,8 +122,10 @@ Vedi [[06-Decisioni-e-Intenzioni-Future]] (2026-09-06) per contesto e motivazion
   pronta per questo (stringa libera, non enum).
 - **Target deciso il 2026-11-25, fase 1 applicativa completata**: il dual-host è implementato per
   PerX pubblico, CAT Dispatcher e Bignami Online; tre origin Vercel production sono online, il
-  gateway è configurato e la migration `040_pynkstudio_domains` prepara il resolver. I record DNS
-  Register.it non sono ancora applicati. Il control plane API completo non è ancora realizzato:
+  gateway è configurato e la migration `040_pynkstudio_domains` è applicata in production con i
+  tre alias attivi. I record DNS Register.it non sono ancora applicati. Il resolver remoto non è
+  ancora usato dal gateway perché URL/secret non sono coordinati tra Vercel e Render; il fallback
+  dual-host copre i tre prodotti. Il control plane API completo non è ancora realizzato:
   il bridge PerX attuale copre tenant, utenti, errori e domain-routes e usa una API key globale;
   restano capability mancanti, audit delle scritture e credenziali scoped/ruotabili. Vedi
   [[06-Decisioni-e-Intenzioni-Future]] (2026-11-25).

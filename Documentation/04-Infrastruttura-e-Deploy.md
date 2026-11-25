@@ -51,6 +51,13 @@ alias PynkStudio. Anche `039_bignami_policy_type_condominio` è idempotente quan
 satellite opzionale `bignami` non è installato nel database PerX. Non usare `alembic stamp` per
 aggirare questo drift.
 
+Upgrade production completato manualmente il 2026-11-25: `alembic_version` è a
+`040_pynkstudio_domains`, `platform_error_log` e `domain_routes` esistono, i tre alias prodotto
+sono attivi e `/health` risponde HTTP 200. Il gateway Vercel usa ancora il fallback locale per
+questi host perché `ROUTING_API_URL`/`ROUTING_RESOLVE_SECRET` non sono valorizzati in modo
+coordinato tra Vercel e Render; l'allineamento del secret server-to-server resta un'attività di
+configurazione dashboard, non un valore da inserire nel repository.
+
 ## Web app (Vercel)
 
 **Regola architetturale**: tutti i portali web devono essere Next.js App Router. Non si
