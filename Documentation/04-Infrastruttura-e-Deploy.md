@@ -47,7 +47,9 @@ Drift rilevato il 2026-11-25: il database production era marcato Alembic a
 `037_videoperizia_disconnect` ma non conteneva `domain_routes`, pur essendo questa prevista da
 `013_domain_routing`. `014_domain_routing_apps` è stato reso tollerante alla tabella assente e
 `040_pynkstudio_domains` la ricrea con schema/indici/constraint completi prima di inserire gli
-alias PynkStudio. Non usare `alembic stamp` per aggirare questo drift.
+alias PynkStudio. Anche `039_bignami_policy_type_condominio` è idempotente quando lo schema
+satellite opzionale `bignami` non è installato nel database PerX. Non usare `alembic stamp` per
+aggirare questo drift.
 
 ## Web app (Vercel)
 
