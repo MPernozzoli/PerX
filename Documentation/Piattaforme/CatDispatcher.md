@@ -32,9 +32,13 @@ database Supabase. Configura `NEXT_PUBLIC_PERX_API_BASE_URL` e chiama `/api/v1/c
 > `/admin/gis-editor` e `/api` (`apps/catdispatcher/src`) usano **ancora** il client Supabase con
 > la chiave publishable e interrogano direttamente le tabelle `allowed_domains`, `cat_commune`,
 > `cat_suspensions`, `cats`, `communes`, `geojson_backup_log`, `provinces`, `regions`, `tenants`,
-> `user_roles`, `user_tenants` (più le RPC `get_user_role`, `find_commune_at_point`). Queste
-> tabelle sono escluse dalla migrazione RLS `041_enable_rls_public` finché non migrano al backend
-> o non hanno policy esplicite — vedi [[06-Decisioni-e-Intenzioni-Future]] (2026-11-26).
+> `user_roles`, `user_tenants` (più le RPC `get_user_role`, `find_commune_at_point`).
+> Nel database PerX (`public`) esistono però solo `tenants` e `user_roles`, tabelle core usate dal
+> backend: le altre non ci sono, quindi quell'accesso diretto qui non può funzionare. Con la
+> migrazione RLS `042_enable_rls_remaining` anche `tenants` e `user_roles` non sono più leggibili
+> con la chiave pubblica (la 041 le aveva escluse). Se il frontend punta a un altro progetto Supabase non è toccato. Il
+> frontend va allineato al backend `/api/v1/cat-dispatcher/*` — vedi
+> [[06-Decisioni-e-Intenzioni-Future]] (2026-11-26).
 
 Endpoint principali: `map-data`, `search`, `communes/{id}`, `get-cat-by-commune`,
 `dispatch/requests`, `dispatch/insured-windows`, `dispatch/availability-rules`,

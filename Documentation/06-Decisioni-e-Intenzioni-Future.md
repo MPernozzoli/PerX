@@ -22,6 +22,29 @@ Motivazione: ...
 
 ---
 
+## 2026-11-26 — RLS: la 041 era già in effetto con l'allowlist, la 042 chiude `tenants` e `user_roles` (corregge la voce «RLS sulle tabelle `public`»)
+Contesto: ho letto lo stato reale del progetto Supabase `PerX` con notebook SQL in sola lettura.
+Prima: **93 tabelle in `public`, nessuna con RLS, zero policy, `anon` e `authenticated` con
+`SELECT` su tutte** (tra cui `users`, `portal_sessions`, `actor_ibans`, `device_tokens`,
+`user_invitations`, `claims`, `emails`). Dopo (verifica delle 22:45): **94 tabelle con RLS; senza
+RLS solo `tenants` e `user_roles`**. La prima versione della 041, con l'allowlist
+`LEGACY_DIRECT_ACCESS_TABLES` (11 tabelle del frontend CAT Dispatcher), era su `origin/main` dalle
+17:46 ed era già in effetto sul database. L'allowlist era superflua: 9 delle 11 tabelle (`cats`,
+`communes`, `regions`, `provinces`, `cat_commune`, `cat_suspensions`, `allowed_domains`,
+`geojson_backup_log`, `user_tenants`) non esistono in `public`; le due presenti sono tabelle core
+PerX usate solo dal backend e lasciarle aperte manteneva l'esposizione.
+Decisione (confermata dall'utente: includere anche `tenants` e `user_roles`): **nuova migrazione
+`042_enable_rls_remaining`**, stessa logica della 041 senza esclusioni. La 041 non si modifica
+perché già applicata (Alembic non la rieseguirebbe e `tenants`/`user_roles` resterebbero aperte).
+Backend, PerXHub ed edge function bypassano RLS; gli altri client Supabase del repo usano lo
+schema `bignami` o le tabelle di Insight Studio, entrambi con RLS. Testata su Postgres
+usa-e-getta nella sequenza 041 → 042 e riesecuzione idempotente.
+Aperto: (1) il frontend `apps/catdispatcher` fa ancora `supabase.from('cats'|…)` su tabelle che
+qui non esistono — va allineato a `/api/v1/cat-dispatcher/*` o verificato verso quale progetto
+Supabase punta; (2) dopo il deploy verificare in sola lettura che nessuna tabella `public` sia
+senza RLS; (3) restano da eliminare dal dashboard Supabase tre notebook temporanei (audit e due
+«Apply 041»), che il client MCP non può cancellare.
+
 ## 2026-11-26 — Domini PerX piatti attivati su Vercel
 Contesto: il pannello DNS Register.it in uso non accetta le etichette annidate `app.perx` e
 `login.perx`; l'utente ha approvato la variante piatta e ha configurato i record DNS.
