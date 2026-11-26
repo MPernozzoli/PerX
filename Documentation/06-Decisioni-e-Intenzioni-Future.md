@@ -1,6 +1,6 @@
 ---
 tags: [perx, decisioni, adr]
-updated: 2026-11-25
+updated: 2026-11-26
 ---
 
 # Decisioni architetturali e intenzioni di sviluppo future
@@ -21,6 +21,23 @@ Motivazione: ...
 ```
 
 ---
+
+## 2026-11-26 — Cinque ingressi web PynkStudio associati al gateway Vercel PerX
+Contesto: i domini prodotto storici non sono più considerati ingressi affidabili; l'utente ha
+confermato che la migrazione deve usare esclusivamente la gerarchia sotto `pynkstudio.eu`, mentre
+i tenant mantengono i propri domini custom.
+
+Stato attuato: sul progetto Vercel `pynkstudio/perx` risultano associati
+`perx.pynkstudio.eu`, `app.perx.pynkstudio.eu`, `catdispatcher.pynkstudio.eu`,
+`bignamionline.pynkstudio.eu` e `login.perx.pynkstudio.eu`. Vercel richiede per ciascuno un record
+`A` verso `76.76.21.21` nella zona autorevole Register.it. L'associazione Vercel non rende da sola
+operativi `app` e `login`: il primo attende l'instradamento applicativo definitivo e il secondo
+l'implementazione SSO. `api.perx.pynkstudio.eu` resta destinato al backend Render e non è stato
+associato al gateway Vercel. I domini tenant, incluso `randapro.it` con i prefissi operativi,
+restano invariati.
+
+Motivazione: separare con chiarezza gli ingressi prodotto PynkStudio dai domini tenant e
+predisporre il DNS senza attribuire ai nuovi host servizi non ancora implementati.
 
 ## 2026-11-25 — Consolidamento dei portali prodotto sotto `pynkstudio.eu` e control plane admin unico
 Contesto: l'utente vuole ricondurre i portali di proprietà PynkStudio oggi distribuiti su domini

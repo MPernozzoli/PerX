@@ -1,6 +1,6 @@
 ---
 tags: [perx, infrastruttura, deploy]
-updated: 2026-11-25
+updated: 2026-11-26
 ---
 
 # Infrastruttura e deploy
@@ -76,14 +76,17 @@ dialoga con i backend esclusivamente tramite API server-to-server.
 I domini tenant e i loro prefissi (`admin`, `assicurati`, `riunioni`, ecc.) non vengono migrati
 sotto PynkStudio. I domini storici restano alias/redirect fino alla verifica di tutti i consumer.
 
-**Stato operativo 2026-11-25:** il codice dual-host e i deploy origin dei tre portali sono pronti;
-i nuovi host sono associati al progetto Vercel `perx`. Manca il DNS autorevole Register.it:
+**Stato operativo 2026-11-26:** il codice dual-host e i deploy origin dei tre portali sono pronti;
+i cinque host web previsti sono associati al progetto Vercel `perx`. Manca il DNS autorevole
+Register.it:
 
 | Host | Record richiesto | Stato |
 |---|---|---|
 | `perx.pynkstudio.eu` | `A 76.76.21.21` | associato a Vercel, DNS assente |
+| `app.perx.pynkstudio.eu` | `A 76.76.21.21` | associato a Vercel, DNS assente; applicazione non ancora instradata |
 | `catdispatcher.pynkstudio.eu` | `A 76.76.21.21` | associato a Vercel, DNS assente |
 | `bignamionline.pynkstudio.eu` | `A 76.76.21.21` | associato a Vercel, DNS assente |
+| `login.perx.pynkstudio.eu` | `A 76.76.21.21` | associato a Vercel, DNS assente; SSO non ancora implementato |
 | `perx.it` | sostituire l'A attuale con `76.76.21.21` | DNS/certificato non validi |
 
 Gli origin Vercel production sono `perx-insight-studio.vercel.app`,
