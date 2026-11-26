@@ -96,6 +96,70 @@ casi di test del motore Python finché ne esistono due. Dettagli → [[Motore-di
 
 ---
 
+## 2026-11-26 — Intenzione: tenant «Chiari» e porting del flusso sinistri «sinistri chiari» in PerX
+Contesto: l'utente lavora come perito per Chiari S.r.l. (sinistri fenomeno elettrico Vittoria,
+gestionale dello studio = Salesforce Classic + ReClaim/NewAge, posta = Google Workspace Chiari)
+con un sistema "light" locale, fuori da questa repo (`~/Downloads/sinistri chiari`): DB JSON
+(`db/sinistri.json` ~270 pratiche, `polizze.json` con blocco `bignami`), cruscotto Python locale
+(`cruscotto/server.py`, porta 8765, launchd), motore di stima deterministico in Python
+(`stima.py` + `frasi.py`, revisioni con hash economico e approvazione del perito), estensione
+Chrome MV3 «Sinistri Chiari» che compila SF/ReClaim dal payload approvato, agenti Claude Code
+(`sx-triage` regista → `pratica` prepara → OK del perito → `esegui`) e un agente remoto
+(ChiariBot/Grok) per solleciti e atti firmati. Lo studio non sostituirà il suo gestionale: PerX
+deve **coesistere** con SF/ReClaim, non rimpiazzarli. Bignami Online è già alimentato da qui.
+
+Intenzione (discussa, non approvata per l'implementazione; nessun codice scritto):
+
+1. **Tenant e accesso.** Nuovo tenant `chiari` con una sola utenza (il perito), accesso «Accedi
+   con Google» con l'account Google Workspace Chiari. Strada proposta: provider Google di Supabase
+   Auth (coerente con [[Login-Unificato-SSO]]), dominio ammesso per tenant nelle impostazioni del
+   tenant. **Correzione necessaria:** `get_current_user` oggi è *o* JWT legacy *o* Supabase
+   (`FF_CLOUD_AUTH_ENABLED` globale): accendere Supabase spegnerebbe il login degli utenti
+   esistenti. Serve accettare entrambi i token in parallelo. Lato app: `GoogleAuthService.swift`
+   ha già un flusso Google (solo `openid email`) con client secret scritto nel sorgente: va
+   rifatto con `ASWebAuthenticationSession` + PKCE e il secret va ruotato.
+2. **Posta Gmail → Supabase → client.** Ripristinare il flusso Google per la posta, ma lato
+   server: Gmail API `users.watch` → Pub/Sub push → nuova Edge Function `gmail-inbound` (stesso
+   schema di `resend-inbound`: idempotenza, `inbound_email_events`, `email_processing_jobs`) →
+   `history.list`/`messages.get` → righe `emails` del tenant + allegati su Supabase Storage. I
+   client (Mac, iPhone, iPad) **non** sincronizzano più Gmail: scaricano dal backend in modo
+   incrementale (`GET /api/v1/emails?since=…`) e ricevono un segnale realtime/push per sapere
+   quando farlo (resta valido il principio «i client non leggono Postgres direttamente», vedi
+   [[02-Architettura]]). Token OAuth della casella solo lato server (`mailboxes.oauth_token_ref`,
+   provider `gmail`), rinnovo del `watch` entro 7 giorni (cron) e poll di recupero. Invio via
+   Gmail API dal backend (così la mail parte dall'account Workspace e resta nel thread); la firma
+   automatica di Gmail **non** si applica ai messaggi inviati via API: va letta da `sendAs` e
+   aggiunta. Segnare come letto/etichette → scope `gmail.modify`.
+3. **Estensione Chrome collegata a PerX.** Resta operativa; invece del cruscotto locale parla con
+   l'API PerX (token utente, non più il controllo sull'ID estensione), con endpoint equivalenti a
+   `/api/estensione/*` e `/api/stima/payload`; i file scaricati da SF vanno nel vault PerX invece
+   che nella cartella locale. Transizione con URL backend configurabile nelle opzioni.
+4. **Dati e motore.** Import idempotente (dry-run di default) di pratiche, eventi, revisioni di
+   stima, polizze e documenti nel tenant; stati Chiari (`stati.json`) come insieme di stati
+   configurabile per tenant invece della mappatura forzata sugli `SVxxx`. Un solo motore di stima
+   autorevole lato server, con le regole già collaudate (Light/Over/Senza stima, collegati,
+   importo già proposto, ereditarietà dell'approvazione); approvazione **solo** da UI del perito,
+   imposta dal backend e non più dalla disciplina del prompt.
+5. **Flusso IA-centrico via MCP.** Server MCP remoto di PerX (OAuth) con gli strumenti oggi in
+   `db.py`/`stima.py`/`bignami.py` e la posta (cerca, thread, testi già estratti dei documenti,
+   lock `lavoro start/end`), senza strumento di approvazione. Le azioni nel Chrome del perito
+   (SF con passkey, ReClaim con OTP e sessione unica) restano locali tramite l'estensione. Lo
+   stesso MCP serve Claude Code, Claude da iPhone e ChiariBot; i solleciti giornalieri e il
+   triage delle mail (atti firmati, solleciti, incarichi) possono diventare regole di Elettra per
+   il tenant (vedi [[AI-Locale-e-Cloud]]).
+
+Prerequisiti e rischi da chiarire prima di partire: consenso di Chiari (dati di terzi in
+infrastruttura PynkStudio → accordo sul trattamento dati) e del suo amministratore Workspace
+(scope Gmail «restricted»: app da segnare come attendibile nella console Workspace oppure client
+OAuth in un progetto Google interno a Chiari; un'app esterna in stato «Testing» perde il refresh
+token ogni 7 giorni); verifica dell'isolamento tra tenant, perché sarebbe il primo tenant reale
+con dati di un altro titolare; CI backend ancora rossa per il drift delle migration (vedi
+[[04-Infrastruttura-e-Deploy]]). Da decidere: fonte di verità durante la transizione (PerX come
+specchio del sistema locale o subito autorevole) e se il motore autorevole resta quello Python
+o il porting Swift in corso in `PerX/Services/Claims/Stima/` (due motori vanno tenuti allineati
+con gli stessi casi di test). Ordine proposto: 1 → 2 → 4 → 3 → 5, poi il cruscotto come vista
+PerX e la dismissione di quello locale.
+
 ## 2026-11-26 — Cinque ingressi web PynkStudio associati al gateway Vercel PerX
 Contesto: i domini prodotto storici non sono più considerati ingressi affidabili; l'utente ha
 confermato che la migrazione deve usare esclusivamente la gerarchia sotto `pynkstudio.eu`, mentre
