@@ -37,6 +37,12 @@ associati fino alla pulizia finale della configurazione.
 Motivazione: completare la migrazione con nomi compatibili con Register.it e garantire una pagina
 coerente su ogni nuovo ingresso durante l'implementazione dei servizi futuri.
 
+Verifica browser reale: Chrome e Safari mostravano `This page couldn't load` anche se gli health
+check HTTP restituivano 200. La console ha isolato la causa nell'inizializzazione immediata del
+client Supabase (`supabaseUrl is required`) sull'origin Insight Studio privo delle env pubbliche.
+Il client è stato reso opzionale e le sole funzioni dipendenti da Supabase degradano con errore
+controllato; la landing marketing non dipende più dalla presenza di quelle variabili.
+
 ## 2026-11-26 — RLS sulle tabelle `public` (Advisor Supabase `sensitive_columns_exposed`)
 Contesto: l'Advisor di sicurezza del progetto Supabase `PerX` ha segnalato
 `sensitive_columns_exposed`: tabelle con colonne sensibili (`users.password_hash`, `token_hash` di

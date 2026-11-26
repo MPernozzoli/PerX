@@ -37,6 +37,9 @@ export const ContactSection = () => {
 
     try {
       const validatedData = contactSchema.parse(formData);
+      if (!supabase) {
+        throw new Error("Supabase non configurato");
+      }
       const submissionId = crypto.randomUUID();
       
       if (validatedData.subscribeToNewsletter) {

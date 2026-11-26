@@ -94,6 +94,12 @@ gli URL canonici da mostrare agli utenti. `catdispatcher.it` non risolve al 2026
 `bignami.perx.it` presenta un certificato scaduto. Dettagli →
 [[06-Decisioni-e-Intenzioni-Future]] (2026-11-25).
 
+Correzione runtime del 2026-11-26: l'origin Insight Studio restituiva HTML 200 ma il bundle
+browser andava in crash con `supabaseUrl is required` perché il progetto origin non aveva le env
+pubbliche Supabase. Il client Supabase è ora opzionale: la landing resta renderizzabile senza
+configurazione, mentre modulo contatti e disiscrizione mostrano un errore controllato finché
+`NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` non vengono configurate.
+
 L'ingresso pubblico web gira sul progetto gateway Vercel **`perx`**
 (`prj_4GoA9R3qLkHjnu7DgmBmcS7KmlR3`, team `team_Y4HXMUA0RyX5rQO1GZNOmmSc`); le app non ancora
 integrate nello stesso runtime usano progetti origin tecnici dietro al gateway:
