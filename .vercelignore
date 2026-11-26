@@ -1,4 +1,5 @@
 .git
+.claude
 .next
 .turbo
 .vercel
@@ -15,3 +16,5 @@ xcuserdata
 .env
 .env.local
 .env.*.local
+**/.venv*/
+**/venv*/

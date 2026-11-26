@@ -17,9 +17,15 @@ const Unsubscribe = () => {
 
     const validate = async () => {
       try {
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+        if (!supabaseUrl || !supabaseKey) {
+          setStatus("error");
+          return;
+        }
         const res = await fetch(
-          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/handle-email-unsubscribe?token=${token}`,
-          { headers: { apikey: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? "" } }
+          `${supabaseUrl}/functions/v1/handle-email-unsubscribe?token=${token}`,
+          { headers: { apikey: supabaseKey } }
         );
         const data = await res.json();
         if (!res.ok) {
@@ -41,6 +47,10 @@ const Unsubscribe = () => {
 
   const handleUnsubscribe = async () => {
     try {
+      if (!supabase) {
+        setStatus("error");
+        return;
+      }
       const { error } = await supabase.functions.invoke("handle-email-unsubscribe", {
         body: { token },
       });

@@ -99,8 +99,8 @@ introducono nuove SPA Vite o runtime incompatibili col gateway Next.js (vedi anc
 
 Dal 2026-11-25 il target è consolidare i prodotti proprietari sotto `pynkstudio.eu`: in prima
 battuta `perx.pynkstudio.eu`, `catdispatcher.pynkstudio.eu` e
-`bignamionline.pynkstudio.eu`. Poiché il pannello DNS Register.it non accetta host annidati, i
-servizi PerX usano nomi piatti (`app-perx.pynkstudio.eu`, `api-perx.pynkstudio.eu`,
+`bignamionline.pynkstudio.eu`. Per compatibilità con il pannello DNS Register.it, i servizi PerX
+usano nomi piatti (`app-perx.pynkstudio.eu`, `api-perx.pynkstudio.eu`,
 `login-perx.pynkstudio.eu`). `admin.pynkstudio.eu` rimane il pannello unico cross-product e
 dialoga con i backend esclusivamente tramite API server-to-server.
 
@@ -108,27 +108,28 @@ I domini tenant e i loro prefissi (`admin`, `assicurati`, `riunioni`, ecc.) non 
 sotto PynkStudio. I domini storici restano alias/redirect fino alla verifica di tutti i consumer.
 
 **Stato operativo 2026-11-26:** il codice dual-host e i deploy origin dei tre portali sono pronti;
-i cinque host web previsti sono associati al progetto Vercel `perx`. Manca il DNS autorevole
-Register.it:
+i cinque host web previsti sono associati al progetto Vercel `perx` e il DNS è propagato:
 
 | Host | Record richiesto | Stato |
 |---|---|---|
-| `perx.pynkstudio.eu` | `A 76.76.21.21` | DNS attivo su Vercel, HTTP 200 (verifica 2026-11-26) |
-| `app-perx.pynkstudio.eu` | `A 76.76.21.21` | DNS attivo su Vercel (2026-11-26); applicazione non ancora instradata |
-| `catdispatcher.pynkstudio.eu` | `A 76.76.21.21` | DNS attivo su Vercel, HTTP 200 (verifica 2026-11-26) |
-| `bignamionline.pynkstudio.eu` | `A 76.76.21.21` | DNS attivo su Vercel, HTTP 200 (verifica 2026-11-26) |
-| `login-perx.pynkstudio.eu` | `A 76.76.21.21` | DNS attivo su Vercel (2026-11-26); SSO non ancora implementato |
-| `perx.it` | sostituire l'A attuale con `76.76.21.21` | DNS/certificato non validi (ancora irraggiungibile il 2026-11-26) |
-
-Verifica pubblica del 2026-11-26 (audit): i cinque host `*.pynkstudio.eu` risolvono ora verso
-l'edge Vercel (`vercel-dns`) e rispondono con header `server: Vercel`; la frase "manca il DNS"
-sopra è quindi superata per questi host e resta valida solo per `perx.it`.
+| `perx.pynkstudio.eu` | `A 76.76.21.21` | attivo su Vercel, landing PerX |
+| `app-perx.pynkstudio.eu` | `A 76.76.21.21` | attivo; fallback temporaneo alla landing PerX |
+| `catdispatcher.pynkstudio.eu` | `A 76.76.21.21` | attivo su Vercel, CAT Dispatcher |
+| `bignamionline.pynkstudio.eu` | `A 76.76.21.21` | attivo su Vercel, Bignami Online |
+| `login-perx.pynkstudio.eu` | `A 76.76.21.21` | attivo; fallback temporaneo alla landing PerX finché manca SSO |
+| `perx.it` | sostituire l'A attuale con `76.76.21.21` | DNS/certificato non validi |
 
 Gli origin Vercel production sono `perx-insight-studio.vercel.app`,
 `catdispatcher.vercel.app` e `bignami-online.vercel.app`; rispondono tutti HTTP 200 e non sono
 gli URL canonici da mostrare agli utenti. `catdispatcher.it` non risolve al 2026-11-25 e
 `bignami.perx.it` presenta un certificato scaduto. Dettagli →
 [[06-Decisioni-e-Intenzioni-Future]] (2026-11-25).
+
+Correzione runtime del 2026-11-26: l'origin Insight Studio restituiva HTML 200 ma il bundle
+browser andava in crash con `supabaseUrl is required` perché il progetto origin non aveva le env
+pubbliche Supabase. Il client Supabase è ora opzionale: la landing resta renderizzabile senza
+configurazione, mentre modulo contatti e disiscrizione mostrano un errore controllato finché
+`NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` non vengono configurate.
 
 L'ingresso pubblico web gira sul progetto gateway Vercel **`perx`**
 (`prj_4GoA9R3qLkHjnu7DgmBmcS7KmlR3`, team `team_Y4HXMUA0RyX5rQO1GZNOmmSc`); le app non ancora
@@ -183,7 +184,12 @@ root); eventuali lockfile annidati in `apps/*` vanno rimossi e ignorati via `.gi
 
 Progetto Supabase condiviso da backend e app satellite:
 
-- **Postgres primario**: raggiunto solo dal backend (vedi [[02-Architettura]]).
+- **Postgres primario**: raggiunto solo dal backend (vedi [[02-Architettura]]). Lo schema `public`
+  è però esposto dalla Data API di Supabase: **ogni tabella creata da una migrazione Alembic deve
+  abilitare RLS** (`ALTER TABLE … ENABLE ROW LEVEL SECURITY`), altrimenti la chiave anon la
+  espone. La migrazione `041_enable_rls_public` l'ha applicata alle tabelle esistenti, con
+  l'eccezione delle tabelle usate direttamente dal frontend CAT Dispatcher (vedi
+  [[06-Decisioni-e-Intenzioni-Future]], voce 2026-11-26 «RLS sulle tabelle `public`»).
 - **Storage**: bucket `perx-portal-uploads` per i file del portale assicurati.
 - **Edge functions** (`supabase/functions/`): `find-policy`, `ai-extract-policy`,
   `resend-inbound`, `process-excel-import`.

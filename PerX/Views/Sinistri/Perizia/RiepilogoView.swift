@@ -585,20 +585,20 @@ struct RiepilogoView: View {
         let vociInd = bene.vociCostoArray.filter { $0.indennizzabile }
         let vociNon = bene.vociCostoArray.filter { !$0.indennizzabile }
         
-        // Usa i valori già salvati nelle voci
-        let totVSU = vociInd.reduce(0.0) { $0 + ($1.vsu?.doubleValue ?? 0) }
-        let totSI = vociInd.reduce(0.0) { $0 + ($1.si?.doubleValue ?? 0) }
-        let totANuovo = vociInd.reduce(0.0) { $0 + ($1.totaleANuovo?.doubleValue ?? 0) }
-        let nettoIllesi = vociInd.reduce(0.0) { $0 + ($1.nettoIllesi?.doubleValue ?? 0) }
-        
-        let miglioriIllesi = vociInd.reduce(0.0) { acc, v in
-            let mig = (v.totaleANuovo?.doubleValue ?? 0) - (v.nettoMigliorie?.doubleValue ?? v.totaleANuovo?.doubleValue ?? 0)
-            let ill = (v.nettoMigliorie?.doubleValue ?? 0) - (v.nettoIllesi?.doubleValue ?? v.nettoMigliorie?.doubleValue ?? 0)
-            return acc + mig + ill
+        // Valori dal motore di stima (gli stessi della liquidazione)
+        let calcolo = StimaService.shared.calcoloBene(bene)
+        let ammesse = calcolo.voci.filter(\.ammessa)
+        let somma: (KeyPath<VoceCalcolata, Decimal>) -> Double = { kp in
+            ammesse.reduce(Decimal(0)) { $0 + $1[keyPath: kp] }.doubleValue
         }
-        
-        let deprPerc = bene.deprezzamento > 0 ? bene.deprezzamento : 20
-        let deprImporto = nettoIllesi * (deprPerc / 100)
+        let totVSU = somma(\.vsu)
+        let totSI = somma(\.si)
+        let totANuovo = somma(\.totaleANuovo)
+        let nettoIllesi = somma(\.nettoIllesi)
+        let miglioriIllesi = totANuovo - nettoIllesi
+
+        let deprPerc = calcolo.criterio.applicaDeprezzamento ? bene.deprezzamento : 0
+        let deprImporto = max(0, nettoIllesi - totVSU)
         let franchigia = bene.garanzia?.franchigiaMinimo?.doubleValue ?? 0
         
         return BeneCalcoli(
@@ -988,87 +988,61 @@ struct RiepilogoView: View {
         }
     }
     
-    // MARK: - Importo Liquidazione
+    // MARK: - Importo Liquidazione (motore di stima)
     private var importoLiquidazioneSection: some View {
-        let riepilogoCalcolo = calcolaRiepilogoLiquidazione()
+        let calcolo = perizia.flatMap { StimaService.shared.calcolo($0) }
+        let stato = perizia.map { StimaService.shared.stato($0, calcolo: calcolo) }
         
-        return VStack(alignment: .center, spacing: 20) {
-            // Determinazione
-            if let determinazione = perizia?.determinazione ?? sinistro.definizione, !determinazione.isEmpty {
-                VStack(spacing: 8) {
-                    Text("DETERMINAZIONE")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.secondary)
-                        .kerning(2)
-                    
-                    Text(determinazione)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(coloreDeterminazione(determinazione))
-                        .multilineTextAlignment(.center)
-                }
-            }
-            
-            // Richiesta (se presente)
-            let richiesta = calcolaRichiestaTotale()
-            if richiesta > 0 {
-                VStack(spacing: 6) {
-                    Text("RICHIESTA")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.secondary)
-                        .kerning(2)
-                    
-                    Text(CurrencyFormatter.shared.formatWithSymbol(richiesta))
-                        .font(.system(size: 18, weight: .semibold, design: .rounded))
-                        .foregroundColor(.blue)
-                }
-            }
-            
-            // Dettaglio calcolo liquidazione
-            if sinistro.haLiquidazione {
-                VStack(spacing: 6) {
-                    dettaglioLiquidazioneRow("Totale VSU:", value: riepilogoCalcolo.totaleVSU)
-                    dettaglioLiquidazioneRow("Totale SI:", value: riepilogoCalcolo.totaleSI)
-                    if riepilogoCalcolo.totaleIVA > 0 {
-                        dettaglioLiquidazioneRow("IVA riconosciuta:", value: riepilogoCalcolo.totaleIVA)
-                    }
-                    if riepilogoCalcolo.totaleFranchigia > 0 {
-                        dettaglioLiquidazioneRow("– Franchigia:", value: -riepilogoCalcolo.totaleFranchigia, color: .purple)
-                    }
-                    if riepilogoCalcolo.totaleScoperto > 0 {
-                        dettaglioLiquidazioneRow("– Scoperto:", value: -riepilogoCalcolo.totaleScoperto, color: .red)
-                    }
-                }
-                .padding(.horizontal, 40)
-                
-                Divider()
-                    .frame(width: 200)
-            }
-            
-            // Importo principale
+        return VStack(alignment: .center, spacing: 18) {
+            // Esito della perizia (motore) o determinazione storica
             VStack(spacing: 8) {
-                Text(sinistro.haLiquidazione ? "IMPORTO LIQUIDAZIONE" : "DANNO ACCERTATO")
-                    .font(.system(size: 11, weight: .bold))
+                Text("ESITO")
+                    .font(.system(size: 10, weight: .bold))
                     .foregroundColor(.secondary)
                     .kerning(2)
-                
-                let importo = calcolaImportoFinale()
-                
-                Text(CurrencyFormatter.shared.formatWithSymbol(importo))
-                    .font(.system(size: 36, weight: .bold, design: .rounded))
-                    .foregroundColor(sinistro.haLiquidazione ? Color(red: 0.15, green: 0.5, blue: 0.25) : .orange)
-                
-                if !sinistro.haLiquidazione {
-                    Text("(non indennizzabile)")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
+                Text(testoEsito(calcolo))
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(coloreDeterminazione(testoEsito(calcolo)))
+                    .multilineTextAlignment(.center)
+                if let stato {
+                    StatoStimaBadge(stato: stato)
                 }
             }
             
-            // Arrotondamento se presente
-            if let arrotondamento = perizia?.arrotondamentoLiquidazione, arrotondamento.doubleValue != 0 {
-                Text("(incl. arrotondamento: \(CurrencyFormatter.shared.formatWithSymbol(arrotondamento.doubleValue)))")
-                    .font(.system(size: 10))
-                    .foregroundColor(.secondary)
+            if let calcolo {
+                StimaKPIView(calcolo: calcolo)
+                    .padding(.horizontal, 12)
+                
+                ScomposizioneStimaView(calcolo: calcolo, compatta: true)
+                    .padding(.horizontal, 40)
+                
+                if !calcolo.testi.accompagnatoria.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("NOTE PER L'ATTO")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(.secondary)
+                            .kerning(1)
+                        Text(calcolo.testi.accompagnatoria)
+                            .font(.system(size: 10))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 24)
+                }
+            } else {
+                // Stima non calcolabile (errori): importo storico
+                VStack(spacing: 8) {
+                    Text(sinistro.haLiquidazione ? "IMPORTO LIQUIDAZIONE" : "DANNO ACCERTATO")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.secondary)
+                        .kerning(2)
+                    Text(CurrencyFormatter.shared.formatWithSymbol(calcolaImportoFinale()))
+                        .font(.system(size: 36, weight: .bold, design: .rounded))
+                        .foregroundColor(.orange)
+                    if case .errori(let errori) = stato {
+                        AvvisiStimaView(errori: errori)
+                    }
+                }
             }
         }
         .frame(maxWidth: .infinity)
@@ -1090,6 +1064,17 @@ struct RiepilogoView: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(Color(red: 0.15, green: 0.25, blue: 0.45).opacity(0.2), lineWidth: 1)
         )
+    }
+    
+    private func testoEsito(_ calcolo: StimaCalcolo?) -> String {
+        if let calcolo, calcolo.esito != .inLavorazione {
+            switch calcolo.esito {
+            case .negativo: return calcolo.dannoNonAccertato ? "NEGATIVO – STIMA CONSERVATIVA A RISERVA" : "NEGATIVO"
+            case .nonConcordato: return "NON CONCORDATO"
+            default: return "CONCORDATO"
+            }
+        }
+        return perizia?.determinazione ?? sinistro.definizione ?? "IN LAVORAZIONE"
     }
     
     // MARK: - Helper Views
@@ -1187,7 +1172,10 @@ struct RiepilogoView: View {
     
     private func calcolaImportoFinale() -> Double {
         if let perizia = perizia {
-            // Unica fonte: importo già calcolato/salvato dalla sezione calcoli (LiquidazioneView)
+            // Fonte unica: il motore di stima; in caso di errori l'ultimo importo salvato
+            if let calcolo = StimaService.shared.calcolo(perizia) {
+                return calcolo.totali.liquidabile.doubleValue
+            }
             if let salvato = perizia.stimaDannoIndennizzabile?.doubleValue, salvato > 0 {
                 return salvato
             }
@@ -1195,19 +1183,12 @@ struct RiepilogoView: View {
         return sinistro.stimaDanno?.doubleValue ?? sinistro.liquidato?.doubleValue ?? sinistro.dannoAccertato?.doubleValue ?? 0
     }
 
+    /// Richiesta: dal motore (sinistro a corpo → beni → voci), altrimenti quella importata sul sinistro.
     private func calcolaRichiestaTotale() -> Double {
-        let salvata = sinistro.richiesta?.doubleValue ?? 0
-        if salvata > 0 { return salvata }
-
-        guard let perizia = perizia else { return 0 }
-        let totale = calcoliService.calcolaRichiestaTotale(perizia: perizia)
-
-        if totale > 0, salvata <= 0 {
-            sinistro.richiesta = NSDecimalNumber(value: totale)
-            try? viewContext.save()
+        if let perizia = perizia, let richiesta = StimaService.shared.calcolo(perizia)?.totali.richiesta {
+            return richiesta.doubleValue
         }
-
-        return totale
+        return sinistro.richiesta?.doubleValue ?? 0
     }
     
     private func calcolaRiepilogoLiquidazione() -> RiepilogoLiquidazione {

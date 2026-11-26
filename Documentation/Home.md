@@ -1,6 +1,6 @@
 ---
 tags: [perx, moc]
-updated: 2026-11-25
+updated: 2026-11-26
 ---
 
 # PerX — Vault di documentazione
@@ -42,6 +42,7 @@ Dettagli → [[01-Panoramica]].
 
 ### Funzionalità trasversali
 - [[Gestione-Sinistri]] — ciclo di vita del sinistro, stati SVxxx, documentale
+- [[Motore-di-Stima]] — calcolo deterministico della perizia (Decimal), esiti, revisioni e approvazione
 - [[Comunicazioni]] — mail, WhatsApp, chat interna/esterna, routing
 - [[Sistema-Task]] — task locali (iOS) + task server condivisi, sync offline-first
 - [[AI-Locale-e-Cloud]] — AI locale (Ollama via Local Agent XPC) e AI cloud
@@ -50,4 +51,4 @@ Dettagli → [[01-Panoramica]].
   `login-perx.pynkstudio.eu`; host storico `login.perx.it` durante la migrazione)
 
 ---
-Ultimo aggiornamento: 2026-11-25
+Ultimo aggiornamento: 2026-11-26

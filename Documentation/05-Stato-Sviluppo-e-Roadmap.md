@@ -20,7 +20,7 @@ comunicazioni e CAT dispatcher). La struttura della repo può ancora essere rior
 
 | Componente | Stato |
 | --- | --- |
-| [[PerX-App-Principale]] | Uso interno attivo, sviluppo continuo (modulo più grande della repo, ~505 file Swift) |
+| [[PerX-App-Principale]] | Uso interno attivo, sviluppo continuo (modulo più grande della repo, ~505 file Swift). Motore di stima deterministico integrato nel wizard della perizia il 2026-11-26 (vedi sezione dedicata) |
 | [[Varianti-iOS]] | Attive, subset di funzionalità rispetto all'app principale |
 | [[PerXHub]] | Operativo su Mac mini, direzione verso Supabase come source of truth dei dati (Hub resta nodo vault/AI locale) |
 | [[Backend-Cloud-API]] | Cuore attivo dello sviluppo: ~40 tabelle/modelli, 41+ migrazioni Alembic, aree recenti: videoperizia, comunicazioni, device token/push, AI prompt versioning, route planning CAT, GDPR, bridge platform-admin + error-tracking backend-only per PynkStudio (2026-09-06) |
@@ -80,6 +80,29 @@ Vedi [[Login-Unificato-SSO]] per il piano completo (5 fasi). Ad oggi:
 | `FF_TASKS_ENABLED` | `False` | API `case_tasks` presente ma non abilitata di default — vedi [[Sistema-Task]] |
 | `FF_LOCAL_AI_PROCESS_JOBS_ENABLED` | `True` | Worker AI locale via `process_jobs` **attivo di default** |
 
+## Motore di stima della perizia — dettaglio stato
+
+### Implementato (2026-11-26)
+- [[Motore-di-Stima]] in `PerX/Services/Claims/Stima/`: calcolo Decimal, validazione, avvisi,
+  scomposizione richiesto → accertato → liquidabile, testi per l'atto e per le conclusioni,
+  soglia di controllo, revisioni con approvazione, hash economico e approvazione ereditata,
+  verifica dell'atto firmato. `CalcoliService` delega al motore.
+- Pagine del wizard aggiornate senza cambiare la navigazione: voci con richiesta, giustificativo e
+  motivo d'esclusione; scheda bene con genere e bene comune; Liquidazione riscritta; Riepilogo e
+  Atto sugli importi del motore; valore reale della partita e indennizzo virtuale delle
+  coassicurazioni indirette nel Quadro contrattuale.
+- Core Data versionato (`PerX v2`), migrazione leggera verificata su uno store di prova; backup
+  dello store al posto della cancellazione.
+- 91 verifiche del motore superate in esecuzione standalone (`swiftc`) con i casi di
+  `test_stima.py`; suite `StimaEngineTests` compilata nel target `PerXTests`.
+
+### Da fare / da verificare
+- Prova a mano nell'app delle sei pagine su perizie reali (non ancora fatta: l'avvio migra lo store locale).
+- Annualità del massimale (più sinistri dello stesso assicurato nella stessa annualità).
+- Sinistri collegati multi-pratica con bene comune identico su più perizie.
+- Esito derivato dalla `definizione` del sinistro per le pratiche già chiuse.
+- Motore condiviso con il backend/MCP o spostato in `PerXCore` per `swift test` in CI.
+
 ## Qualità, test e CI/CD
 
 - **Fondazioni CI implementate il 2026-11-07**: tre workflow GitHub Actions separati per backend,
@@ -136,9 +159,8 @@ Vedi [[06-Decisioni-e-Intenzioni-Future]] (2026-09-06) per contesto e motivazion
   gateway è configurato e la migration `040_pynkstudio_domains` è applicata in production con i
   tre alias attivi. Dal 2026-11-26 anche `app-perx.pynkstudio.eu` e
   `login-perx.pynkstudio.eu` sono associati al progetto Vercel `perx`, per un totale di cinque
-  ingressi web predisposti; app e login non hanno ancora il relativo servizio applicativo. Alla
-  verifica pubblica del 2026-11-26 tutti e cinque risolvono già verso Vercel (resta escluso
-  `perx.it`). Il resolver remoto non è
+  ingressi web; app e login servono temporaneamente la landing PerX. I record DNS Register.it
+  sono propagati e i cinque host risolvono sulla rete Vercel. Il resolver remoto non è
   ancora usato dal gateway perché URL/secret non sono coordinati tra Vercel e Render; il fallback
   dual-host copre i tre prodotti. Il control plane API completo non è ancora realizzato:
   il bridge PerX attuale copre tenant, impostazioni, utenti in sola lettura, errori e
@@ -166,4 +188,4 @@ repository GitHub resta pubblico —, catena di migration non ricostruibile da z
 inferenza AI cloud server-side (l'AI funziona solo su Mac locale).
 
 ---
-Ultimo aggiornamento: 2026-11-26 (storage S3 predisposto; migrazioni ricostruibili da zero)
+Ultimo aggiornamento: 2026-11-26 (motore di stima nell'app; cinque host web associati al gateway Vercel PerX; storage S3 predisposto; migrazioni ricostruibili da zero)

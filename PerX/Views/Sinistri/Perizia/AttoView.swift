@@ -32,6 +32,14 @@ struct AttoView: View {
             
             Divider()
             
+            // Stima: stato di approvazione, testo per l'atto, verifica dell'atto firmato
+            if let perizia {
+                StimaAttoPanel(perizia: perizia)
+                    .padding(.horizontal)
+                    .padding(.vertical, 8)
+                Divider()
+            }
+            
             // Content
             if isLoading {
                 loadingView
@@ -612,5 +620,123 @@ struct EditOverlayView: View {
         let importo = generatorService.calculateImporto(sinistro: sinistro, perizia: perizia, sottotipo: sottotipo)
         manualValues["importo_numero"] = importo
         manualValues["importo_lettere"] = TextFitter.numeroInLettere(Decimal(importo))
+    }
+}
+
+// MARK: - Pannello stima nella pagina Atto
+
+/// L'atto usa l'importo del motore di stima: qui il perito vede se la stima è approvata,
+/// copia il testo generato e, a firma avvenuta, verifica che l'importo coincida con l'ultima stima.
+struct StimaAttoPanel: View {
+    @ObservedObject var perizia: Perizia
+    @Environment(\.managedObjectContext) private var viewContext
+    @State private var token = 0
+    @State private var importoFirmato = ""
+    @State private var esitoVerifica: StimaService.EsitoVerificaAtto?
+    @State private var espanso = false
+
+    private let service = StimaService.shared
+
+    var body: some View {
+        let _ = token
+        let risultato = service.calcola(perizia)
+        let calcolo = try? risultato.get()
+        let stato = service.stato(perizia, calcolo: calcolo)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                StatoStimaBadge(stato: stato)
+                if let calcolo {
+                    Text(calcolo.esito == .negativo ? "Importo in atto (riserva): \(euroStima(calcolo.totali.riserva))"
+                                                    : "Importo in atto: \(euroStima(calcolo.totali.liquidabile))")
+                        .font(.callout.weight(.semibold))
+                }
+                Spacer()
+                Button {
+                    espanso.toggle()
+                } label: {
+                    Label(espanso ? "Chiudi" : "Dettagli stima", systemImage: espanso ? "chevron.up" : "chevron.down")
+                }
+                .buttonStyle(.borderless)
+            }
+            if let messaggio = messaggioApprovazione(stato) {
+                Label(messaggio, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundColor(.orange)
+            }
+            if case .failure(let errori) = risultato {
+                AvvisiStimaView(errori: errori.messaggi)
+            }
+            if espanso, let calcolo {
+                RevisioniStimaView(perizia: perizia, calcolo: calcolo)
+                if !calcolo.testi.accompagnatoria.isEmpty {
+                    HStack(alignment: .top) {
+                        Text(calcolo.testi.accompagnatoria)
+                            .font(.caption)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Button {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(calcolo.testi.accompagnatoria, forType: .string)
+                        } label: {
+                            Image(systemName: "doc.on.doc")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Copia il testo per l'atto")
+                    }
+                    .padding(8)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color(NSColor.textBackgroundColor)))
+                }
+                verificaAttoFirmato
+            }
+        }
+        .ricalcolaSuModifiche($token)
+    }
+
+    private func messaggioApprovazione(_ stato: StimaService.StatoStima) -> String? {
+        switch stato {
+        case .nessunaRevisione, .daApprovare:
+            return "Stima non approvata: approvala (Elaborato Calcoli → Liquidazione) prima di inviare l'atto."
+        case .daSalvare(let n, true):
+            if let valida = service.revisioneValida(perizia) {
+                return "La stima è cambiata dopo la rev. \(n): l'ultima approvata (rev. \(valida.numero), \(euroStima(valida.liquidabile?.decimalValue))) non vale più per questo atto."
+            }
+            return "La stima è cambiata dopo la rev. \(n): salvala e approvala prima di inviare l'atto."
+        default:
+            return nil
+        }
+    }
+
+    private var verificaAttoFirmato: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Verifica atto firmato").font(.subheadline.weight(.semibold))
+            HStack {
+                TextField("Importo sull'atto firmato", text: $importoFirmato)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 180)
+                    .onSubmit { verifica() }
+                Button("Verifica") { verifica() }
+                    .disabled(importoFirmato.isEmpty)
+                if let esito = esitoVerifica ?? perizia.attoFirmatoEsito.flatMap(StimaService.EsitoVerificaAtto.init(rawValue:)) {
+                    Label(esito.messaggio, systemImage: esito == .ok ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundColor(esito == .ok ? .green : .orange)
+                }
+            }
+            if let importo = perizia.attoFirmatoImporto, let data = perizia.attoFirmatoData {
+                Text("Ultima verifica: \(euroStima(importo.decimalValue)) il \(DateUtils.formatLong(data))")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+        }
+    }
+
+    private func verifica() {
+        let testo = importoFirmato
+            .replacingOccurrences(of: "€", with: "")
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: ".", with: "")
+            .replacingOccurrences(of: ",", with: ".")
+        guard let importo = Decimal(string: testo) else { return }
+        esitoVerifica = service.verificaAttoFirmato(perizia, importo: importo, context: viewContext)
     }
 }

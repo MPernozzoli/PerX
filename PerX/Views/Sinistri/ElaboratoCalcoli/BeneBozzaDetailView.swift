@@ -46,7 +46,7 @@ struct BeneBozzaDetailView: View {
     // Binding per deprezzamento e aliquota IVA dal bene
     private var deprezzamento: Binding<Double> {
         Binding(
-            get: { bene.deprezzamento > 0 ? bene.deprezzamento : 20.0 },
+            get: { bene.deprezzamento },
             set: { 
                 bene.deprezzamento = $0
                 try? viewContext.save()

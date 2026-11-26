@@ -15,28 +15,33 @@ struct TotaliBeneView: View {
     @State private var showForzaturaPopover: Bool = false
     @State private var importoForzato: String = ""
     
+    @State private var token = 0
+    
+    /// Calcolo del bene dal motore di stima, senza la forzatura (i valori «calcolati»).
+    private var calcolo: BeneCalcolato {
+        StimaService.shared.calcoloBene(bene, ignoraForzatura: true)
+    }
+    
     var totali: (vsu: NSDecimalNumber, si: NSDecimalNumber, totale: NSDecimalNumber) {
-        calcoliService.calcolaTotaliBene(
-            vociCosto: bene.vociCostoArray.filter { $0.indennizzabile },
-            deprezzamento: NSDecimalNumber(value: deprezzamento),
-            determinazioneDanno: determinazioneDanno
-        )
+        let c = calcolo
+        return (NSDecimalNumber(decimal: c.vsu), NSDecimalNumber(decimal: c.si), NSDecimalNumber(decimal: c.imponibile))
     }
     
     var totaleImponibile: NSDecimalNumber {
         totali.totale
     }
     
+    /// IVA calcolata sulle voci ammesse (con valori IVA inclusa è quella scorporata).
     var totaleIVA: NSDecimalNumber {
         if ivaInclusa {
             return NSDecimalNumber.zero
         }
-        let percentuale = aliquotaIVA / 100.0
-        return totaleImponibile.multiplying(by: NSDecimalNumber(value: percentuale))
+        return NSDecimalNumber(decimal: calcolo.ivaCalcolata)
     }
     
     var totaleComplessivo: NSDecimalNumber {
-        totaleImponibile.adding(totaleIVA)
+        let c = calcolo
+        return NSDecimalNumber(decimal: c.imponibile + c.ivaCalcolata)
     }
     
     /// Totale da liquidare (senza IVA se riconosciIVA è false)
@@ -54,11 +59,14 @@ struct TotaliBeneView: View {
     // MARK: - Non indennizzabile
     
     var totaliNonIndennizzabili: (vsu: NSDecimalNumber, si: NSDecimalNumber, totale: NSDecimalNumber) {
-        calcoliService.calcolaTotaliBene(
-            vociCosto: bene.vociCostoArray.filter { !$0.indennizzabile },
-            deprezzamento: NSDecimalNumber(value: deprezzamento),
-            determinazioneDanno: determinazioneDanno
-        )
+        var vsu: Decimal = 0, si: Decimal = 0
+        for v in calcolo.voci where !v.ammessa {
+            let quotaVSU = (v.vsu + v.si) > 0 ? v.vsu / (v.vsu + v.si) : 1
+            let vsuImp = (v.imponibile * quotaVSU).arrotondato()
+            vsu += vsuImp
+            si += v.imponibile - vsuImp
+        }
+        return (NSDecimalNumber(decimal: vsu), NSDecimalNumber(decimal: si), NSDecimalNumber(decimal: vsu + si))
     }
     
     var haVociNonIndennizzabili: Bool {
@@ -70,12 +78,7 @@ struct TotaliBeneView: View {
     }
     
     var totaleNonIndennizzabile: Double {
-        let totale = totaliNonIndennizzabili.totale.doubleValue
-        if !riconosciIVA || ivaInclusa {
-            return totale
-        }
-        // Aggiungi IVA se riconosciuta e non inclusa
-        return totale + (totale * aliquotaIVA / 100.0)
+        calcolo.totaleEscluso.doubleValue
     }
     
     var body: some View {
@@ -285,8 +288,10 @@ struct TotaliBeneView: View {
                 }
             }
             .padding(12)
+            let _ = token
         }
         .backgroundStyle(.regularMaterial)
+        .ricalcolaSuModifiche($token)
     }
     
     private func formatCurrency(_ value: Double) -> String {

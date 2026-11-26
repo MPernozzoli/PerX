@@ -6,6 +6,8 @@ describe("product domain fallback routing", () => {
   it.each([
     ["perx.it", "insight_studio"],
     ["perx.pynkstudio.eu", "insight_studio"],
+    ["app-perx.pynkstudio.eu", "insight_studio"],
+    ["login-perx.pynkstudio.eu", "insight_studio"],
     ["catdispatcher.it", "catdispatcher"],
     ["catdispatcher.pynkstudio.eu", "catdispatcher"],
     ["bignami.perx.it", "bignami"],

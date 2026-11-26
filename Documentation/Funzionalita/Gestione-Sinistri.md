@@ -1,6 +1,6 @@
 ---
 tags: [perx, funzionalita, sinistri]
-updated: 2026-09-05
+updated: 2026-11-26
 ---
 
 # Gestione sinistri
@@ -53,12 +53,24 @@ eseguita prima del sopralluogo (fonte: pitch deck `Documentation/Studio_Randa_Pr
 La perizia elaborata include un controllo automatico ("authority check") e una verifica di
 conformità ai protocolli della compagnia mandante prima dell'invio dell'atto: se l'importo
 richiede un passaggio al controllore, il sistema lo segnala (fonte: stesso pitch deck).
+Nell'app il segnale viene dal [[Motore-di-Stima]]: oltre la soglia configurabile (default
+5.000,00 €), per i non concordati e per i negativi serve la relazione completa.
+
+## Perizia e stima
+
+La perizia si compila in pagine (Perxia → Quadro contrattuale → Elaborato Calcoli → Relazione
+peritale → Riepilogo → Atto). Dal 2026-11-26 tutti gli importi vengono dal [[Motore-di-Stima]]
+deterministico (porting del motore del perito, Decimal al centesimo): voci escluse con motivo,
+richiesta da giustificativo, somme assicurate per partita, franchigia/scoperto/massimale,
+arrotondamento entro ±100 €, esiti (concordato, non concordato, negativo, danno non accertato),
+scomposizione richiesto → accertato → liquidabile, revisioni con approvazione e hash economico,
+verifica dell'importo dell'atto firmato.
 
 ## Componenti coinvolti
 
 - **App PerX principale**: gestione completa della pratica (`Views/Sinistri/` con sotto-sezioni
-  `Perizia`, `ElaboratoCalcoli`, `Detail`, `Cartella`; `Services/Claims/`). Vedi
-  [[PerX-App-Principale]].
+  `Perizia`, `ElaboratoCalcoli`, `Detail`, `Cartella`; `Services/Claims/`, motore in
+  `Services/Claims/Stima/`). Vedi [[PerX-App-Principale]] e [[Motore-di-Stima]].
 - **Backend**: `routes_claims.py` (CRUD sinistro, transizioni di stato, timeline eventi),
   `routes_actors.py`, `routes_documents.py`, `routes_folder_packages.py`,
   `routes_attachments.py`, `routes_diary.py` (diario di lavorazione), `routes_inspections.py`
@@ -89,4 +101,4 @@ legate al sinistro (es. job `local_ai.diary_entry_analysis` accodato per comunic
 Vedi [[AI-Locale-e-Cloud]].
 
 ---
-Ultimo aggiornamento: 2026-09-05
+Ultimo aggiornamento: 2026-11-26

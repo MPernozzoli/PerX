@@ -32,6 +32,15 @@ extension VoceCosto {
     @NSManaged public var formula: String?
     @NSManaged public var ordine: Int16
     @NSManaged public var campiForzati: NSSet?
+    // Motore di stima (modello v2)
+    @NSManaged public var motivoEsclusione: String?
+    @NSManaged public var notaVoce: String?
+    @NSManaged public var giustificativo: Bool
+    @NSManaged public var richiesta: NSDecimalNumber?
+    @NSManaged public var richiestaIvaInclusa: Bool
+    /// Override per riga («Diversi per riga»); nil = valori del bene
+    @NSManaged public var deprezzamentoRiga: NSDecimalNumber?
+    @NSManaged public var aliquotaIVARiga: NSDecimalNumber?
     
     @NSManaged public var bene: Bene?
     
@@ -44,6 +53,11 @@ extension VoceCosto {
         }
     }
     
+    var motivoEsclusioneValue: MotivoEsclusione? {
+        get { motivoEsclusione.flatMap(MotivoEsclusione.init(rawValue:)) }
+        set { motivoEsclusione = newValue?.rawValue }
+    }
+
     func isForzato(_ campo: String) -> Bool {
         return campiForzatiSet.contains(campo)
     }

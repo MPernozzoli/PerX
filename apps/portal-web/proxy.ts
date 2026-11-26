@@ -32,7 +32,9 @@ export function localFallback(hostname: string): RouteResolution {
   if (
     hostname === "perx.it" ||
     hostname === "www.perx.it" ||
-    hostname === "perx.pynkstudio.eu"
+    hostname === "perx.pynkstudio.eu" ||
+    hostname === "app-perx.pynkstudio.eu" ||
+    hostname === "login-perx.pynkstudio.eu"
   ) {
     return { found: true, hostname, app: "insight_studio", destination_url: INSIGHT_STUDIO_ORIGIN ?? null };
   }

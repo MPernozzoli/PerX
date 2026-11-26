@@ -144,21 +144,164 @@ prodotto ha profondità di dominio rara, ma la demo deve girare sul web, mostrar
 reale e non esporre dati sensibili di assicurati. Vedi [[05-Stato-Sviluppo-e-Roadmap]],
 [[04-Infrastruttura-e-Deploy]], [[AI-Locale-e-Cloud]].
 
-## 2026-11-26 — Nomi PerX appiattiti per compatibilità con il pannello DNS Register.it
-Contesto: Register.it non accetta nel pannello in uso le etichette annidate `app.perx` e
-`login.perx`. L'utente ha quindi approvato nomi piatti sotto `pynkstudio.eu`.
+## 2026-11-26 — Domini PerX piatti attivati su Vercel
+Contesto: il pannello DNS Register.it in uso non accetta le etichette annidate `app.perx` e
+`login.perx`; l'utente ha approvato la variante piatta e ha configurato i record DNS.
 
-Decisione / stato: i target correnti sono `app-perx.pynkstudio.eu`,
-`login-perx.pynkstudio.eu` e, per il backend Render, `api-perx.pynkstudio.eu`. I primi due sono
-stati associati al progetto Vercel `pynkstudio/perx`. Gli alias annidati
-`app.perx.pynkstudio.eu` e `login.perx.pynkstudio.eu` restano temporaneamente associati finché i
-nuovi record non sono verificati, poi potranno essere rimossi senza interrompere un ingresso
-funzionante. Al momento della verifica pubblica, i due nuovi nomi piatti risultano ancora serviti
-dal parking Register.it `onstatic-it.setupdns.net` / `195.110.124.188`, non dall'A Vercel
-`76.76.21.21`.
+Decisione / stato: i target sono `app-perx.pynkstudio.eu`, `login-perx.pynkstudio.eu` e, per il
+backend Render, `api-perx.pynkstudio.eu`. I primi due sono associati al progetto Vercel
+`pynkstudio/perx`; insieme a `perx.pynkstudio.eu`, `catdispatcher.pynkstudio.eu` e
+`bignamionline.pynkstudio.eu` risolvono sulla rete Vercel e rispondono HTTPS. Finché app e SSO
+dedicati non saranno implementati, `app-perx` e `login-perx` servono esplicitamente la landing
+PerX invece di cadere sul portale assicurati generico. Gli alias annidati restano temporaneamente
+associati fino alla pulizia finale della configurazione.
 
-Motivazione: mantenere nomi leggibili e uniformi senza dipendere dal supporto del registrar ai
-sub-subdomain, applicando la migrazione in modalità add-before-remove.
+Motivazione: completare la migrazione con nomi compatibili con Register.it e garantire una pagina
+coerente su ogni nuovo ingresso durante l'implementazione dei servizi futuri.
+
+Verifica browser reale: Chrome e Safari mostravano `This page couldn't load` anche se gli health
+check HTTP restituivano 200. La console ha isolato la causa nell'inizializzazione immediata del
+client Supabase (`supabaseUrl is required`) sull'origin Insight Studio privo delle env pubbliche.
+Il client è stato reso opzionale e le sole funzioni dipendenti da Supabase degradano con errore
+controllato; la landing marketing non dipende più dalla presenza di quelle variabili.
+
+## 2026-11-26 — RLS sulle tabelle `public` (Advisor Supabase `sensitive_columns_exposed`)
+Contesto: l'Advisor di sicurezza del progetto Supabase `PerX` ha segnalato
+`sensitive_columns_exposed`: tabelle con colonne sensibili (`users.password_hash`, `token_hash` di
+portale/inviti/sessioni, IBAN, device token…) raggiungibili dalla Data API senza restrizioni.
+Causa: lo schema `public` è esposto da PostgREST e le migrazioni Alembic 001–040 creano le
+tabelle **senza** `ENABLE ROW LEVEL SECURITY` (solo lo schema `bignami`, in `018`, lo fa); con i
+grant di default di Supabase la chiave anon/publishable ha quindi accesso pieno. Contraddice la
+decisione «il backend è l'unico punto di accesso ai dati» (vedi [[02-Architettura]]): era vera per
+i nostri client, non per chi usa la chiave pubblica.
+Decisione: migrazione `backend/migrations/versions/041_enable_rls_public_tables.py` — abilita RLS
+(senza policy e senza `FORCE`) su ogni tabella di `public` che ne è priva, saltando tabelle di
+estensioni, tabelle non possedute dal ruolo di migrazione e `LEGACY_DIRECT_ACCESS_TABLES` (vedi
+sotto). Backend (`DATABASE_URL`, ruolo proprietario), PerXHub ed edge function (service-role)
+bypassano RLS: nessun impatto. Verificata su Postgres usa-e-getta: `anon` passa da leggere
+`users`/`portal_sessions`/`actor_ibans` a 0 righe; seconda esecuzione idempotente. `downgrade()`
+è volutamente vuoto (disabilitare RLS riesporrebbe i dati).
+Da fare / aperto:
+1. **CAT Dispatcher legacy.** Il frontend `apps/catdispatcher/src` interroga ancora direttamente
+   via PostgREST (`supabase.from(...)`/`rpc`) 11 tabelle: `allowed_domains`, `cat_commune`,
+   `cat_suspensions`, `cats`, `communes`, `geojson_backup_log`, `provinces`, `regions`, `tenants`,
+   `user_roles`, `user_tenants` (rotte `/`, `/admin`, `/admin/gis-editor`, `/api`). La migrazione
+   non le tocca per non rompere quelle schermate. Se in produzione sono senza RLS restano
+   esposte (incluse `tenants`, `user_tenants`, `user_roles`): o si migrano le schermate al backend
+   `/api/v1/cat-dispatcher/*` (come già dichiarato in [[CatDispatcher]]), o si scrivono policy
+   RLS esplicite; poi si tolgono le tabelle da `LEGACY_DIRECT_ACCESS_TABLES`. Prima verificare lo
+   stato reale nel SQL editor di Supabase.
+2. **Regola per le nuove migrazioni:** ogni tabella creata in `public` deve abilitare RLS nella
+   stessa migrazione. Idea non implementata: event trigger Supabase che abilita RLS alle nuove
+   tabelle, oppure un test CI che fallisce se una tabella `public` è senza RLS.
+3. **Non ancora applicata in produzione:** la 041 parte al prossimo deploy Render
+   (`scripts/start-render.sh` esegue `alembic upgrade head`).
+
+## 2026-11-26 — Motore di stima deterministico nell'app, portato da «sinistri chiari»
+Contesto: nell'app macOS il calcolo della perizia era sparso tra `CalcoliService` (Double),
+`VociCostoView` e `LiquidazioneView`, con risultati diversi tra pagine (interruttore «massimale
+prima» non salvato, arrotondamento sommato a valle, deprezzamento per riga ignorato, Riepilogo
+laterale con 20%/22% fissi). L'utente ha chiesto di aggiornare stima e gestione peritale prendendo
+spunto dal motore di «sinistri chiari» (vedi la voce «Intenzione: tenant Chiari» dello stesso
+giorno), **mantenendo il flusso di compilazione a pagine** dell'app.
+
+Decisione:
+- un solo motore puro in Swift (`PerX/Services/Claims/Stima/`), `Decimal` al centesimo, input come
+  fotografia di valori e hash del calcolo; tutte le pagine (Elaborato Calcoli, Riepilogo, Atto,
+  relazione, Importi) leggono da lì. Le sei pagine del wizard restano invariate come navigazione;
+- portati dal riferimento: motivo d'esclusione delle voci e frasi sobrie per l'atto, richiesta da
+  giustificativo con priorità sinistro → bene → voci, somme assicurate per partita con trattenuta
+  scontata prima sulle eccedenze, arrotondamento ±100 € prima della franchigia, esiti (incluso
+  danno non accertato con stima conservativa a riserva), avvisi non bloccanti, scomposizione
+  richiesto → accertato → liquidabile, riparto art. 1910, bene comune con quota, revisioni con
+  approvazione, hash economico, approvazione ereditata, «solo l'ultima stima vale», verifica
+  dell'atto firmato;
+- mantenuti i criteri PerX (VSU/SI con limiti, migliorie/illesi, forzature, IVA a saldo, quota
+  differita a ripristini ultimati, rettifiche manuali dopo i limiti) e aggiunta la regola
+  proporzionale (art. 1907) quando si indica il valore reale di una partita a valore intero;
+- **non** portato ciò che è specifico del gestionale Chiari: payload Salesforce/ReClaim,
+  Light/Over (sostituito da una soglia di controllo configurabile, default 5.000 €), selezione
+  allegati, collegati multi-pratica, catalogo frasi completo;
+- correzioni di dominio volute: a «Valore a nuovo» non si applica il deprezzamento; deprezzamento
+  0% vale 0%; lo scoperto si calcola sul danno comprensivo dell'IVA riconosciuta; la liquidazione
+  forzata del bene è l'importo finale IVA riconosciuta compresa (come già mostrava la scheda bene);
+  la somma assicurata della partita si legge in formato italiano e fa da tetto;
+- schema Core Data **versionato** (`PerX v2`, migrazione leggera) invece di modificare la versione
+  unica, e `Persistence.swift` sposta in backup lo store non apribile invece di cancellarlo.
+
+Motivazione: un solo calcolo verificabile e ripetibile, approvato dal perito e congelato in
+revisioni, elimina gli scarti tra pagine e rende difendibile l'importo dell'atto.
+
+Intenzioni aperte: annualità del massimale per più sinistri dello stesso assicurato (da fare anche
+nel riferimento); collegati multi-pratica; esito suggerito dalla `definizione` per le pratiche già
+chiuse; motore condiviso con backend/MCP (o in `PerXCore` per `swift test`) tenendo gli stessi
+casi di test del motore Python finché ne esistono due. Dettagli → [[Motore-di-Stima]].
+
+---
+
+## 2026-11-26 — Intenzione: tenant «Chiari» e porting del flusso sinistri «sinistri chiari» in PerX
+Contesto: l'utente lavora come perito per Chiari S.r.l. (sinistri fenomeno elettrico Vittoria,
+gestionale dello studio = Salesforce Classic + ReClaim/NewAge, posta = Google Workspace Chiari)
+con un sistema "light" locale, fuori da questa repo (`~/Downloads/sinistri chiari`): DB JSON
+(`db/sinistri.json` ~270 pratiche, `polizze.json` con blocco `bignami`), cruscotto Python locale
+(`cruscotto/server.py`, porta 8765, launchd), motore di stima deterministico in Python
+(`stima.py` + `frasi.py`, revisioni con hash economico e approvazione del perito), estensione
+Chrome MV3 «Sinistri Chiari» che compila SF/ReClaim dal payload approvato, agenti Claude Code
+(`sx-triage` regista → `pratica` prepara → OK del perito → `esegui`) e un agente remoto
+(ChiariBot/Grok) per solleciti e atti firmati. Lo studio non sostituirà il suo gestionale: PerX
+deve **coesistere** con SF/ReClaim, non rimpiazzarli. Bignami Online è già alimentato da qui.
+
+Intenzione (discussa, non approvata per l'implementazione; nessun codice scritto):
+
+1. **Tenant e accesso.** Nuovo tenant `chiari` con una sola utenza (il perito), accesso «Accedi
+   con Google» con l'account Google Workspace Chiari. Strada proposta: provider Google di Supabase
+   Auth (coerente con [[Login-Unificato-SSO]]), dominio ammesso per tenant nelle impostazioni del
+   tenant. **Correzione necessaria:** `get_current_user` oggi è *o* JWT legacy *o* Supabase
+   (`FF_CLOUD_AUTH_ENABLED` globale): accendere Supabase spegnerebbe il login degli utenti
+   esistenti. Serve accettare entrambi i token in parallelo. Lato app: `GoogleAuthService.swift`
+   ha già un flusso Google (solo `openid email`) con client secret scritto nel sorgente: va
+   rifatto con `ASWebAuthenticationSession` + PKCE e il secret va ruotato.
+2. **Posta Gmail → Supabase → client.** Ripristinare il flusso Google per la posta, ma lato
+   server: Gmail API `users.watch` → Pub/Sub push → nuova Edge Function `gmail-inbound` (stesso
+   schema di `resend-inbound`: idempotenza, `inbound_email_events`, `email_processing_jobs`) →
+   `history.list`/`messages.get` → righe `emails` del tenant + allegati su Supabase Storage. I
+   client (Mac, iPhone, iPad) **non** sincronizzano più Gmail: scaricano dal backend in modo
+   incrementale (`GET /api/v1/emails?since=…`) e ricevono un segnale realtime/push per sapere
+   quando farlo (resta valido il principio «i client non leggono Postgres direttamente», vedi
+   [[02-Architettura]]). Token OAuth della casella solo lato server (`mailboxes.oauth_token_ref`,
+   provider `gmail`), rinnovo del `watch` entro 7 giorni (cron) e poll di recupero. Invio via
+   Gmail API dal backend (così la mail parte dall'account Workspace e resta nel thread); la firma
+   automatica di Gmail **non** si applica ai messaggi inviati via API: va letta da `sendAs` e
+   aggiunta. Segnare come letto/etichette → scope `gmail.modify`.
+3. **Estensione Chrome collegata a PerX.** Resta operativa; invece del cruscotto locale parla con
+   l'API PerX (token utente, non più il controllo sull'ID estensione), con endpoint equivalenti a
+   `/api/estensione/*` e `/api/stima/payload`; i file scaricati da SF vanno nel vault PerX invece
+   che nella cartella locale. Transizione con URL backend configurabile nelle opzioni.
+4. **Dati e motore.** Import idempotente (dry-run di default) di pratiche, eventi, revisioni di
+   stima, polizze e documenti nel tenant; stati Chiari (`stati.json`) come insieme di stati
+   configurabile per tenant invece della mappatura forzata sugli `SVxxx`. Un solo motore di stima
+   autorevole lato server, con le regole già collaudate (Light/Over/Senza stima, collegati,
+   importo già proposto, ereditarietà dell'approvazione); approvazione **solo** da UI del perito,
+   imposta dal backend e non più dalla disciplina del prompt.
+5. **Flusso IA-centrico via MCP.** Server MCP remoto di PerX (OAuth) con gli strumenti oggi in
+   `db.py`/`stima.py`/`bignami.py` e la posta (cerca, thread, testi già estratti dei documenti,
+   lock `lavoro start/end`), senza strumento di approvazione. Le azioni nel Chrome del perito
+   (SF con passkey, ReClaim con OTP e sessione unica) restano locali tramite l'estensione. Lo
+   stesso MCP serve Claude Code, Claude da iPhone e ChiariBot; i solleciti giornalieri e il
+   triage delle mail (atti firmati, solleciti, incarichi) possono diventare regole di Elettra per
+   il tenant (vedi [[AI-Locale-e-Cloud]]).
+
+Prerequisiti e rischi da chiarire prima di partire: consenso di Chiari (dati di terzi in
+infrastruttura PynkStudio → accordo sul trattamento dati) e del suo amministratore Workspace
+(scope Gmail «restricted»: app da segnare come attendibile nella console Workspace oppure client
+OAuth in un progetto Google interno a Chiari; un'app esterna in stato «Testing» perde il refresh
+token ogni 7 giorni); verifica dell'isolamento tra tenant, perché sarebbe il primo tenant reale
+con dati di un altro titolare; CI backend ancora rossa per il drift delle migration (vedi
+[[04-Infrastruttura-e-Deploy]]). Da decidere: fonte di verità durante la transizione (PerX come
+specchio del sistema locale o subito autorevole) e se il motore autorevole resta quello Python
+o il porting Swift in corso in `PerX/Services/Claims/Stima/` (due motori vanno tenuti allineati
+con gli stessi casi di test). Ordine proposto: 1 → 2 → 4 → 3 → 5, poi il cruscotto come vista
+PerX e la dismissione di quello locale.
 
 ## 2026-11-26 — Cinque ingressi web PynkStudio associati al gateway Vercel PerX
 Contesto: i domini prodotto storici non sono più considerati ingressi affidabili; l'utente ha
