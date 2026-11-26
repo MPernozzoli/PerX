@@ -12,7 +12,11 @@ superseded:
 
 - `backend-ci.yml`: Python 3.11, Postgres 16 isolato, installazione da `requirements-dev.txt`,
   applicazione completa delle migration Alembic su DB vuoto, pytest con coverage XML; Ruff misura
-  ancora una baseline non bloccante;
+  ancora una baseline non bloccante. **Verifica 2026-11-26: il workflow non è mai passato (6 run
+  su 6 falliti su GitHub)** — `alembic upgrade head` su DB vuoto si interrompe perché la catena di
+  migration non crea 22 tabelle core (es. `documents`, `emails`, `attachments`, `audit_log`,
+  `case_tasks`, `internal_chat_*`) che i modelli usano e che il DB production ha ottenuto fuori da
+  Alembic. Vedi [[06-Decisioni-e-Intenzioni-Future]] (2026-11-26, audit);
 - `web-ci.yml`: Node 22/npm cache; typecheck, test Vitest, lint e build production sono gate
   bloccanti per tutti e cinque i workspace. Le app prive di test accettano ancora temporaneamente
   una suite vuota, mentre `portal-web` e `catdispatcher` contengono i primi 7 test reali;
@@ -39,6 +43,29 @@ non tracciata in `render.yaml`) e, con lo stesso valore, come `PERX_ADMIN_API_KE
 (non `NEXT_PUBLIC_`) sul progetto Vercel di BePork. Se assente/vuota il bridge è disabilitato e
 `/api/v1/admin/*` resta accessibile solo via JWT platform-admin umano. Dettagli →
 [[06-Decisioni-e-Intenzioni-Future]] e, lato BePork, `docs/perx-integration.md`.
+
+Vincoli di configurazione introdotti il 2026-11-26 (dettagli → [[Backend-Cloud-API]], sezione
+"Sicurezza applicativa"): con `ENV=prod` il servizio **non si avvia** se `SECRET_KEY` su Render è
+un placeholder o ha meno di 32 caratteri (Render mantiene in esercizio il deploy precedente); i flag
+`DEBUG`, `PORTAL_DEBUG_PREVIEW_LINKS` e `PORTAL_DEV_CLAIM_REFERENCE_ONLY_AUTH` vengono forzati a
+`False` anche se impostati in dashboard; `/docs` e `/openapi.json` sono spenti salvo
+`API_DOCS_ENABLED=True`; il webhook comunicazioni richiede `COMMUNICATIONS_WEBHOOK_SECRET`.
+Il backend Render raggiunge l'Hub del Mac mini per lo storage del vault
+(`VAULT_STORAGE_PROVIDER=mac_mini`, `MAC_MINI_STORAGE_URL`, `MAC_MINI_STORAGE_TOKEN`): il token
+deve coincidere con `PERX_STORAGE_SHARED_SECRET` configurato sull'Hub (vedi [[PerXHub]]).
+
+**Storage S3 del vault: predisposto, NON attivo.** Variabili opzionali (nessuna da impostare oggi
+su Render): `VAULT_S3_BUCKET`, `VAULT_S3_REGION` (`eu-south-1`), `VAULT_S3_ENDPOINT_URL`,
+`VAULT_S3_PREFIX`, `VAULT_S3_FORCE_PATH_STYLE`, `VAULT_S3_PRESIGNED_URL_TTL_SECONDS`,
+`VAULT_S3_PRESIGNED_DOWNLOADS` (default `False`); credenziali via `AWS_ACCESS_KEY_ID` /
+`AWS_SECRET_ACCESS_KEY` (o IAM role) come secret Render, mai nel repo. Passaggio futuro, in
+ordine: creare bucket e utente IAM a privilegi minimi → eseguire
+`scripts/migrate_vault_to_s3.py` in dry-run, poi `--execute`, e rieseguirlo subito prima dello
+switch → impostare le variabili `VAULT_S3_*` e portare `VAULT_STORAGE_PROVIDER=s3` → verificare
+upload/download dalle app → lasciare il Mac mini in sola lettura per un periodo di sicurezza.
+Nota: i `Document` esistenti conservano `storage_provider=mac_mini`; l'adattatore legge per
+`storage_path`, non per provider, quindi dopo la migrazione dei file i download funzionano senza
+riscrivere il DB. Simulazione locale: `backend/docker-compose.storage.yml` (moto server, API S3 in memoria).
 
 In locale: `alembic upgrade head` → `python scripts/bootstrap_single_tenant.py` →
 `uvicorn app.main:app --reload`. Dettagli → [[Backend-Cloud-API]].
@@ -68,9 +95,9 @@ introducono nuove SPA Vite o runtime incompatibili col gateway Next.js (vedi anc
 
 Dal 2026-11-25 il target è consolidare i prodotti proprietari sotto `pynkstudio.eu`: in prima
 battuta `perx.pynkstudio.eu`, `catdispatcher.pynkstudio.eu` e
-`bignamionline.pynkstudio.eu`. I servizi PerX diventano sub-subdomini
-(`app.perx.pynkstudio.eu`, `api.perx.pynkstudio.eu`,
-`login.perx.pynkstudio.eu`). `admin.pynkstudio.eu` rimane il pannello unico cross-product e
+`bignamionline.pynkstudio.eu`. Poiché il pannello DNS Register.it non accetta host annidati, i
+servizi PerX usano nomi piatti (`app-perx.pynkstudio.eu`, `api-perx.pynkstudio.eu`,
+`login-perx.pynkstudio.eu`). `admin.pynkstudio.eu` rimane il pannello unico cross-product e
 dialoga con i backend esclusivamente tramite API server-to-server.
 
 I domini tenant e i loro prefissi (`admin`, `assicurati`, `riunioni`, ecc.) non vengono migrati
@@ -82,12 +109,16 @@ Register.it:
 
 | Host | Record richiesto | Stato |
 |---|---|---|
-| `perx.pynkstudio.eu` | `A 76.76.21.21` | associato a Vercel, DNS assente |
-| `app.perx.pynkstudio.eu` | `A 76.76.21.21` | associato a Vercel, DNS assente; applicazione non ancora instradata |
-| `catdispatcher.pynkstudio.eu` | `A 76.76.21.21` | associato a Vercel, DNS assente |
-| `bignamionline.pynkstudio.eu` | `A 76.76.21.21` | associato a Vercel, DNS assente |
-| `login.perx.pynkstudio.eu` | `A 76.76.21.21` | associato a Vercel, DNS assente; SSO non ancora implementato |
-| `perx.it` | sostituire l'A attuale con `76.76.21.21` | DNS/certificato non validi |
+| `perx.pynkstudio.eu` | `A 76.76.21.21` | DNS attivo su Vercel, HTTP 200 (verifica 2026-11-26) |
+| `app-perx.pynkstudio.eu` | `A 76.76.21.21` | DNS attivo su Vercel (2026-11-26); applicazione non ancora instradata |
+| `catdispatcher.pynkstudio.eu` | `A 76.76.21.21` | DNS attivo su Vercel, HTTP 200 (verifica 2026-11-26) |
+| `bignamionline.pynkstudio.eu` | `A 76.76.21.21` | DNS attivo su Vercel, HTTP 200 (verifica 2026-11-26) |
+| `login-perx.pynkstudio.eu` | `A 76.76.21.21` | DNS attivo su Vercel (2026-11-26); SSO non ancora implementato |
+| `perx.it` | sostituire l'A attuale con `76.76.21.21` | DNS/certificato non validi (ancora irraggiungibile il 2026-11-26) |
+
+Verifica pubblica del 2026-11-26 (audit): i cinque host `*.pynkstudio.eu` risolvono ora verso
+l'edge Vercel (`vercel-dns`) e rispondono con header `server: Vercel`; la frase "manca il DNS"
+sopra è quindi superata per questi host e resta valida solo per `perx.it`.
 
 Gli origin Vercel production sono `perx-insight-studio.vercel.app`,
 `catdispatcher.vercel.app` e `bignami-online.vercel.app`; rispondono tutti HTTP 200 e non sono
@@ -171,4 +202,4 @@ tabella `process_jobs`; un worker sul Mac mini fa polling/lease con header
 `GET /api/v1/process-jobs/jobs/claim`. Vedi [[Backend-Cloud-API]] e [[AI-Locale-e-Cloud]].
 
 ---
-Ultimo aggiornamento: 2026-11-25
+Ultimo aggiornamento: 2026-11-26 (provider S3 del vault predisposto, non attivo)

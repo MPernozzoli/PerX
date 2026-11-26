@@ -1,6 +1,6 @@
 ---
 tags: [perx, piattaforma, web, portale, assicurati]
-updated: 2026-09-05
+updated: 2026-11-26
 ---
 
 > [!note] Contratto API frontend↔backend riconciliato (2026-09-05)
@@ -46,7 +46,12 @@ Vercel principale — vedi [[04-Infrastruttura-e-Deploy]]).
    assicurato avvia challenge pubblico (`POST /api/v1/portal/auth/start`) → scambio magic link con
    sessione (`POST /api/v1/portal/auth/exchange`). In dev con
    `PORTAL_DEV_CLAIM_REFERENCE_ONLY_AUTH=True` è possibile creare l'accesso al volo dal solo
-   riferimento sinistro (solo sviluppo locale).
+   riferimento sinistro (solo sviluppo locale). Dal 2026-11-26 questo flag e
+   `PORTAL_DEBUG_PREVIEW_LINKS` (che restituisce magic link/OTP nella risposta HTTP) sono `False`
+   di default e **forzati a `False` dal backend quando `ENV` è `prod`/`staging`**: in produzione il
+   magic link arriva solo via e-mail. Gli endpoint pubblici `auth/start`, `auth/exchange`,
+   `auth/request-otp` e `auth/verify-otp` hanno rate limiting per IP e per riferimento sinistro
+   (HTTP 429 con `Retry-After`) — vedi [[Backend-Cloud-API]].
 2. **Dashboard**: elenco sinistri accessibili, macrostato assicurato (mappato dagli stati interni
    `SVxxx`, mai esposto grezzo), dati essenziali, perito assegnato, prossimo appuntamento, quadro
    economico di base, stato atto.
@@ -85,4 +90,4 @@ canalizzazione risposte staff→assicurato in chat e antifrode di base sono coll
 scope solo l'OTP via SMS (nessun provider integrato).
 
 ---
-Ultimo aggiornamento: 2026-09-05
+Ultimo aggiornamento: 2026-11-26 (flag di debug auth disattivati in produzione, rate limiting)

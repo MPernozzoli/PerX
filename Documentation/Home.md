@@ -47,7 +47,7 @@ Dettagli → [[01-Panoramica]].
 - [[AI-Locale-e-Cloud]] — AI locale (Ollama via Local Agent XPC) e AI cloud
 - [[Videoperizia]] — perizia da remoto via videochiamata
 - [[Login-Unificato-SSO]] — identity layer unico pianificato (target
-  `login.perx.pynkstudio.eu`; host storico `login.perx.it` durante la migrazione)
+  `login-perx.pynkstudio.eu`; host storico `login.perx.it` durante la migrazione)
 
 ---
 Ultimo aggiornamento: 2026-11-25
