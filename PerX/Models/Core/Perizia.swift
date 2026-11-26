@@ -44,6 +44,21 @@ extension Perizia {
     @NSManaged public var hasRiserva: Bool
     @NSManaged public var eventoCausatoDa: String?
     @NSManaged public var determinazione: String? // Determinazione specifica (concordato con bonifico, verbalmente, ecc.)
+
+    // Motore di stima (modello v2): esito, richiesta a corpo, arrotondamento, revisioni, verifica atto firmato
+    @NSManaged public var esitoStima: String?
+    @NSManaged public var dannoNonAccertato: Bool
+    @NSManaged public var motivoNonConcordato: String?
+    @NSManaged public var motivoNonConcordatoTesto: String?
+    @NSManaged public var richiestaSinistro: NSDecimalNumber?
+    @NSManaged public var arrotondamentoGaranziaId: UUID?
+    @NSManaged public var massimalePrimaFranchigia: Bool
+    @NSManaged public var accompagnatoriaExtra: String?
+    @NSManaged public var riparto1910Attivo: Bool
+    @NSManaged public var attoFirmatoImporto: NSDecimalNumber?
+    @NSManaged public var attoFirmatoEsito: String?
+    @NSManaged public var attoFirmatoData: Date?
+    @NSManaged public var stimaRevisioni: NSSet?
     
     @NSManaged public var sinistro: Sinistro?
     @NSManaged public var partite: NSSet?
@@ -73,6 +88,17 @@ extension Perizia {
     
     func versioniPerCampo(_ campo: String) -> [PeriziaVersion] {
         return versioniArray.filter { $0.campo == campo }
+    }
+
+    /// Revisioni della stima, dalla più vecchia alla più recente.
+    var stimaRevisioniArray: [StimaRevisione] {
+        let set = stimaRevisioni as? Set<StimaRevisione> ?? []
+        return set.sorted { $0.numero < $1.numero }
+    }
+
+    var esitoStimaValue: EsitoStima {
+        get { EsitoStima(stringa: esitoStima) }
+        set { esitoStima = newValue.rawValue }
     }
     
     func addToPartite(_ value: Partita) {

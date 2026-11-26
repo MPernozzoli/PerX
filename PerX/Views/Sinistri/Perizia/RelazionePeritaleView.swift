@@ -310,6 +310,18 @@ struct RelazionePeritaleView: View {
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .disabled(perizia == nil)
+
+                    // Frasi deterministiche del motore di stima: esito, voci escluse, limiti di polizza
+                    Button {
+                        inserisciFrasiStima()
+                    } label: {
+                        Label("Frasi della stima", systemImage: "function")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(perizia == nil)
+                    .help("Accoda le conclusioni per esito e il testo per l'atto calcolati dal motore di stima")
                 }
                 
                 Text("Conclusioni e considerazioni finali della perizia")
@@ -598,6 +610,17 @@ struct RelazionePeritaleView: View {
                 isGeneratingRelazione = false
             }
         }
+    }
+    
+    /// Accoda alle note conclusive le frasi del motore di stima (non sostituisce il testo del perito).
+    private func inserisciFrasiStima() {
+        guard let perizia, let calcolo = StimaService.shared.calcolo(perizia) else { return }
+        let frasi = [calcolo.testi.conclusioniEsito, calcolo.testi.accompagnatoria]
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && !noteConclusive.contains($0) }
+        guard !frasi.isEmpty else { return }
+        let base = noteConclusive.trimmingCharacters(in: .whitespacesAndNewlines)
+        noteConclusive = ([base] + frasi).filter { !$0.isEmpty }.joined(separator: "\n\n")
     }
     
     private func generaNoteConclusive() {

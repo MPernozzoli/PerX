@@ -36,6 +36,11 @@ extension Bene {
     @NSManaged public var aliquotaIVA: Double // default 22
     @NSManaged public var liquidazioneForzata: NSDecimalNumber? // se forzata manualmente
     @NSManaged public var ordine: Int16
+    /// "m"/"f": grammatica dei testi generati (nil = maschile)
+    @NSManaged public var genere: String?
+    /// Bene a servizio comune: quota imputata a questa polizza (nil = bene non comune)
+    @NSManaged public var quotaComunePercentuale: NSDecimalNumber?
+    @NSManaged public var unitaServite: Int16
     
     @NSManaged public var partita: Partita?
     @NSManaged public var garanzia: Garanzia?

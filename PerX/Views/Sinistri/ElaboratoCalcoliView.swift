@@ -390,45 +390,9 @@ struct BeneCardView: View {
     @Environment(\.managedObjectContext) private var viewContext
     @StateObject private var calcoliService = CalcoliService.shared
     
-    /// Calcola il danno accertato (VSU + SI + IVA se riconosciuta)
+    /// Danno accertato del bene dal motore di stima (voci ammesse + IVA in liquidazione, forzatura compresa)
     private var dannoAccertato: Double {
-        // Se c'è un valore forzato, usa quello
-        if let forzato = bene.liquidazioneForzata, forzato.doubleValue > 0 {
-            return forzato.doubleValue
-        }
-        
-        let deprezzamento = bene.deprezzamento > 0 ? bene.deprezzamento : 20.0
-        let determinazione = bene.determinazioneDannoEffettiva
-        let aliquotaIVA = bene.aliquotaIVA > 0 ? bene.aliquotaIVA : 22.0
-        
-        var totaleVSU: Double = 0
-        var totaleSI: Double = 0
-        
-        for voce in bene.vociCostoArray where voce.indennizzabile {
-            let nettoIllesi = voce.nettoIllesi?.doubleValue ?? 0
-            let vsu = nettoIllesi * (1 - deprezzamento / 100)
-            totaleVSU += vsu
-            
-            let si = calcoliService.calcolaSI(nettoIllesi: nettoIllesi, vsu: vsu, determinazioneDanno: determinazione)
-            totaleSI += si
-        }
-        
-        var imponibile = totaleVSU + totaleSI
-        
-        // Se IVA già inclusa, scorporiamo per avere l'imponibile
-        if bene.ivaInclusa && bene.riconosciIVA {
-            // I valori sono già lordi, il totale è già corretto
-            return imponibile
-        }
-        
-        // Se IVA riconosciuta e non inclusa, aggiungiamo l'IVA
-        if bene.riconosciIVA && !bene.ivaInclusa {
-            let iva = imponibile * (aliquotaIVA / 100.0)
-            return imponibile + iva
-        }
-        
-        // IVA non riconosciuta: solo imponibile
-        return imponibile
+        StimaService.shared.calcoloBene(bene).totaleAmmesso.doubleValue
     }
     
     var body: some View {
@@ -563,49 +527,15 @@ struct RiepilogoTotaliSidebarView: View {
     @ObservedObject var perizia: Perizia
     @StateObject private var calcoliService = CalcoliService.shared
     
+    @State private var token = 0
+    
+    /// Totali dal motore di stima: stessi numeri della liquidazione (deprezzamento e IVA dei beni, limiti, arrotondamento)
     private var totali: (vsu: Double, si: Double, iva: Double, franchigia: Double, liquidazione: Double) {
-        let deprezzamento = 20.0
-        let aliquotaIVA = 22.0
-        var totaleVSU: Double = 0
-        var totaleSI: Double = 0
-        var totaleIVA: Double = 0
-        var totaleFranchigia: Double = 0
-        
-        // Calcola da tutti i beni di tutte le partite
-        for partita in perizia.partiteArray {
-            for bene in partita.beniArray {
-                let determinazione = bene.determinazioneDannoEffettiva
-                
-                for voce in bene.vociCostoArray where voce.indennizzabile {
-                    let nettoIllesi = voce.nettoIllesi?.doubleValue ?? 0
-                    let vsu = nettoIllesi * (1 - deprezzamento / 100)
-                    totaleVSU += vsu
-                    
-                    let si = calcoliService.calcolaSI(nettoIllesi: nettoIllesi, vsu: vsu, determinazioneDanno: determinazione)
-                    totaleSI += si
-                }
-            }
+        guard let c = StimaService.shared.calcolo(perizia) else { return (0, 0, 0, 0, 0) }
+        let somma: (KeyPath<LiquidazioneGaranzia, Decimal>) -> Double = { kp in
+            c.liquidazioni.reduce(Decimal(0)) { $0 + $1[keyPath: kp] }.doubleValue
         }
-        
-        // IVA sul totale
-        totaleIVA = (totaleVSU + totaleSI) * (aliquotaIVA / 100)
-        
-        // Calcola franchigia (semplificato - prima garanzia)
-        if let primaGaranzia = perizia.garanzieArray.first {
-            if let franchigia = primaGaranzia.franchigiaMinimo {
-                totaleFranchigia = franchigia.doubleValue
-            } else if let scopertoPerc = primaGaranzia.scopertoPercentuale {
-                let dannoTotale = totaleVSU + totaleSI
-                totaleFranchigia = dannoTotale * (scopertoPerc.doubleValue / 100)
-                if let minimo = primaGaranzia.scopertoMinimo, totaleFranchigia < minimo.doubleValue {
-                    totaleFranchigia = minimo.doubleValue
-                }
-            }
-        }
-        
-        let liquidazione = totaleVSU + totaleSI - totaleFranchigia
-        
-        return (totaleVSU, totaleSI, totaleIVA, totaleFranchigia, max(0, liquidazione))
+        return (somma(\.vsu), somma(\.si), somma(\.ivaInLiquidazione), somma(\.trattenuta), c.totali.liquidabile.doubleValue)
     }
     
     var body: some View {
@@ -636,7 +566,7 @@ struct RiepilogoTotaliSidebarView: View {
                 
                 if totali.franchigia > 0 {
                     GridRow {
-                        Text("Franchigia:")
+                        Text("Franchigia/scoperto:")
                             .font(.caption)
                             .foregroundColor(.red)
                         Text("- \(CurrencyFormatter.shared.formatWithSymbol(totali.franchigia))")
@@ -658,8 +588,10 @@ struct RiepilogoTotaliSidebarView: View {
                         .foregroundColor(.green)
                 }
             }
+            let _ = token
         }
         .padding(12)
         .background(Color(NSColor.windowBackgroundColor))
+        .ricalcolaSuModifiche($token)
     }
 }

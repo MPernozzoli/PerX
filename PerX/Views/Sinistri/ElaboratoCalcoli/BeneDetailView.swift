@@ -58,7 +58,7 @@ struct BeneDetailView: View {
     // Binding per deprezzamento e aliquota IVA dal bene
     private var deprezzamento: Binding<Double> {
         Binding(
-            get: { bene.deprezzamento > 0 ? bene.deprezzamento : 20.0 },
+            get: { bene.deprezzamento },
             set: { 
                 bene.deprezzamento = $0
                 try? viewContext.save()
@@ -479,6 +479,65 @@ struct BeneDetailView: View {
                             }
                             
                             GridRow {
+                                Text("Genere (testi):")
+                                    .foregroundColor(.secondary)
+                                Picker("", selection: Binding(
+                                    get: { bene.genere == "f" ? "f" : "m" },
+                                    set: {
+                                        bene.genere = $0
+                                        try? viewContext.save()
+                                    }
+                                )) {
+                                    Text("il/lo (m)").tag("m")
+                                    Text("la (f)").tag("f")
+                                }
+                                .pickerStyle(.segmented)
+                                .frame(width: 200)
+                                .help("Serve alla grammatica dei testi generati: «preso visione del frigorifero / della lavatrice»")
+                            }
+                            
+                            GridRow {
+                                Text("Bene comune:")
+                                    .foregroundColor(.secondary)
+                                HStack {
+                                    Toggle("A servizio di più unità/polizze", isOn: Binding(
+                                        get: { bene.quotaComunePercentuale != nil },
+                                        set: { attivo in
+                                            if attivo {
+                                                bene.unitaServite = max(bene.unitaServite, 2)
+                                                bene.quotaComunePercentuale = NSDecimalNumber(decimal: Decimal(100) / Decimal(Int(bene.unitaServite)))
+                                            } else {
+                                                bene.quotaComunePercentuale = nil
+                                                bene.unitaServite = 0
+                                            }
+                                            try? viewContext.save()
+                                        }
+                                    ))
+                                    if bene.quotaComunePercentuale != nil {
+                                        Stepper("Unità servite: \(bene.unitaServite)", value: Binding(
+                                            get: { Int(bene.unitaServite) },
+                                            set: { n in
+                                                bene.unitaServite = Int16(max(2, n))
+                                                bene.quotaComunePercentuale = NSDecimalNumber(decimal: Decimal(100) / Decimal(Int(bene.unitaServite)))
+                                                try? viewContext.save()
+                                            }
+                                        ), in: 2...99)
+                                        TextField("Quota %", value: Binding(
+                                            get: { bene.quotaComunePercentuale?.doubleValue },
+                                            set: {
+                                                if let q = $0, q > 0, q < 100 {
+                                                    bene.quotaComunePercentuale = NSDecimalNumber(value: q)
+                                                    try? viewContext.save()
+                                                }
+                                            }
+                                        ), format: .number.precision(.fractionLength(0...2)))
+                                        .frame(width: 70)
+                                        .help("Quota di questa polizza: di default parti uguali, modificabile per millesimi")
+                                    }
+                                }
+                            }
+                            
+                            GridRow {
                                 Text("Relazione tecnica:")
                                     .foregroundColor(.secondary)
                             }
@@ -628,6 +687,9 @@ struct BeneDetailView: View {
     private func impostaVociNonIndennizzabili() {
         for voce in bene.vociCostoArray {
             voce.indennizzabile = false
+            if voce.motivoEsclusione == nil {
+                voce.motivoEsclusioneValue = .residuiNonMantenuti
+            }
         }
         try? viewContext.save()
     }

@@ -22,6 +22,8 @@ extension Coassicurazione {
     @NSManaged public var polizza: String
     @NSManaged public var numeroSinistro: String
     @NSManaged public var ordine: Int16
+    /// Indennizzo virtuale dell'altra polizza (riparto art. 1910 c.c., coassicurazione indiretta)
+    @NSManaged public var indennizzoVirtuale: NSDecimalNumber?
     
     @NSManaged public var sinistro: Sinistro?
 }

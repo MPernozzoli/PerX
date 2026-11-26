@@ -41,20 +41,28 @@ final class PersistenceController {
                     fatalError("Impossibile ottenere l'URL dello store per la cancellazione: \(error)")
                 }
 
+                // Il database non si cancella: si sposta in una copia di backup accanto all'originale
+                // (es. migrazione fallita dopo un cambio di modello), così perizie e stime sono recuperabili.
                 do {
-                    print("🧹 Sto eliminando il vecchio database a: \(storeURL.path)")
-                    try FileManager.default.removeItem(at: storeURL)
-                    
-                    let shmFile = storeURL.path.appending("-shm")
-                    let walFile = storeURL.path.appending("-wal")
+                    let formatter = DateFormatter()
+                    formatter.dateFormat = "yyyyMMdd-HHmmss"
+                    let suffisso = "backup-\(formatter.string(from: Date()))"
+                    let backupURL = storeURL.deletingPathExtension()
+                        .appendingPathExtension(suffisso)
+                        .appendingPathExtension(storeURL.pathExtension)
+                    print("🧹 Sposto il database non apribile in: \(backupURL.path)")
+                    try FileManager.default.moveItem(at: storeURL, to: backupURL)
 
-                    try? FileManager.default.removeItem(atPath: shmFile)
-                    try? FileManager.default.removeItem(atPath: walFile)
-                    
-                    print("✅ Database eliminato. L'app verrà terminata. Riavvia per creare un nuovo database.")
-                    fatalError("Database eliminato, riavvia l'app. Errore originale: \(error)")
+                    for estensione in ["-shm", "-wal"] {
+                        let sorgente = URL(fileURLWithPath: storeURL.path + estensione)
+                        let destinazione = URL(fileURLWithPath: backupURL.path + estensione)
+                        try? FileManager.default.moveItem(at: sorgente, to: destinazione)
+                    }
+
+                    print("✅ Database salvato in backup. L'app verrà terminata. Riavvia per creare un nuovo database.")
+                    fatalError("Database spostato in backup (\(backupURL.lastPathComponent)), riavvia l'app. Errore originale: \(error)")
                 } catch {
-                    fatalError("❌ Impossibile eliminare il database a \(storeURL.path). Errore: \(error)")
+                    fatalError("❌ Impossibile spostare il database a \(storeURL.path). Errore: \(error)")
                 }
             } else {
                 print("✅ Core Data caricato correttamente")

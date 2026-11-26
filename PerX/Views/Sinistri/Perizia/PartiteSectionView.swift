@@ -211,6 +211,7 @@ struct PartitaEditBox: View {
     @State private var tipologia: String = "Valore Intero"
     @State private var valoreAssicurato: String = ""
     @State private var percentualeDeroga: String = ""
+    @State private var valoreReale: String = ""
     @State private var determinazioneDanno: String = "Valore a nuovo"
     @State private var regoleSpeciali: String = ""
     
@@ -286,6 +287,23 @@ struct PartitaEditBox: View {
                     }
                 }
                 
+                if tipologia == "Valore Intero" {
+                    HStack(alignment: .center, spacing: 8) {
+                        Text("Valore reale")
+                            .frame(width: 120, alignment: .leading)
+                        HStack(spacing: 4) {
+                            Text("€")
+                                .foregroundColor(.secondary)
+                            TextField("facoltativo", text: $valoreReale)
+                                .frame(width: 130)
+                        }
+                        Text("Valore dei beni al sinistro: se supera il valore assicurato oltre la deroga si applica la regola proporzionale (art. 1907 c.c.)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                
                 HStack(alignment: .center, spacing: 8) {
                     Text("Determinazione danno")
                         .frame(width: 120, alignment: .leading)
@@ -338,6 +356,7 @@ struct PartitaEditBox: View {
         tipologia = partita.tipologia
         valoreAssicurato = partita.valoreAssicurato.stringValue
         percentualeDeroga = partita.percentualeDeroga?.stringValue ?? ""
+        valoreReale = partita.valoreReale?.stringValue ?? ""
         determinazioneDanno = partita.determinazioneDanno
         regoleSpeciali = partita.regoleSpeciali ?? ""
     }
@@ -359,12 +378,29 @@ struct PartitaEditBox: View {
             partitaToSave.nomeFornitoCompagnia = nomeFornitoCompagnia.isEmpty ? nil : nomeFornitoCompagnia
             partitaToSave.nomeEditabile = nomeEditabile.isEmpty ? tipoPartita : nomeEditabile
             partitaToSave.tipologia = tipologia
-            partitaToSave.valoreAssicurato = NSDecimalNumber(string: valoreAssicurato)
-            partitaToSave.percentualeDeroga = percentualeDeroga.isEmpty ? nil : NSDecimalNumber(string: percentualeDeroga)
+            // Importi in formato italiano: «250.000» è duecentocinquantamila, non 250 (la somma fa da tetto alla partita).
+            partitaToSave.valoreAssicurato = Self.importoItaliano(valoreAssicurato) ?? .zero
+            partitaToSave.percentualeDeroga = Self.importoItaliano(percentualeDeroga)
+            partitaToSave.valoreReale = tipologia == "Valore Intero" ? Self.importoItaliano(valoreReale) : nil
             partitaToSave.determinazioneDanno = determinazioneDanno
             partitaToSave.regoleSpeciali = regoleSpeciali.isEmpty ? nil : regoleSpeciali
             
             try? viewContext.save()
         }
+    }
+
+    /// «250.000» → 250000, «1.234,56» → 1234.56, «12,5» → 12.5, «1500» → 1500.
+    static func importoItaliano(_ testo: String) -> NSDecimalNumber? {
+        var t = testo.replacingOccurrences(of: "€", with: "")
+            .replacingOccurrences(of: " ", with: "")
+            .trimmingCharacters(in: .whitespaces)
+        guard !t.isEmpty else { return nil }
+        if t.contains(",") {
+            t = t.replacingOccurrences(of: ".", with: "").replacingOccurrences(of: ",", with: ".")
+        } else if t.range(of: #"^\d{1,3}(\.\d{3})+$"#, options: .regularExpression) != nil {
+            t = t.replacingOccurrences(of: ".", with: "")
+        }
+        let n = NSDecimalNumber(string: t, locale: Locale(identifier: "en_US_POSIX"))
+        return n == NSDecimalNumber.notANumber ? nil : n
     }
 }

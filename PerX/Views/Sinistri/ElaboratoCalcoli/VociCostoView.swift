@@ -243,6 +243,7 @@ struct VociCostoView: View {
             determinazioneDanno: determinazioneDanno
         )
         newVoce.si = NSDecimalNumber(value: si)
+        StimaService.shared.aggiornaVoce(newVoce)
         
         try? viewContext.save()
     }
@@ -302,7 +303,9 @@ struct VociCostoTableView: View {
                     
                     TableHeaderCell(text: "VSU", width: 100)
                     TableHeaderCell(text: "SI", width: 100)
-                    TableHeaderCell(text: "Indenn.", width: 50)
+                    TableHeaderCell(text: "Richiesta", width: 90)
+                    TableHeaderCell(text: "Giust.", width: 45)
+                    TableHeaderCell(text: "Indenn.", width: 80)
                     TableHeaderCell(text: "", width: 40) // Spazio per elimina
                 }
                 .background(Color(NSColor.controlBackgroundColor))
@@ -454,9 +457,42 @@ struct VociCostoRowView: View {
                 .frame(width: 100, alignment: .trailing)
                 .padding(.horizontal, 4)
             
-            Toggle("", isOn: createIndennizzabileBinding())
-                .labelsHidden()
-                .frame(width: 50)
+            TextField("Rich.", text: createRichiestaBinding())
+                .textFieldStyle(.plain)
+                .multilineTextAlignment(.trailing)
+                .frame(width: 90, alignment: .trailing)
+                .padding(.horizontal, 4)
+                .help("Importo richiesto per la voce, letto dal giustificativo (clic destro: IVA inclusa)")
+                .contextMenu {
+                    Toggle("Richiesta IVA inclusa", isOn: Binding(
+                        get: { voce.richiestaIvaInclusa },
+                        set: {
+                            voce.richiestaIvaInclusa = $0
+                            try? viewContext.save()
+                        }
+                    ))
+                    .disabled(voce.richiesta == nil)
+                }
+            
+            Toggle("", isOn: Binding(
+                get: { voce.giustificativo },
+                set: {
+                    voce.giustificativo = $0
+                    try? viewContext.save()
+                }
+            ))
+            .labelsHidden()
+            .frame(width: 45)
+            .help("Voce documentata da fattura/preventivo")
+            
+            HStack(spacing: 2) {
+                Toggle("", isOn: createIndennizzabileBinding())
+                    .labelsHidden()
+                if !voce.indennizzabile {
+                    MotivoEsclusioneButton(voce: voce)
+                }
+            }
+            .frame(width: 80, alignment: .leading)
             
             Button {
                 onDelete(voce)
@@ -470,8 +506,8 @@ struct VociCostoRowView: View {
         .padding(.vertical, 2)
         .background(Color(NSColor.textBackgroundColor))
         .onAppear {
-            deprezzamentoRiga = deprezzamento
-            aliquotaIVARiga = aliquotaIVA
+            deprezzamentoRiga = voce.deprezzamentoRiga?.doubleValue ?? deprezzamento
+            aliquotaIVARiga = voce.aliquotaIVARiga?.doubleValue ?? aliquotaIVA
         }
     }
     
@@ -509,6 +545,7 @@ struct VociCostoRowView: View {
             set: { 
                 if let val = parseItalian($0) {
                     deprezzamentoRiga = val.doubleValue
+                    voce.deprezzamentoRiga = val
                     calcolaVSUeSI()
                     onUpdate(voce)
                 }
@@ -522,6 +559,7 @@ struct VociCostoRowView: View {
             set: { 
                 if let val = parseItalian($0) {
                     aliquotaIVARiga = val.doubleValue
+                    voce.aliquotaIVARiga = val
                     calcolaVSUeSI()
                     onUpdate(voce)
                 }
@@ -708,6 +746,28 @@ struct VociCostoRowView: View {
             get: { voce.indennizzabile },
             set: { 
                 voce.indennizzabile = $0
+                if $0 {
+                    voce.motivoEsclusione = nil
+                    voce.notaVoce = nil
+                }
+                try? viewContext.save()
+            }
+        )
+    }
+    
+    private func createRichiestaBinding() -> Binding<String> {
+        Binding(
+            get: { voce.richiesta.map { formatItalian($0) } ?? "" },
+            set: {
+                let testo = $0.trimmingCharacters(in: .whitespaces)
+                if testo.isEmpty {
+                    voce.richiesta = nil
+                    voce.richiestaIvaInclusa = false
+                } else if let val = parseItalian(testo) {
+                    voce.richiesta = val
+                } else {
+                    return
+                }
                 try? viewContext.save()
             }
         )
@@ -823,5 +883,68 @@ struct FormulaTextField: View {
                     }
                 }
             }
+    }
+}
+
+/// Motivo e nota dell'esclusione di una voce: il motivo guida la frase sobria dell'atto e la scomposizione
+/// richiesto → accertato; la nota resta interna.
+struct MotivoEsclusioneButton: View {
+    @ObservedObject var voce: VoceCosto
+    @Environment(\.managedObjectContext) private var viewContext
+    @State private var aperto = false
+
+    var body: some View {
+        Button {
+            aperto = true
+        } label: {
+            Image(systemName: voce.motivoEsclusione == nil ? "questionmark.circle" : "tag.fill")
+                .foregroundColor(voce.motivoEsclusione == nil ? .orange : .red)
+        }
+        .buttonStyle(.plain)
+        .help(voce.motivoEsclusioneValue?.etichetta ?? "Indica il motivo dell'esclusione")
+        .popover(isPresented: $aperto, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Voce esclusa").font(.headline)
+                Picker("Motivo", selection: Binding(
+                    get: { voce.motivoEsclusioneValue },
+                    set: {
+                        voce.motivoEsclusioneValue = $0
+                        try? viewContext.save()
+                    }
+                )) {
+                    Text("Non indicato").tag(nil as MotivoEsclusione?)
+                    ForEach(MotivoEsclusione.allCases) { m in
+                        Text(m.etichetta).tag(m as MotivoEsclusione?)
+                    }
+                }
+                if let motivo = voce.motivoEsclusioneValue {
+                    Text("Nell'atto: «… \(motivo.fraseAccompagnatoria)».")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                TextField("Nota interna (non va nei testi)", text: Binding(
+                    get: { voce.notaVoce ?? "" },
+                    set: {
+                        voce.notaVoce = $0.isEmpty ? nil : $0
+                        try? viewContext.save()
+                    }
+                ), axis: .vertical)
+                .textFieldStyle(.roundedBorder)
+                .lineLimit(1...3)
+                if voce.richiesta != nil {
+                    Toggle("Richiesta IVA inclusa (giustificativo)", isOn: Binding(
+                        get: { voce.richiestaIvaInclusa },
+                        set: {
+                            voce.richiestaIvaInclusa = $0
+                            try? viewContext.save()
+                        }
+                    ))
+                    .font(.caption)
+                }
+            }
+            .padding(14)
+            .frame(width: 340)
+        }
     }
 }

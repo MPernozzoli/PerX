@@ -1,6 +1,6 @@
 ---
 tags: [perx, stack, tecnologia]
-updated: 2026-11-07
+updated: 2026-11-26
 ---
 
 # Stack tecnologico
@@ -10,7 +10,8 @@ updated: 2026-11-07
 | Aspetto | Tecnologia |
 | --- | --- |
 | Linguaggio/UI | Swift, SwiftUI |
-| Persistenza locale | CoreData (sinistri, `PerX.xcdatamodeld`), `UserDefaults` (task, settings) |
+| Persistenza locale | CoreData (sinistri, `PerX.xcdatamodeld` versionato, corrente `PerX v2`), `UserDefaults` (task, settings) |
+| Calcolo perizia | Motore di stima in Swift puro (`Foundation.Decimal`, hash SHA-256 con `CryptoKit`) — vedi [[Motore-di-Stima]] |
 | Rete | `HubAPIAdapterClient` (HTTP verso backend cloud, refresh token automatico) |
 | Pattern applicativo | Adapter (`TaskAdapter`, `ClaimAdapter`, `EmailAdapter`) per routing locale/hub/cloud |
 | AI locale | Ollama, raggiunto solo tramite `PerX Local Agent` (XPC service, bundle `it.pernozzoli.PerX.LocalAgent`) |
@@ -72,4 +73,4 @@ Dettagli → [[Portal-Web-Assicurati]], [[CatDispatcher]], [[Altre-Web-App]], [[
 | Schemi dedicati per app satellite | es. `bignami` (Postgres schema separato da `public`) |
 
 ---
-Ultimo aggiornamento: 2026-11-07
+Ultimo aggiornamento: 2026-11-26

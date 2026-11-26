@@ -27,6 +27,8 @@ extension Partita {
     @NSManaged public var regoleSpeciali: String?
     @NSManaged public var ordine: Int16
     @NSManaged public var partitaAcquistata: Bool // true = acquistata, false = non acquistata sulla polizza
+    /// Valore reale dei beni della partita al sinistro: serve solo alla regola proporzionale (valore intero)
+    @NSManaged public var valoreReale: NSDecimalNumber?
     
     @NSManaged public var perizia: Perizia?
     @NSManaged public var beni: NSSet?

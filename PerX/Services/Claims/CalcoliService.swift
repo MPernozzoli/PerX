@@ -2,589 +2,177 @@ import Foundation
 import CoreData
 import SwiftUI
 
+/// Facciata storica dei calcoli peritali. Dal 26/11/2026 ogni importo viene dal motore di stima
+/// deterministico (`StimaEngine`, via `StimaService`): qui restano solo adattatori per le viste
+/// che usano ancora i vecchi tipi (`LiquidazioneResult`, Double).
+/// Riferimento: Documentation/Funzionalita/Motore-di-Stima.md
 class CalcoliService: ObservableObject {
     static let shared = CalcoliService()
-    
+
+    private let stima = StimaService.shared
+
     private init() {}
-    
-    // Calcola VSU (Valore allo Stato d'Uso)
+
+    // MARK: - Formule di base (coerenti con il motore)
+
+    /// VSU (valore allo stato d'uso) di un netto illesi con deprezzamento percentuale.
     func calcolaVSU(nettoIllesi: NSDecimalNumber, deprezzamento: NSDecimalNumber) -> NSDecimalNumber {
-        let deprezzamentoDecimal = deprezzamento.doubleValue / 100.0
-        let deprezzamentoAmount = nettoIllesi.multiplying(by: NSDecimalNumber(value: deprezzamentoDecimal))
-        return nettoIllesi.subtracting(deprezzamentoAmount)
+        let netto = nettoIllesi.decimalValue
+        let vsu = (netto * (1 - deprezzamento.decimalValue / 100)).arrotondato()
+        return NSDecimalNumber(decimal: vsu)
     }
-    
-    // Calcola SI (Supplemento d'Indennizzo) in base alla determinazione del danno
-    func calcolaSI(
-        nettoIllesi: NSDecimalNumber,
-        vsu: NSDecimalNumber,
-        determinazioneDanno: String
-    ) -> NSDecimalNumber {
-        let differenza = nettoIllesi.subtracting(vsu)
-        
-        switch determinazioneDanno {
-        case "Valore a nuovo":
-            return NSDecimalNumber.zero
-            
-        case "Valore allo stato d'uso più supplemento d'indennizzo":
-            return differenza
-            
-        case "VSU + SI (max doppio)":
-            let maxSI = vsu.multiplying(by: NSDecimalNumber(value: 2))
-            return differenza.compare(maxSI) == .orderedAscending ? differenza : maxSI
-            
-        case "VSU + SI (max triplo)":
-            let maxSI = vsu.multiplying(by: NSDecimalNumber(value: 3))
-            return differenza.compare(maxSI) == .orderedAscending ? differenza : maxSI
-            
-        case "VSU + SI (max quadruplo)":
-            let maxSI = vsu.multiplying(by: NSDecimalNumber(value: 4))
-            return differenza.compare(maxSI) == .orderedAscending ? differenza : maxSI
-            
-        case "Valore allo stato d'uso":
-            return NSDecimalNumber.zero
-            
-        default:
-            // Regole speciali - placeholder
-            return differenza
-        }
+
+    /// Supplemento d'indennizzo in base al criterio di determinazione del danno.
+    func calcolaSI(nettoIllesi: NSDecimalNumber, vsu: NSDecimalNumber, determinazioneDanno: String) -> NSDecimalNumber {
+        NSDecimalNumber(decimal: supplemento(nettoIllesi.decimalValue, vsu.decimalValue, CriterioIndennizzo(stringa: determinazioneDanno)))
     }
-    
-    // Overload per Double (usato in VociCostoView)
-    func calcolaSI(
-        nettoIllesi: Double,
-        vsu: Double,
-        determinazioneDanno: String
-    ) -> Double {
-        let differenza = nettoIllesi - vsu
-        
-        switch determinazioneDanno {
-        case "Valore a nuovo":
-            return 0.0
-            
-        case "Valore allo stato d'uso più supplemento d'indennizzo":
-            return differenza
-            
-        case "VSU + SI (max doppio)":
-            let maxSI = vsu * 2
-            return differenza < maxSI ? differenza : maxSI
-            
-        case "VSU + SI (max triplo)":
-            let maxSI = vsu * 3
-            return differenza < maxSI ? differenza : maxSI
-            
-        case "VSU + SI (max quadruplo)":
-            let maxSI = vsu * 4
-            return differenza < maxSI ? differenza : maxSI
-            
-        case "Valore allo stato d'uso":
-            return 0.0
-            
-        default:
-            // Regole speciali - placeholder
-            return differenza
-        }
+
+    func calcolaSI(nettoIllesi: Double, vsu: Double, determinazioneDanno: String) -> Double {
+        supplemento(Decimal(nettoIllesi), Decimal(vsu), CriterioIndennizzo(stringa: determinazioneDanno)).doubleValue
     }
-    
-    // Calcola totale per un bene
+
+    private func supplemento(_ nettoIllesi: Decimal, _ vsu: Decimal, _ criterio: CriterioIndennizzo) -> Decimal {
+        guard criterio.prevedeSupplemento else { return 0 }
+        let differenza = max(0, nettoIllesi - vsu)
+        if let k = criterio.limiteSupplemento { return min(differenza, vsu * k).arrotondato() }
+        return differenza.arrotondato()
+    }
+
+    // MARK: - Voci e beni
+
+    /// Totali VSU/SI (prima di IVA) delle voci indicate, calcolati dal motore sul loro bene.
     func calcolaTotaliBene(
         vociCosto: [VoceCosto],
         deprezzamento: NSDecimalNumber,
         determinazioneDanno: String
     ) -> (vsu: NSDecimalNumber, si: NSDecimalNumber, totale: NSDecimalNumber) {
-        var totaleVSU = NSDecimalNumber.zero
-        var totaleSI = NSDecimalNumber.zero
-        
-        for voce in vociCosto where voce.indennizzabile {
-            if let nettoIllesi = voce.nettoIllesi {
-                let vsu = calcolaVSU(nettoIllesi: nettoIllesi, deprezzamento: deprezzamento)
-                let si = calcolaSI(nettoIllesi: nettoIllesi, vsu: vsu, determinazioneDanno: determinazioneDanno)
-                
-                totaleVSU = totaleVSU.adding(vsu)
-                totaleSI = totaleSI.adding(si)
+        var vsu: Decimal = 0, si: Decimal = 0
+        var cache: [NSManagedObjectID: [String: VoceCalcolata]] = [:]
+        for voce in vociCosto {
+            guard let bene = voce.bene else { continue }
+            if cache[bene.objectID] == nil {
+                cache[bene.objectID] = Dictionary(stima.calcoloBene(bene).voci.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
             }
+            guard let c = cache[bene.objectID]?[voce.wrappedId.uuidString] else { continue }
+            let rapporto = (c.vsu + c.si) > 0 ? c.importo / (c.vsu + c.si) : 1 // quota del bene comune
+            vsu += (c.vsu * rapporto).arrotondato()
+            si += c.importo - (c.vsu * rapporto).arrotondato()
         }
-        
-        let totale = totaleVSU.adding(totaleSI)
-        return (totaleVSU, totaleSI, totale)
+        return (NSDecimalNumber(decimal: vsu), NSDecimalNumber(decimal: si), NSDecimalNumber(decimal: vsu + si))
     }
-    
-    // Calcola totale per una partita
+
     func calcolaTotaliPartita(
         beni: [Bene],
         deprezzamento: NSDecimalNumber
     ) -> (vsu: NSDecimalNumber, si: NSDecimalNumber, totale: NSDecimalNumber) {
-        var totaleVSU = NSDecimalNumber.zero
-        var totaleSI = NSDecimalNumber.zero
-        
+        var vsu: Decimal = 0, si: Decimal = 0
         for bene in beni {
-            let determinazione = bene.determinazioneDannoEffettiva
-            let voci = bene.vociCostoArray.filter { $0.indennizzabile }
-            let totali = calcolaTotaliBene(
-                vociCosto: voci,
-                deprezzamento: deprezzamento,
-                determinazioneDanno: determinazione
-            )
-            
-            totaleVSU = totaleVSU.adding(totali.vsu)
-            totaleSI = totaleSI.adding(totali.si)
+            let c = stima.calcoloBene(bene)
+            vsu += c.vsu
+            si += c.si
         }
-        
-        let totale = totaleVSU.adding(totaleSI)
-        return (totaleVSU, totaleSI, totale)
+        return (NSDecimalNumber(decimal: vsu), NSDecimalNumber(decimal: si), NSDecimalNumber(decimal: vsu + si))
     }
-    
-    // Aggiorna tutti i calcoli per una voce di costo
+
+    /// Ricalcola i valori derivati della voce (rispettando i campi forzati). Non salva il contesto.
     func aggiornaCalcoliVoce(
         _ voce: VoceCosto,
         deprezzamento: NSDecimalNumber,
         determinazioneDanno: String
     ) {
-        // Calcola totale a nuovo
-        voce.totaleANuovo = voce.quantita.multiplying(by: voce.valoreUnitario)
-        
-        // Calcola netto migliorie
-        if let totaleANuovo = voce.totaleANuovo, let percentualeMigliorie = voce.percentualeMigliorie {
-            let percentuale = percentualeMigliorie.doubleValue / 100.0
-            let migliorie = totaleANuovo.multiplying(by: NSDecimalNumber(value: percentuale))
-            voce.nettoMigliorie = totaleANuovo.subtracting(migliorie)
-        }
-        
-        // Calcola netto illesi
-        if let nettoMigliorie = voce.nettoMigliorie, let percentualeIllesi = voce.percentualeIllesi {
-            let percentuale = percentualeIllesi.doubleValue / 100.0
-            let illesi = nettoMigliorie.multiplying(by: NSDecimalNumber(value: percentuale))
-            voce.nettoIllesi = nettoMigliorie.subtracting(illesi)
-        }
-        
-        // Calcola VSU
-        if let nettoIllesi = voce.nettoIllesi {
-            voce.vsu = calcolaVSU(nettoIllesi: nettoIllesi, deprezzamento: deprezzamento)
-        }
-        
-        // Calcola SI
-        if let nettoIllesi = voce.nettoIllesi, let vsu = voce.vsu {
-            voce.si = calcolaSI(nettoIllesi: nettoIllesi, vsu: vsu, determinazioneDanno: determinazioneDanno)
-        }
+        stima.aggiornaVoce(voce)
     }
-    
-    // MARK: - Calcolo Liquidazione
-    
-    /// Struttura helper per i valori calcolati di un bene
-    private struct ValoriBeneCalcolati {
-        var vsuImponibile: Double = 0
-        var siImponibile: Double = 0
-        var ivaInLiquidazione: Double = 0
-        var ivaASaldo: Double = 0
-    }
-    
-    /// Calcola VSU, SI e IVA per un set di voci di un bene
-    private func calcolaValoriBene(
-        voci: [VoceCosto],
-        bene: Bene,
-        liquidazioneForzata: NSDecimalNumber? = nil
-    ) -> ValoriBeneCalcolati {
-        var result = ValoriBeneCalcolati()
-        
-        guard !voci.isEmpty else { return result }
-        
-        let determinazione = bene.determinazioneDannoEffettiva
-        let totali = calcolaTotaliBene(
-            vociCosto: voci,
-            deprezzamento: NSDecimalNumber(value: bene.deprezzamento > 0 ? bene.deprezzamento : 20.0),
-            determinazioneDanno: determinazione
-        )
-        
-        var vsu = totali.vsu.doubleValue
-        var si = totali.si.doubleValue
-        
-        // Se c'è un importo forzato, usa quello proporzionato tra VSU e SI
-        if let forzato = liquidazioneForzata, forzato.doubleValue > 0 {
-            let totaleCalcolato = vsu + si
-            if totaleCalcolato > 0 {
-                let ratioVSU = vsu / totaleCalcolato
-                let ratioSI = si / totaleCalcolato
-                vsu = forzato.doubleValue * ratioVSU
-                si = forzato.doubleValue * ratioSI
-            } else {
-                vsu = forzato.doubleValue
-                si = 0
-            }
-        }
-        
-        // Parametri IVA del bene
-        let beneRiconosciIVA = bene.riconosciIVA
-        let beneIvaInclusa = bene.ivaInclusa
-        let beneRipristiniUltimati = bene.ripristiniUltimati
-        let aliquotaIVA = bene.aliquotaIVA > 0 ? bene.aliquotaIVA : 22.0
-        
-        if !beneRiconosciIVA {
-            // IVA non riconosciuta: lavoriamo solo con imponibili
-            if beneIvaInclusa {
-                let divisore = 1 + aliquotaIVA / 100.0
-                result.vsuImponibile = vsu / divisore
-                result.siImponibile = si / divisore
-            } else {
-                result.vsuImponibile = vsu
-                result.siImponibile = si
-            }
-        } else {
-            // IVA riconosciuta
-            if beneIvaInclusa {
-                let divisore = 1 + aliquotaIVA / 100.0
-                result.vsuImponibile = vsu / divisore
-                result.siImponibile = si / divisore
-                let ivaTotale = (vsu + si) - (result.vsuImponibile + result.siImponibile)
-                
-                if beneRipristiniUltimati {
-                    result.ivaInLiquidazione = ivaTotale
-                } else {
-                    result.ivaASaldo = ivaTotale
-                }
-            } else {
-                result.vsuImponibile = vsu
-                result.siImponibile = si
-                let ivaSuVSU = vsu * aliquotaIVA / 100.0
-                let ivaSuSI = si * aliquotaIVA / 100.0
-                
-                if beneRipristiniUltimati {
-                    result.ivaInLiquidazione = ivaSuVSU + ivaSuSI
-                } else {
-                    result.ivaASaldo = ivaSuVSU + ivaSuSI
-                }
-            }
-        }
-        
-        return result
-    }
-    
-    /// Calcola la liquidazione per una garanzia
-    /// L'IVA viene calcolata per bene in base a: riconosciIVA, ivaInclusa, ripristiniUltimati
-    /// Calcola anche il danno non indennizzabile (riserva) per le voci con indennizzabile = false
+
+    // MARK: - Liquidazione (adattatore verso LiquidazioneResult)
+
     func calcolaLiquidazione(
         garanzia: Garanzia,
         perizia: Perizia,
         massimalePrimaFranchigia: Bool = false
     ) -> LiquidazioneResult {
-        var result = LiquidazioneResult(garanzia: garanzia)
-        
-        let beniGaranzia = garanzia.beniArray
-        
-        // === ACCUMULATORI INDENNIZZABILI ===
-        var vsuPerPartita: [UUID: Double] = [:]
-        var siPerPartita: [UUID: Double] = [:]
-        var totaleVSUImponibile: Double = 0
-        var totaleSIImponibile: Double = 0
-        var totaleIVAInLiquidazione: Double = 0
-        var totaleIVAASaldo: Double = 0
-        var tuttiRipristiniUltimati = true
-        var tutteIvaInclusa = true
-        var almenoUnBeneRiconosciIVA = false
-        var conteggioVociIndennizzabili = 0
-        
-        // === ACCUMULATORI NON INDENNIZZABILI ===
-        var vsuNonIndPerPartita: [UUID: Double] = [:]
-        var siNonIndPerPartita: [UUID: Double] = [:]
-        var totaleVSUNonInd: Double = 0
-        var totaleSINonInd: Double = 0
-        var totaleIVANonInd: Double = 0
-        var conteggioVociNonIndennizzabili = 0
-        
-        for bene in beniGaranzia {
-            guard let partita = bene.partita else { continue }
-            let partitaID = partita.id ?? UUID()
-            
-            let vociIndennizzabili = bene.vociCostoArray.filter { $0.indennizzabile }
-            let vociNonIndennizzabili = bene.vociCostoArray.filter { !$0.indennizzabile }
-            
-            // --- Calcolo voci INDENNIZZABILI ---
-            if !vociIndennizzabili.isEmpty {
-                conteggioVociIndennizzabili += vociIndennizzabili.count
-                
-                let valori = calcolaValoriBene(
-                    voci: vociIndennizzabili,
-                    bene: bene,
-                    liquidazioneForzata: bene.liquidazioneForzata
-                )
-                
-                vsuPerPartita[partitaID, default: 0] += valori.vsuImponibile
-                siPerPartita[partitaID, default: 0] += valori.siImponibile
-                totaleVSUImponibile += valori.vsuImponibile
-                totaleSIImponibile += valori.siImponibile
-                totaleIVAInLiquidazione += valori.ivaInLiquidazione
-                totaleIVAASaldo += valori.ivaASaldo
-                
-                if bene.riconosciIVA {
-                    almenoUnBeneRiconosciIVA = true
-                }
-                if !bene.ripristiniUltimati {
-                    tuttiRipristiniUltimati = false
-                }
-                if !bene.ivaInclusa {
-                    tutteIvaInclusa = false
-                }
-            }
-            
-            // --- Calcolo voci NON INDENNIZZABILI ---
-            if !vociNonIndennizzabili.isEmpty {
-                conteggioVociNonIndennizzabili += vociNonIndennizzabili.count
-                
-                // Per le non indennizzabili non usiamo liquidazioneForzata
-                let valori = calcolaValoriBene(
-                    voci: vociNonIndennizzabili,
-                    bene: bene,
-                    liquidazioneForzata: nil
-                )
-                
-                vsuNonIndPerPartita[partitaID, default: 0] += valori.vsuImponibile
-                siNonIndPerPartita[partitaID, default: 0] += valori.siImponibile
-                totaleVSUNonInd += valori.vsuImponibile
-                totaleSINonInd += valori.siImponibile
-                // Per non indennizzabili, l'IVA va comunque calcolata per mostrare il danno totale
-                totaleIVANonInd += valori.ivaInLiquidazione + valori.ivaASaldo
-            }
-        }
-        
-        // === POPOLA RISULTATO INDENNIZZABILE ===
-        result.vsuPerPartita = vsuPerPartita
-        result.siPerPartita = siPerPartita
-        result.ripristiniUltimati = tuttiRipristiniUltimati
-        result.ivaInclusa = tutteIvaInclusa
-        result.ivaRiconosciuta = almenoUnBeneRiconosciIVA
-        result.totaleVSU = totaleVSUImponibile
-        result.totaleSI = totaleSIImponibile
-        result.iva = totaleIVAInLiquidazione
-        result.ivaASaldo = totaleIVAASaldo
-        
-        // === POPOLA RISULTATO NON INDENNIZZABILE ===
-        result.vsuNonIndennizzabilePerPartita = vsuNonIndPerPartita
-        result.siNonIndennizzabilePerPartita = siNonIndPerPartita
-        result.totaleVSUNonIndennizzabile = totaleVSUNonInd
-        result.totaleSINonIndennizzabile = totaleSINonInd
-        result.ivaNonIndennizzabile = totaleIVANonInd
-        
-        // Determina se TUTTO è non indennizzabile
-        let tuttoNonIndennizzabile = conteggioVociIndennizzabili == 0 && conteggioVociNonIndennizzabili > 0
-        result.tuttoNonIndennizzabile = tuttoNonIndennizzabile
-        
-        // === CALCOLO FRANCHIGIA/SCOPERTO ===
-        let totaleImponibile = totaleVSUImponibile + totaleSIImponibile
-        let totaleImponibileNonInd = totaleVSUNonInd + totaleSINonInd
-        
-        // Franchigia/scoperto solo su indennizzabile (o su non indennizzabile se tutto è non indennizzabile)
-        let basePerScoperto = tuttoNonIndennizzabile ? totaleImponibileNonInd : totaleImponibile
-        let vsuPerScoperto = tuttoNonIndennizzabile ? totaleVSUNonInd : totaleVSUImponibile
-        let siPerScoperto = tuttoNonIndennizzabile ? totaleSINonInd : totaleSIImponibile
-        
-        let dettaglioScoperto = calcolaScoperto(
-            garanzia: garanzia,
-            totaleVSU: vsuPerScoperto,
-            totaleSI: siPerScoperto
-        )
-        
-        result.franchigia = dettaglioScoperto.tipoApplicato == .franchigia ? dettaglioScoperto.importoApplicato : 0
-        result.scoperto = dettaglioScoperto.tipoApplicato == .percentuale ? dettaglioScoperto.importoApplicato : 0
-        result.massimale = garanzia.massimale.doubleValue
-        
-        // === CALCOLO DANNO INDENNIZZABILE ===
-        if !tuttoNonIndennizzabile {
-            var danno = totaleImponibile + totaleIVAInLiquidazione
-            
-            if massimalePrimaFranchigia {
-                if result.massimale > 0 && danno > result.massimale {
-                    danno = result.massimale
-                }
-                danno -= (result.franchigia + result.scoperto)
-            } else {
-                danno -= (result.franchigia + result.scoperto)
-                if result.massimale > 0 && danno > result.massimale {
-                    danno = result.massimale
-                }
-            }
-            
-            result.dannoIndennizzabile = max(0, danno)
-            
-            // Separazione VSU/SI per ripristini non ultimati
-            if tuttiRipristiniUltimati {
-                result.liquidazioneVSU = result.dannoIndennizzabile
-                result.liquidazioneSI = 0
-            } else {
-                let proporzioneScoperto = totaleImponibile > 0 ? totaleVSUImponibile / totaleImponibile : 0
-                let scopertoVSU = (result.franchigia + result.scoperto) * proporzioneScoperto
-                result.liquidazioneVSU = max(0, totaleVSUImponibile - scopertoVSU)
-                
-                let scopertoResiduo = (result.franchigia + result.scoperto) - scopertoVSU
-                let liquidazioneSI = totaleSIImponibile + totaleIVAASaldo - scopertoResiduo
-                result.liquidazioneSI = max(0, liquidazioneSI)
-            }
-        }
-        
-        // === CALCOLO DANNO NON INDENNIZZABILE (RISERVA) ===
-        if conteggioVociNonIndennizzabili > 0 {
-            if tuttoNonIndennizzabile {
-                // Tutto non indennizzabile: applica franchigia/scoperto come se fosse indennizzabile
-                var dannoNonInd = totaleImponibileNonInd + totaleIVANonInd
-                
-                if massimalePrimaFranchigia {
-                    if result.massimale > 0 && dannoNonInd > result.massimale {
-                        dannoNonInd = result.massimale
-                    }
-                    dannoNonInd -= (result.franchigia + result.scoperto)
-                } else {
-                    dannoNonInd -= (result.franchigia + result.scoperto)
-                    if result.massimale > 0 && dannoNonInd > result.massimale {
-                        dannoNonInd = result.massimale
-                    }
-                }
-                
-                result.dannoNonIndennizzabile = max(0, dannoNonInd)
-            } else {
-                // Parziale non indennizzabile: NO franchigia/scoperto, solo somma al netto di deprezzamento
-                result.dannoNonIndennizzabile = totaleImponibileNonInd + totaleIVANonInd
-            }
-        }
-        
-        return result
+        let riepilogo = calcolaRiepilogoLiquidazione(perizia: perizia)
+        return riepilogo.risultatiPerGaranzia.first { $0.garanzia == garanzia } ?? LiquidazioneResult(garanzia: garanzia)
     }
-    
-    /// Calcola scoperto/franchigia per una garanzia
-    private func calcolaScoperto(
-        garanzia: Garanzia,
-        totaleVSU: Double,
-        totaleSI: Double
-    ) -> (tipoApplicato: TipoScoperto, importoApplicato: Double) {
-        let dannoTotale = totaleVSU + totaleSI
-        
-        // Scoperto percentuale con min/max
-        let scopertoPercentuale = garanzia.scopertoPercentuale?.doubleValue ?? 0
-        let scopertoMinimo = garanzia.scopertoMinimo?.doubleValue ?? 0
-        let scopertoMassimo = garanzia.scopertoMassimo?.doubleValue ?? 0
-        
-        // Franchigia fissa
-        let franchigiaMinimo = garanzia.franchigiaMinimo?.doubleValue ?? 0
-        let franchigiaMassimo = garanzia.franchigiaMassimo?.doubleValue ?? 0
-        
-        // Se c'è percentuale di scoperto valorizzata, è uno scoperto percentuale
-        if scopertoPercentuale > 0 {
-            var scoperto = dannoTotale * (scopertoPercentuale / 100.0)
-            
-            // Applica minimo scoperto
-            if scopertoMinimo > 0 && scoperto < scopertoMinimo {
-                scoperto = scopertoMinimo
-            }
-            
-            // Applica massimo scoperto
-            if scopertoMassimo > 0 && scoperto > scopertoMassimo {
-                scoperto = scopertoMassimo
-            }
-            
-            return (.percentuale, scoperto)
-        }
-        
-        // Se c'è franchigia, usa quella
-        if franchigiaMinimo > 0 {
-            var franchigia = franchigiaMinimo
-            
-            // Applica massimo franchigia se presente
-            if franchigiaMassimo > 0 && franchigia > franchigiaMassimo {
-                franchigia = franchigiaMassimo
-            }
-            
-            // La franchigia non può eccedere il danno totale
-            franchigia = min(franchigia, dannoTotale)
-            
-            return (.franchigia, franchigia)
-        }
-        
-        return (.nessuno, 0)
-    }
-    
-    /// Calcola il riepilogo di liquidazione per tutta la perizia
-    /// L'IVA viene calcolata per bene in base a: riconosciIVA, ivaInclusa, ripristiniUltimati
+
+    /// Riepilogo per garanzia. L'ordine «massimale prima della franchigia» è quello salvato in perizia.
     func calcolaRiepilogoLiquidazione(
         perizia: Perizia,
         massimalePrimaFranchigia: Bool = false
     ) -> RiepilogoLiquidazione {
         var riepilogo = RiepilogoLiquidazione()
-        
-        for garanzia in perizia.garanzieArray {
-            let risultato = calcolaLiquidazione(
-                garanzia: garanzia,
-                perizia: perizia,
-                massimalePrimaFranchigia: massimalePrimaFranchigia
-            )
-            riepilogo.risultatiPerGaranzia.append(risultato)
+        guard let calcolo = stima.calcolo(perizia) else { return riepilogo }
+        let garanzie = Dictionary(perizia.garanzieArray.map { ($0.wrappedId.uuidString, $0) }, uniquingKeysWith: { a, _ in a })
+        for l in calcolo.liquidazioni {
+            guard let garanzia = garanzie[l.garanziaId] else { continue }
+            riepilogo.risultatiPerGaranzia.append(risultato(l, garanzia: garanzia, beni: calcolo.beni.filter { $0.garanziaId == l.garanziaId }))
         }
-        
         return riepilogo
     }
-    
+
+    private func risultato(_ l: LiquidazioneGaranzia, garanzia: Garanzia, beni: [BeneCalcolato]) -> LiquidazioneResult {
+        var r = LiquidazioneResult(garanzia: garanzia)
+        for b in beni {
+            guard let pid = b.partitaId.flatMap(UUID.init(uuidString:)) else { continue }
+            r.vsuPerPartita[pid, default: 0] += b.vsu.doubleValue
+            r.siPerPartita[pid, default: 0] += b.si.doubleValue
+            for v in b.voci where !v.ammessa {
+                let quotaVSU = (v.vsu + v.si) > 0 ? v.vsu / (v.vsu + v.si) : 1
+                let vsuImp = (v.imponibile * quotaVSU).arrotondato()
+                r.vsuNonIndennizzabilePerPartita[pid, default: 0] += vsuImp.doubleValue
+                r.siNonIndennizzabilePerPartita[pid, default: 0] += (v.imponibile - vsuImp).doubleValue
+                r.totaleVSUNonIndennizzabile += vsuImp.doubleValue
+                r.totaleSINonIndennizzabile += (v.imponibile - vsuImp).doubleValue
+                r.ivaNonIndennizzabile += v.iva.doubleValue
+            }
+        }
+        let conVoci = beni.filter { $0.voci.contains(where: \.ammessa) }
+        r.totaleVSU = l.vsu.doubleValue
+        r.totaleSI = l.si.doubleValue
+        r.iva = l.ivaInLiquidazione.doubleValue
+        r.ivaASaldo = l.ivaASaldo.doubleValue
+        r.franchigia = l.tipoTrattenuta == .franchigia ? l.trattenuta.doubleValue : 0
+        r.scoperto = l.tipoTrattenuta == .scoperto ? l.trattenuta.doubleValue : 0
+        r.massimale = l.massimale.doubleValue
+        r.dannoIndennizzabile = l.liquidabile.doubleValue
+        r.ripristiniUltimati = conVoci.allSatisfy(\.ripristiniUltimati)
+        r.liquidazioneVSU = (l.liquidabile - l.liquidabileDifferito).doubleValue
+        r.liquidazioneSI = r.ripristiniUltimati ? 0 : (l.liquidabileDifferito + l.ivaASaldo).doubleValue
+        r.ivaRiconosciuta = conVoci.contains { $0.ivaInLiquidazione + $0.ivaASaldo > 0 }
+        r.ivaInclusa = !conVoci.isEmpty && conVoci.allSatisfy { b in b.voci.contains { $0.ammessa && $0.imponibile != $0.importo } }
+        r.dannoNonIndennizzabile = l.dannoNonIndennizzabile.doubleValue
+        r.tuttoNonIndennizzabile = l.tuttoNonIndennizzabile
+        return r
+    }
+
     enum TipoScoperto {
         case percentuale
         case franchigia
         case nessuno
     }
-    
-    /// Calcola il danno accertato lordo (somma di tutte le voci indennizzabili senza deprezzamenti, migliorie, illesi, franchigie, etc.)
-    /// È la somma di valoreUnitario * quantita per tutte le voci indennizzabili di tutti i beni
+
+    // MARK: - Totali di perizia
+
+    /// Totale a nuovo delle voci ammesse (prima di migliorie, illesi, deprezzamento, franchigie).
     func calcolaDannoAccertatoLordo(perizia: Perizia) -> Double {
-        var totale: Double = 0
-        
-        // Itera su tutte le partite
-        for partita in perizia.partiteArray {
-            // Itera su tutti i beni della partita
-            for bene in partita.beniArray {
-                // Itera su tutte le voci di costo indennizzabili del bene
-                for voce in bene.vociCostoArray where voce.indennizzabile {
-                    // Somma valoreUnitario * quantita (totale a nuovo)
-                    let importo = voce.valoreUnitario.doubleValue * voce.quantita.doubleValue
-                    totale += importo
-                }
-            }
-        }
-        
-        return totale
+        guard let calcolo = stima.calcolo(perizia) else { return 0 }
+        return calcolo.beni.flatMap(\.voci).filter(\.ammessa).reduce(Decimal(0)) { $0 + $1.totaleANuovo }.doubleValue
     }
-    
-    /// Calcola la richiesta totale (somma delle richieste dei beni della perizia)
-    /// - Includes: beni in partite + beni in bozza
+
+    /// Richiesta dell'assicurato: a corpo per sinistro, altrimenti per bene, altrimenti somma delle voci.
+    /// Comprende le richieste dei beni ancora in bozza.
     func calcolaRichiestaTotale(perizia: Perizia) -> Double {
-        var totale: Double = 0
-        
-        // Beni per partita
-        for partita in perizia.partiteArray {
-            for bene in partita.beniArray {
-                totale += bene.richiesta?.doubleValue ?? 0
-            }
+        let bozza = perizia.beniBozzaArray.reduce(0.0) { $0 + ($1.richiesta?.doubleValue ?? 0) }
+        if let richiesta = stima.calcolo(perizia)?.totali.richiesta {
+            return richiesta.doubleValue + (perizia.richiestaSinistro == nil ? bozza : 0)
         }
-        
-        // Beni in bozza
-        for bene in perizia.beniBozzaArray {
-            totale += bene.richiesta?.doubleValue ?? 0
-        }
-        
-        return totale
+        return bozza
     }
-    
-    /// Calcola la stima del danno (danno indennizzabile al netto di deprezzamento, franchigia, scoperto, massimale + arrotondamento)
-    /// L'IVA viene calcolata per bene in base a: riconosciIVA, ivaInclusa, ripristiniUltimati
-    /// - Parameters:
-    ///   - perizia: La perizia da cui calcolare la stima
-    ///   - massimalePrimaFranchigia: Se applicare il massimale prima della franchigia (default: false)
-    /// - Returns: La stima del danno (danno indennizzabile totale + arrotondamento)
+
+    /// Liquidabile del motore (dopo franchigia/scoperto, limiti, arrotondamento e rettifiche).
     func calcolaStimaDanno(
         perizia: Perizia,
         massimalePrimaFranchigia: Bool = false
     ) -> Double {
-        // Calcola riepilogo liquidazione (IVA calcolata per bene)
-        let riepilogo = calcolaRiepilogoLiquidazione(
-            perizia: perizia,
-            massimalePrimaFranchigia: massimalePrimaFranchigia
-        )
-        
-        // Stima del danno: danno indennizzabile totale + arrotondamento
-        let arrotondamento = perizia.arrotondamentoLiquidazione?.doubleValue ?? 0
-        return riepilogo.dannoIndennizzabileTotale + arrotondamento
+        stima.calcolo(perizia)?.totali.liquidabile.doubleValue ?? 0
     }
 }
-

@@ -1,6 +1,6 @@
 ---
 tags: [perx, piattaforma, ios, macos]
-updated: 2026-11-07
+updated: 2026-11-26
 ---
 
 # PerX — App principale (macOS / iPad)
@@ -30,7 +30,7 @@ logica di base con `PerXCore/` (~17 file, moduli riutilizzabili).
 | `Tasks/` | `TaskManager`, `ScheduleManager`, `TaskGenerationService`, `TaskSyncQueue` — vedi [[Sistema-Task]] |
 | `AI/` | `AIManager`, `CloudAIService`, `ClaudeAIService`, `LocalModelService` — vedi [[AI-Locale-e-Cloud]] |
 | `LocalAgent/` | Client dell'app verso il servizio XPC `PerX Local Agent` — vedi [[AI-Locale-e-Cloud]] |
-| `Claims/` | Logica sinistri lato client — vedi [[Gestione-Sinistri]] |
+| `Claims/` | Logica sinistri lato client — vedi [[Gestione-Sinistri]]; `Claims/Stima/` contiene il motore di stima deterministico, unica fonte degli importi della perizia — vedi [[Motore-di-Stima]] |
 | `Chat/`, `mail/`, `whatsapp/` | Client delle comunicazioni — vedi [[Comunicazioni]] |
 | `Videoperizia/` | Client della videoperizia — vedi [[Videoperizia]] |
 | `Hub/` | Comunicazione con PerXHub — vedi [[PerXHub]] |
@@ -67,8 +67,18 @@ Dal 2026-11-07 `PerXCore` contiene un test target Swift Testing con una prima co
 regole sugli stati del sinistro e dell'utility HTML. Il workflow Apple esegue `swift test` sul core
 e compila `PerXHub`. Anche la build unsigned completa del target `PerX` è bloccante: le vecchie
 copie in `PerX/Services/Videoperizia/` sono escluse dalla membership, mentre le implementazioni
-canoniche restano in `Shared/Videoperizia/`. I target `PerXTests`/`PerXUITests` restano per ora
-boilerplate.
+canoniche restano in `Shared/Videoperizia/`. `PerXTests` contiene dal 2026-11-26 la suite Swift
+Testing del motore di stima (`StimaEngineTests`); `PerXUITests` resta boilerplate. I test di
+`PerXTests` sono ospitati nell'app (`TEST_HOST`): eseguirli apre lo store Core Data locale.
+
+## Persistenza locale
+
+Modello Core Data versionato: dal 2026-11-26 la versione corrente è `PerX v2.xcdatamodel`
+(campi del motore di stima ed entità `StimaRevisione`, migrazione leggera automatica da `PerX`).
+Ogni modifica di schema va fatta aggiungendo una nuova versione, mai modificando quella corrente.
+Nomi delle versioni: `PerX v2`, `PerX v3`… e non quelli proposti da Xcode («PerX 2»): il
+`.gitignore` esclude `* 2.*` come duplicati del Finder e la versione non verrebbe committata.
+Se lo store non si apre, `Persistence.swift` lo sposta in un file di backup invece di cancellarlo.
 
 ---
-Ultimo aggiornamento: 2026-11-07
+Ultimo aggiornamento: 2026-11-26

@@ -71,6 +71,11 @@ struct CoassicurazioneRowView: View {
                 Text("Sinistro: \(coassicurazione.numeroSinistro)")
                     .font(.caption)
                     .foregroundColor(.secondary)
+                if let virtuale = coassicurazione.indennizzoVirtuale, virtuale.doubleValue > 0 {
+                    Text("Indennizzo virtuale (riparto art. 1910): \(euroStima(virtuale.decimalValue))")
+                        .font(.caption)
+                        .foregroundColor(.blue)
+                }
             }
             
             Spacer()
@@ -114,6 +119,7 @@ struct CoassicurazioneEditView: View {
     @State private var compagnia: String = ""
     @State private var polizza: String = ""
     @State private var numeroSinistro: String = ""
+    @State private var indennizzoVirtuale: String = ""
     
     private let tipi = ["Diretta", "Indiretta"]
     
@@ -131,6 +137,14 @@ struct CoassicurazioneEditView: View {
                     TextField("Polizza", text: $polizza)
                     TextField("Numero Sinistro", text: $numeroSinistro)
                 }
+                if tipo == "Indiretta" {
+                    Section("Riparto art. 1910 c.c.") {
+                        TextField("Indennizzo virtuale dell'altra polizza (€)", text: $indennizzoVirtuale)
+                        Text("Quanto pagherebbe da sola l'altra polizza per questo danno. Si attiva dalla Liquidazione (toggle «Riparto art. 1910»).")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
             }
             .navigationTitle(coassicurazione == nil ? "Aggiungi Coassicurazione" : "Modifica Coassicurazione")
             .toolbar {
@@ -147,7 +161,7 @@ struct CoassicurazioneEditView: View {
                 }
             }
         }
-        .frame(width: 400, height: 300)
+        .frame(width: 420, height: 380)
         .onAppear {
             if let coassicurazione = coassicurazione {
                 loadCoassicurazione(coassicurazione)
@@ -160,6 +174,7 @@ struct CoassicurazioneEditView: View {
         compagnia = coassicurazione.compagnia
         polizza = coassicurazione.polizza
         numeroSinistro = coassicurazione.numeroSinistro
+        indennizzoVirtuale = coassicurazione.indennizzoVirtuale?.stringValue ?? ""
     }
     
     private func saveCoassicurazione() {
@@ -179,6 +194,7 @@ struct CoassicurazioneEditView: View {
             coassicurazioneToSave.compagnia = compagnia
             coassicurazioneToSave.polizza = polizza
             coassicurazioneToSave.numeroSinistro = numeroSinistro
+            coassicurazioneToSave.indennizzoVirtuale = tipo == "Indiretta" ? PartitaEditBox.importoItaliano(indennizzoVirtuale) : nil
             
             try? viewContext.save()
         }

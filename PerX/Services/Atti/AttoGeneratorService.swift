@@ -391,7 +391,20 @@ class AttoGeneratorService {
         // Se è indennizzabile: proposta liquidativa nell'atto di liquidazione
         // Se non è indennizzabile: importo a riserva nell'atto di accertamento
         
-        // Priorità: usa l'importo già calcolato e salvato in perizia (evita ricalcoli e mismatch)
+        // Fonte unica: il motore di stima (stesso importo di Liquidazione e Riepilogo).
+        // Negative: l'importo in atto è la riserva (stima conservativa se il danno non è accertato).
+        if let perizia = perizia, let calcolo = StimaService.shared.calcolo(perizia) {
+            if calcolo.esito == .negativo {
+                return calcolo.totali.riserva.doubleValue
+            }
+            if calcolo.totali.liquidabile > 0 || sottotipo == .liquidazione {
+                return calcolo.totali.liquidabile.doubleValue
+            }
+            // Accertamento con tutto escluso: importo a riserva
+            return calcolo.totali.riserva.doubleValue
+        }
+        
+        // Stima non calcolabile: ultimo importo salvato in perizia
         if let perizia = perizia,
            let salvato = perizia.stimaDannoIndennizzabile?.doubleValue,
            salvato > 0 {

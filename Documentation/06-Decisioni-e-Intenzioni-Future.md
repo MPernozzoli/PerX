@@ -22,6 +22,48 @@ Motivazione: ...
 
 ---
 
+## 2026-11-26 — Motore di stima deterministico nell'app, portato da «sinistri chiari»
+Contesto: nell'app macOS il calcolo della perizia era sparso tra `CalcoliService` (Double),
+`VociCostoView` e `LiquidazioneView`, con risultati diversi tra pagine (interruttore «massimale
+prima» non salvato, arrotondamento sommato a valle, deprezzamento per riga ignorato, Riepilogo
+laterale con 20%/22% fissi). L'utente ha chiesto di aggiornare stima e gestione peritale prendendo
+spunto dal motore di «sinistri chiari» (vedi la voce «Intenzione: tenant Chiari» dello stesso
+giorno), **mantenendo il flusso di compilazione a pagine** dell'app.
+
+Decisione:
+- un solo motore puro in Swift (`PerX/Services/Claims/Stima/`), `Decimal` al centesimo, input come
+  fotografia di valori e hash del calcolo; tutte le pagine (Elaborato Calcoli, Riepilogo, Atto,
+  relazione, Importi) leggono da lì. Le sei pagine del wizard restano invariate come navigazione;
+- portati dal riferimento: motivo d'esclusione delle voci e frasi sobrie per l'atto, richiesta da
+  giustificativo con priorità sinistro → bene → voci, somme assicurate per partita con trattenuta
+  scontata prima sulle eccedenze, arrotondamento ±100 € prima della franchigia, esiti (incluso
+  danno non accertato con stima conservativa a riserva), avvisi non bloccanti, scomposizione
+  richiesto → accertato → liquidabile, riparto art. 1910, bene comune con quota, revisioni con
+  approvazione, hash economico, approvazione ereditata, «solo l'ultima stima vale», verifica
+  dell'atto firmato;
+- mantenuti i criteri PerX (VSU/SI con limiti, migliorie/illesi, forzature, IVA a saldo, quota
+  differita a ripristini ultimati, rettifiche manuali dopo i limiti) e aggiunta la regola
+  proporzionale (art. 1907) quando si indica il valore reale di una partita a valore intero;
+- **non** portato ciò che è specifico del gestionale Chiari: payload Salesforce/ReClaim,
+  Light/Over (sostituito da una soglia di controllo configurabile, default 5.000 €), selezione
+  allegati, collegati multi-pratica, catalogo frasi completo;
+- correzioni di dominio volute: a «Valore a nuovo» non si applica il deprezzamento; deprezzamento
+  0% vale 0%; lo scoperto si calcola sul danno comprensivo dell'IVA riconosciuta; la liquidazione
+  forzata del bene è l'importo finale IVA riconosciuta compresa (come già mostrava la scheda bene);
+  la somma assicurata della partita si legge in formato italiano e fa da tetto;
+- schema Core Data **versionato** (`PerX v2`, migrazione leggera) invece di modificare la versione
+  unica, e `Persistence.swift` sposta in backup lo store non apribile invece di cancellarlo.
+
+Motivazione: un solo calcolo verificabile e ripetibile, approvato dal perito e congelato in
+revisioni, elimina gli scarti tra pagine e rende difendibile l'importo dell'atto.
+
+Intenzioni aperte: annualità del massimale per più sinistri dello stesso assicurato (da fare anche
+nel riferimento); collegati multi-pratica; esito suggerito dalla `definizione` per le pratiche già
+chiuse; motore condiviso con backend/MCP (o in `PerXCore` per `swift test`) tenendo gli stessi
+casi di test del motore Python finché ne esistono due. Dettagli → [[Motore-di-Stima]].
+
+---
+
 ## 2026-11-26 — Cinque ingressi web PynkStudio associati al gateway Vercel PerX
 Contesto: i domini prodotto storici non sono più considerati ingressi affidabili; l'utente ha
 confermato che la migrazione deve usare esclusivamente la gerarchia sotto `pynkstudio.eu`, mentre
