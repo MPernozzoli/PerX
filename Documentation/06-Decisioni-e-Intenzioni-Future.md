@@ -41,9 +41,10 @@ schema `bignami` o le tabelle di Insight Studio, entrambi con RLS. Testata su Po
 usa-e-getta nella sequenza 041 → 042 e riesecuzione idempotente.
 Aperto: (1) il frontend `apps/catdispatcher` fa ancora `supabase.from('cats'|…)` su tabelle che
 qui non esistono — va allineato a `/api/v1/cat-dispatcher/*` o verificato verso quale progetto
-Supabase punta; (2) dopo il deploy verificare in sola lettura che nessuna tabella `public` sia
-senza RLS; (3) restano da eliminare dal dashboard Supabase tre notebook temporanei (audit e due
-«Apply 041»), che il client MCP non può cancellare.
+Supabase punta; (2) restano da eliminare dal dashboard Supabase tre notebook temporanei (audit e
+due «Apply 041»), che il client MCP non può cancellare.
+Esito: dopo il push di `bc5d3c6` e il deploy Render, verifica in sola lettura (22:52): **96
+tabelle su 96 in `public` con RLS**, nessuna senza; `api.perx.it/health` risponde 200.
 
 ## 2026-11-26 — Domini PerX piatti attivati su Vercel
 Contesto: il pannello DNS Register.it in uso non accetta le etichette annidate `app.perx` e
