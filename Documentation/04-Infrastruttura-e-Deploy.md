@@ -68,25 +68,24 @@ introducono nuove SPA Vite o runtime incompatibili col gateway Next.js (vedi anc
 
 Dal 2026-11-25 il target è consolidare i prodotti proprietari sotto `pynkstudio.eu`: in prima
 battuta `perx.pynkstudio.eu`, `catdispatcher.pynkstudio.eu` e
-`bignamionline.pynkstudio.eu`. I servizi PerX diventano sub-subdomini
-(`app.perx.pynkstudio.eu`, `api.perx.pynkstudio.eu`,
-`login.perx.pynkstudio.eu`). `admin.pynkstudio.eu` rimane il pannello unico cross-product e
+`bignamionline.pynkstudio.eu`. Per compatibilità con il pannello DNS Register.it, i servizi PerX
+usano nomi piatti (`app-perx.pynkstudio.eu`, `api-perx.pynkstudio.eu`,
+`login-perx.pynkstudio.eu`). `admin.pynkstudio.eu` rimane il pannello unico cross-product e
 dialoga con i backend esclusivamente tramite API server-to-server.
 
 I domini tenant e i loro prefissi (`admin`, `assicurati`, `riunioni`, ecc.) non vengono migrati
 sotto PynkStudio. I domini storici restano alias/redirect fino alla verifica di tutti i consumer.
 
 **Stato operativo 2026-11-26:** il codice dual-host e i deploy origin dei tre portali sono pronti;
-i cinque host web previsti sono associati al progetto Vercel `perx`. Manca il DNS autorevole
-Register.it:
+i cinque host web previsti sono associati al progetto Vercel `perx` e il DNS è propagato:
 
 | Host | Record richiesto | Stato |
 |---|---|---|
-| `perx.pynkstudio.eu` | `A 76.76.21.21` | associato a Vercel, DNS assente |
-| `app.perx.pynkstudio.eu` | `A 76.76.21.21` | associato a Vercel, DNS assente; applicazione non ancora instradata |
-| `catdispatcher.pynkstudio.eu` | `A 76.76.21.21` | associato a Vercel, DNS assente |
-| `bignamionline.pynkstudio.eu` | `A 76.76.21.21` | associato a Vercel, DNS assente |
-| `login.perx.pynkstudio.eu` | `A 76.76.21.21` | associato a Vercel, DNS assente; SSO non ancora implementato |
+| `perx.pynkstudio.eu` | `A 76.76.21.21` | attivo su Vercel, landing PerX |
+| `app-perx.pynkstudio.eu` | `A 76.76.21.21` | attivo; fallback temporaneo alla landing PerX |
+| `catdispatcher.pynkstudio.eu` | `A 76.76.21.21` | attivo su Vercel, CAT Dispatcher |
+| `bignamionline.pynkstudio.eu` | `A 76.76.21.21` | attivo su Vercel, Bignami Online |
+| `login-perx.pynkstudio.eu` | `A 76.76.21.21` | attivo; fallback temporaneo alla landing PerX finché manca SSO |
 | `perx.it` | sostituire l'A attuale con `76.76.21.21` | DNS/certificato non validi |
 
 Gli origin Vercel production sono `perx-insight-studio.vercel.app`,

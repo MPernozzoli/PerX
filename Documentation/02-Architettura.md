@@ -72,7 +72,7 @@ tenant creato via `scripts/bootstrap_single_tenant.py`). Vedi [[05-Stato-Svilupp
 ## Identità e autenticazione
 
 Oggi ogni app fa login autonomo verso `/api/v1/auth/login` (JWT Bearer). È pianificato un identity
-layer unico (target `login.perx.pynkstudio.eu`, con `login.perx.it` come host storico di
+layer unico (target `login-perx.pynkstudio.eu`, con `login.perx.it` come host storico di
 transizione; OAuth2/OIDC + PKCE) per SSO tra app PerX, admin, CatDispatcher e futuri servizi —
 vedi [[Login-Unificato-SSO]] per lo stato (pianificazione, non ancora implementato).
 

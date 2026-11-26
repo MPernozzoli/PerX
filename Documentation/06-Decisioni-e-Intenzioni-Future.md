@@ -22,6 +22,21 @@ Motivazione: ...
 
 ---
 
+## 2026-11-26 — Domini PerX piatti attivati su Vercel
+Contesto: il pannello DNS Register.it in uso non accetta le etichette annidate `app.perx` e
+`login.perx`; l'utente ha approvato la variante piatta e ha configurato i record DNS.
+
+Decisione / stato: i target sono `app-perx.pynkstudio.eu`, `login-perx.pynkstudio.eu` e, per il
+backend Render, `api-perx.pynkstudio.eu`. I primi due sono associati al progetto Vercel
+`pynkstudio/perx`; insieme a `perx.pynkstudio.eu`, `catdispatcher.pynkstudio.eu` e
+`bignamionline.pynkstudio.eu` risolvono sulla rete Vercel e rispondono HTTPS. Finché app e SSO
+dedicati non saranno implementati, `app-perx` e `login-perx` servono esplicitamente la landing
+PerX invece di cadere sul portale assicurati generico. Gli alias annidati restano temporaneamente
+associati fino alla pulizia finale della configurazione.
+
+Motivazione: completare la migrazione con nomi compatibili con Register.it e garantire una pagina
+coerente su ogni nuovo ingresso durante l'implementazione dei servizi futuri.
+
 ## 2026-11-26 — RLS sulle tabelle `public` (Advisor Supabase `sensitive_columns_exposed`)
 Contesto: l'Advisor di sicurezza del progetto Supabase `PerX` ha segnalato
 `sensitive_columns_exposed`: tabelle con colonne sensibili (`users.password_hash`, `token_hash` di
