@@ -148,7 +148,12 @@ root); eventuali lockfile annidati in `apps/*` vanno rimossi e ignorati via `.gi
 
 Progetto Supabase condiviso da backend e app satellite:
 
-- **Postgres primario**: raggiunto solo dal backend (vedi [[02-Architettura]]).
+- **Postgres primario**: raggiunto solo dal backend (vedi [[02-Architettura]]). Lo schema `public`
+  è però esposto dalla Data API di Supabase: **ogni tabella creata da una migrazione Alembic deve
+  abilitare RLS** (`ALTER TABLE … ENABLE ROW LEVEL SECURITY`), altrimenti la chiave anon la
+  espone. La migrazione `041_enable_rls_public` l'ha applicata alle tabelle esistenti, con
+  l'eccezione delle tabelle usate direttamente dal frontend CAT Dispatcher (vedi
+  [[06-Decisioni-e-Intenzioni-Future]], voce 2026-11-26 «RLS sulle tabelle `public`»).
 - **Storage**: bucket `perx-portal-uploads` per i file del portale assicurati.
 - **Edge functions** (`supabase/functions/`): `find-policy`, `ai-extract-policy`,
   `resend-inbound`, `process-excel-import`.

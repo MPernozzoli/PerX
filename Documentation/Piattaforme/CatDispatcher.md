@@ -1,6 +1,6 @@
 ---
 tags: [perx, piattaforma, web, catdispatcher]
-updated: 2026-11-25
+updated: 2026-11-26
 ---
 
 # CAT Dispatcher (`apps/catdispatcher`)
@@ -24,9 +24,17 @@ distribuiti i carichi.
 
 ## Integrazione con PerX
 
-CatDispatcher è un frontend separato nella stessa repo, ma usa **il backend PerX** e lo stesso
-database Supabase — nessun accesso diretto alle tabelle. Configura
-`NEXT_PUBLIC_PERX_API_BASE_URL` e chiama solo `/api/v1/cat-dispatcher/*`.
+CatDispatcher è un frontend separato nella stessa repo e usa **il backend PerX** e lo stesso
+database Supabase. Configura `NEXT_PUBLIC_PERX_API_BASE_URL` e chiama `/api/v1/cat-dispatcher/*`.
+
+> [!WARNING]
+> Stato reale del codice (verificato 2026-11-26): le schermate `/`, `/admin`,
+> `/admin/gis-editor` e `/api` (`apps/catdispatcher/src`) usano **ancora** il client Supabase con
+> la chiave publishable e interrogano direttamente le tabelle `allowed_domains`, `cat_commune`,
+> `cat_suspensions`, `cats`, `communes`, `geojson_backup_log`, `provinces`, `regions`, `tenants`,
+> `user_roles`, `user_tenants` (più le RPC `get_user_role`, `find_commune_at_point`). Queste
+> tabelle sono escluse dalla migrazione RLS `041_enable_rls_public` finché non migrano al backend
+> o non hanno policy esplicite — vedi [[06-Decisioni-e-Intenzioni-Future]] (2026-11-26).
 
 Endpoint principali: `map-data`, `search`, `communes/{id}`, `get-cat-by-commune`,
 `dispatch/requests`, `dispatch/insured-windows`, `dispatch/availability-rules`,

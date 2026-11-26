@@ -22,6 +22,38 @@ Motivazione: ...
 
 ---
 
+## 2026-11-26 — RLS sulle tabelle `public` (Advisor Supabase `sensitive_columns_exposed`)
+Contesto: l'Advisor di sicurezza del progetto Supabase `PerX` ha segnalato
+`sensitive_columns_exposed`: tabelle con colonne sensibili (`users.password_hash`, `token_hash` di
+portale/inviti/sessioni, IBAN, device token…) raggiungibili dalla Data API senza restrizioni.
+Causa: lo schema `public` è esposto da PostgREST e le migrazioni Alembic 001–040 creano le
+tabelle **senza** `ENABLE ROW LEVEL SECURITY` (solo lo schema `bignami`, in `018`, lo fa); con i
+grant di default di Supabase la chiave anon/publishable ha quindi accesso pieno. Contraddice la
+decisione «il backend è l'unico punto di accesso ai dati» (vedi [[02-Architettura]]): era vera per
+i nostri client, non per chi usa la chiave pubblica.
+Decisione: migrazione `backend/migrations/versions/041_enable_rls_public_tables.py` — abilita RLS
+(senza policy e senza `FORCE`) su ogni tabella di `public` che ne è priva, saltando tabelle di
+estensioni, tabelle non possedute dal ruolo di migrazione e `LEGACY_DIRECT_ACCESS_TABLES` (vedi
+sotto). Backend (`DATABASE_URL`, ruolo proprietario), PerXHub ed edge function (service-role)
+bypassano RLS: nessun impatto. Verificata su Postgres usa-e-getta: `anon` passa da leggere
+`users`/`portal_sessions`/`actor_ibans` a 0 righe; seconda esecuzione idempotente. `downgrade()`
+è volutamente vuoto (disabilitare RLS riesporrebbe i dati).
+Da fare / aperto:
+1. **CAT Dispatcher legacy.** Il frontend `apps/catdispatcher/src` interroga ancora direttamente
+   via PostgREST (`supabase.from(...)`/`rpc`) 11 tabelle: `allowed_domains`, `cat_commune`,
+   `cat_suspensions`, `cats`, `communes`, `geojson_backup_log`, `provinces`, `regions`, `tenants`,
+   `user_roles`, `user_tenants` (rotte `/`, `/admin`, `/admin/gis-editor`, `/api`). La migrazione
+   non le tocca per non rompere quelle schermate. Se in produzione sono senza RLS restano
+   esposte (incluse `tenants`, `user_tenants`, `user_roles`): o si migrano le schermate al backend
+   `/api/v1/cat-dispatcher/*` (come già dichiarato in [[CatDispatcher]]), o si scrivono policy
+   RLS esplicite; poi si tolgono le tabelle da `LEGACY_DIRECT_ACCESS_TABLES`. Prima verificare lo
+   stato reale nel SQL editor di Supabase.
+2. **Regola per le nuove migrazioni:** ogni tabella creata in `public` deve abilitare RLS nella
+   stessa migrazione. Idea non implementata: event trigger Supabase che abilita RLS alle nuove
+   tabelle, oppure un test CI che fallisce se una tabella `public` è senza RLS.
+3. **Non ancora applicata in produzione:** la 041 parte al prossimo deploy Render
+   (`scripts/start-render.sh` esegue `alembic upgrade head`).
+
 ## 2026-11-26 — Motore di stima deterministico nell'app, portato da «sinistri chiari»
 Contesto: nell'app macOS il calcolo della perizia era sparso tra `CalcoliService` (Double),
 `VociCostoView` e `LiquidazioneView`, con risultati diversi tra pagine (interruttore «massimale
