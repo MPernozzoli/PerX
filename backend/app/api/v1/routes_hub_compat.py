@@ -14,6 +14,7 @@ from typing import Optional
 
 import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -455,6 +456,15 @@ async def download_vault_file(
     document = await _resolve_document_or_404(db, current_user, file_id)
     if not document.storage_path:
         raise HTTPException(status_code=404, detail="File content not found")
+    # Opt-in (default off): con provider S3 e flag attivo il client scarica direttamente da S3.
+    if settings.VAULT_S3_PRESIGNED_DOWNLOADS and VaultStorageService.supports_presigned_downloads():
+        presigned_url = await VaultStorageService.generate_download_url(
+            document.storage_path,
+            file_name=document.file_name,
+            mime_type=document.mime_type,
+        )
+        if presigned_url:
+            return RedirectResponse(url=presigned_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
     try:
         content = await VaultStorageService.download_bytes(document.storage_path)
     except FileNotFoundError as exc:

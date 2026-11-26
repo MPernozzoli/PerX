@@ -111,10 +111,19 @@ class Settings(BaseSettings):
     # Storage
     STORAGE_BUCKET_NAME: str = "perx-attachments"
     STORAGE_PROVIDER: str = "gcs"  # gcs, s3
-    VAULT_STORAGE_PROVIDER: str = "local"  # local, mac_mini
+    VAULT_STORAGE_PROVIDER: str = "local"  # local, mac_mini, s3
     VAULT_STORAGE_ROOT: str = "/tmp/perx-hub-compat"
     MAC_MINI_STORAGE_URL: Optional[str] = None
     MAC_MINI_STORAGE_TOKEN: Optional[str] = None
+    # Vault su object storage S3-compatibile (attivo solo con VAULT_STORAGE_PROVIDER=s3).
+    # Le credenziali NON stanno qui: catena standard AWS (env AWS_*, profili, IAM role).
+    VAULT_S3_BUCKET: Optional[str] = None
+    VAULT_S3_REGION: str = "eu-south-1"
+    VAULT_S3_ENDPOINT_URL: Optional[str] = None  # None = AWS; valorizzato per moto server locale / Supabase S3
+    VAULT_S3_PREFIX: str = ""
+    VAULT_S3_FORCE_PATH_STYLE: bool = False  # necessario per endpoint locali (moto server)
+    VAULT_S3_PRESIGNED_URL_TTL_SECONDS: int = 300
+    VAULT_S3_PRESIGNED_DOWNLOADS: bool = False  # opt-in: download via URL presigned
     
     # Pub/Sub
     PUBSUB_PROJECT_ID: str = ""
