@@ -104,14 +104,33 @@ def upgrade() -> None:
         ["account_id", "wa_message_id"],
     )
 
-    # Realtime publication (Supabase)
+    # Realtime publication: exists only on Supabase, not on plain Postgres (CI, local).
     op.execute(
-        "ALTER PUBLICATION supabase_realtime ADD TABLE wa_messages"
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+                ALTER PUBLICATION supabase_realtime ADD TABLE wa_messages;
+            END IF;
+        END $$;
+        """
     )
 
 
 def downgrade() -> None:
-    op.execute("ALTER PUBLICATION supabase_realtime DROP TABLE wa_messages")
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1 FROM pg_publication_tables
+                WHERE pubname = 'supabase_realtime' AND tablename = 'wa_messages'
+            ) THEN
+                ALTER PUBLICATION supabase_realtime DROP TABLE wa_messages;
+            END IF;
+        END $$;
+        """
+    )
     op.drop_index("ix_wa_messages_outbox", table_name="wa_messages")
     op.drop_index("ix_wa_messages_sinistro", table_name="wa_messages")
     op.drop_index("ix_wa_messages_tenant_account_ts", table_name="wa_messages")

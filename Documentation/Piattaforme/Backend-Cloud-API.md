@@ -29,9 +29,14 @@ pytest-cov e Ruff; `pyproject.toml` contiene configurazione, marker e coverage. 
 `backend-ci.yml` usa Python 3.11 e Postgres 16, applica tutte le migrazioni su database vuoto e
 pubblica `coverage.xml`. La coverage globale osservata (38%) deriva anche dall'import di tutte le
 route e non va interpretata come copertura funzionale: test API/DB/auth restano il prossimo passo.
-Al 2026-11-26 i test sono 43 (inclusi quelli di `tests/test_security_hardening.py`), ma il job CI
-non è mai passato perché le migration non ricostruiscono lo schema da zero — vedi
-[[05-Stato-Sviluppo-e-Roadmap]].
+Al 2026-11-26 i test sono 67 (inclusi `test_security_hardening.py` e i test dello storage S3).
+Fino a quella data il job CI non era mai passato perché le migration non ricostruivano lo schema da
+zero. La revisione `002b_legacy_core_tables` (tra `002` e `003`) ora crea le 22 tabelle e le 72
+colonne di `claims`/`users` nate fuori da Alembic, in modo idempotente; non viene mai eseguita sui
+database già oltre `003` (production), perché Alembic considera applicati gli antenati della head.
+Il DDL è congelato nel file, generato dai modelli a partire dallo stato di `002`. Restano
+differenze minori tra migration e modelli (nomi di indici/FK, `JSON` vs `JSONB`), da non correggere
+alla cieca perché il DB production le ha a sua volta.
 
 ## Sicurezza applicativa (dal 2026-11-26)
 
@@ -162,4 +167,4 @@ estensioni), **device token/push**, **AI prompt versioning & routing runs**, **r
 [[05-Stato-Sviluppo-e-Roadmap]].
 
 ---
-Ultimo aggiornamento: 2026-11-26 (provider S3 del vault predisposto, non attivo)
+Ultimo aggiornamento: 2026-11-26 (provider S3 predisposto; migrazioni ricostruibili da zero)

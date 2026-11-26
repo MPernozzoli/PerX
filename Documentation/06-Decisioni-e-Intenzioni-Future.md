@@ -22,6 +22,20 @@ Motivazione: ...
 
 ---
 
+## 2026-11-26 — Migrazioni Alembic ricostruibili da zero con una revisione intermedia idempotente
+Contesto: il job Backend CI non era mai passato perché 22 tabelle core e 72 colonne di
+`claims`/`users` erano state create fuori da Alembic (`create_all`) e `003` le referenziava già.
+
+Decisione: inserire la revisione `002b_legacy_core_tables` tra `002` e `003` invece di una baseline
+nuova in coda alla catena, perché il problema si presenta già a `003`. La revisione crea tabelle,
+indici e colonne solo se mancano e ha un `downgrade` volutamente vuoto, per non distruggere dati
+negli ambienti dove quelle tabelle esistono da prima di Alembic. I database già oltre `003`
+(production, a `040`) non la eseguono, perché Alembic considera applicati gli antenati della head.
+Le colonne `NOT NULL` hanno un default lato server ricavato dai modelli, necessario perché `002`
+inserisce già una riga in `users`. Anche `024` è stata resa condizionale sulla publication
+`supabase_realtime`, che esiste solo su Supabase. Alternativa scartata: `alembic stamp` o uno
+schema dump, che avrebbero nascosto il problema invece di rendere ricostruibile un ambiente.
+
 ## 2026-11-26 — Intenzione: dismettere il Mac mini, storage file su AWS S3
 Contesto: l'utente ritiene il Mac mini una soluzione nata per risparmiare e, anche in vista di
 Vercel X, vuole spostare lo storage dei file su AWS. Per ora basta predisporre e simulare la

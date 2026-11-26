@@ -90,8 +90,10 @@ Vedi [[Login-Unificato-SSO]] per il piano completo (5 fasi). Ad oggi:
   2026-11-26**: le migrazioni *non* sono verificate su Postgres vuoto — il job Backend CI è fallito
   in tutti i 6 run su GitHub perché la catena Alembic non crea 22 tabelle core usate dai modelli
   (`documents`, `emails`, `attachments`, `audit_log`, `case_tasks`, `internal_chat_*`, ecc.).
-  Un ambiente nuovo (staging, preview, disaster recovery) non è quindi ricostruibile dalle sole
-  migration. Mancano ancora fixture DB e test API/auth/tenant reali. Ruff segnala anche un
+  Un ambiente nuovo (staging, preview, disaster recovery) non era quindi ricostruibile dalle sole
+  migration. **Risolto lo stesso giorno** con la revisione `002b_legacy_core_tables`: `upgrade
+  head` su Postgres vuoto è verificato fino a `040` (dettagli in [[Backend-Cloud-API]]). Mancano
+  ancora fixture DB e test API/auth/tenant reali. Ruff segnala anche un
   `NameError` reale in `app/services/push_notifier.py` (`settings` non importato).
 - **Web**: Vitest configurato in tutti i workspace; 7 test iniziali verdi su routing tenant del
   portale e utility province CAT. Typecheck, test, lint e build production sono bloccanti su tutti
@@ -164,4 +166,4 @@ repository GitHub resta pubblico —, catena di migration non ricostruibile da z
 inferenza AI cloud server-side (l'AI funziona solo su Mac locale).
 
 ---
-Ultimo aggiornamento: 2026-11-26 (storage S3 del vault predisposto, non attivo)
+Ultimo aggiornamento: 2026-11-26 (storage S3 predisposto; migrazioni ricostruibili da zero)

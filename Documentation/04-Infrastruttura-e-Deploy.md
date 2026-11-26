@@ -16,7 +16,11 @@ superseded:
   su 6 falliti su GitHub)** — `alembic upgrade head` su DB vuoto si interrompe perché la catena di
   migration non crea 22 tabelle core (es. `documents`, `emails`, `attachments`, `audit_log`,
   `case_tasks`, `internal_chat_*`) che i modelli usano e che il DB production ha ottenuto fuori da
-  Alembic. Vedi [[06-Decisioni-e-Intenzioni-Future]] (2026-11-26, audit);
+  Alembic. Vedi [[06-Decisioni-e-Intenzioni-Future]] (2026-11-26, audit). **Corretto lo stesso
+  giorno (PR #5)**: la revisione `002b_legacy_core_tables`, inserita tra `002` e `003`, ricrea in
+  modo idempotente le 22 tabelle e 72 colonne legacy di `claims`/`users`, e `024` aggiunge
+  `wa_messages` alla publication `supabase_realtime` solo se esiste. `upgrade head` su Postgres 16
+  vuoto è verificato fino a `040`;
 - `web-ci.yml`: Node 22/npm cache; typecheck, test Vitest, lint e build production sono gate
   bloccanti per tutti e cinque i workspace. Le app prive di test accettano ancora temporaneamente
   una suite vuota, mentre `portal-web` e `catdispatcher` contengono i primi 7 test reali;
@@ -202,4 +206,4 @@ tabella `process_jobs`; un worker sul Mac mini fa polling/lease con header
 `GET /api/v1/process-jobs/jobs/claim`. Vedi [[Backend-Cloud-API]] e [[AI-Locale-e-Cloud]].
 
 ---
-Ultimo aggiornamento: 2026-11-26 (provider S3 del vault predisposto, non attivo)
+Ultimo aggiornamento: 2026-11-26 (provider S3 predisposto; migrazioni ricostruibili da zero)
