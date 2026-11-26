@@ -1639,7 +1639,12 @@ async def seed_sample_claims(
 
 async def main():
     import sys
-    
+
+    if settings.is_production_like:
+        # The seed upserts demo data and resets the platform admin password to the
+        # published default: it must never run against a production-like database.
+        raise SystemExit(f"seed_data.py is disabled when ENV={settings.ENV!r}")
+
     if len(sys.argv) < 2:
         print("Usage: python scripts/seed_data.py <postgres_url>")
         sys.exit(1)

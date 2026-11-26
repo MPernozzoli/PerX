@@ -58,7 +58,7 @@ private func requireStorageAccess(_ req: Request) throws {
         throw Abort(.internalServerError, reason: "Storage shared secret not configured")
     }
     let provided = req.headers.first(name: "X-PerX-Storage-Token")?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-    guard provided == configured else {
+    guard !provided.isEmpty, constantTimeEquals(provided, configured) else {
         throw Abort(.unauthorized, reason: "Invalid storage token")
     }
 }

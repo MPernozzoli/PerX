@@ -1,19 +1,44 @@
 """
 Configuration management using Pydantic Settings
 """
+import logging
 from pathlib import Path
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 from typing import List, Optional
 
 
 ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 
+logger = logging.getLogger(__name__)
+
+# Environments where development shortcuts must never be active.
+PRODUCTION_LIKE_ENVS = {"prod", "production", "staging"}
+
+# Placeholder secrets shipped in defaults/examples: never acceptable outside dev.
+_KNOWN_PLACEHOLDER_SECRETS = {
+    "change-me-in-production",
+    "replace-with-a-random-secret",
+    "changeme",
+    "secret",
+}
+_MIN_SECRET_KEY_LENGTH = 32
+
+# Flags that expose credentials or bypass authentication; forced off in production.
+_DEV_ONLY_FLAGS = (
+    "DEBUG",
+    "PORTAL_DEBUG_PREVIEW_LINKS",
+    "PORTAL_DEV_CLAIM_REFERENCE_ONLY_AUTH",
+)
+
 
 class Settings(BaseSettings):
     # App
     APP_NAME: str = "PerX Cloud API"
     ENV: str = "dev"  # dev, staging, prod
-    DEBUG: bool = True
+    DEBUG: bool = False
+    # None = enabled only outside production-like environments.
+    API_DOCS_ENABLED: Optional[bool] = None
     
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/perx_cloud"
@@ -37,13 +62,19 @@ class Settings(BaseSettings):
     PORTAL_OTP_EXPIRE_MINUTES: int = 10
     PORTAL_OTP_MAX_ATTEMPTS: int = 5
     PORTAL_APP_URL: str = "http://localhost:3001"
-    PORTAL_DEBUG_PREVIEW_LINKS: bool = True
-    PORTAL_DEV_CLAIM_REFERENCE_ONLY_AUTH: bool = True
+    # Development only: return magic links / OTP codes in API responses and let a
+    # bare claim reference provision portal access. Forced off in production.
+    PORTAL_DEBUG_PREVIEW_LINKS: bool = False
+    PORTAL_DEV_CLAIM_REFERENCE_ONLY_AUTH: bool = False
     PORTAL_SIGNATURE_WEBHOOK_SECRET: Optional[str] = None
     PORTAL_VAPID_PUBLIC_KEY: Optional[str] = None
     PORTAL_VAPID_PRIVATE_KEY: Optional[str] = None
     PORTAL_VAPID_SUBJECT: str = "mailto:info@perx.it"
     ROUTING_RESOLVE_SECRET: Optional[str] = None
+    # Shared secret required on /communications/provider-webhook (header
+    # X-PerX-Webhook-Secret). None keeps the endpoint disabled: no telecom
+    # provider verifies signatures yet.
+    COMMUNICATIONS_WEBHOOK_SECRET: Optional[str] = None
 
     # LiveKit videocall provider for videoperizia. URL is the wss:// signaling
     # endpoint (e.g. wss://<project>.livekit.cloud). API key/secret sign client
@@ -132,5 +163,44 @@ class Settings(BaseSettings):
         env_file = str(ENV_FILE)
         case_sensitive = True
 
+    @property
+    def is_production_like(self) -> bool:
+        return self.ENV.strip().lower() in PRODUCTION_LIKE_ENVS
+
+    @property
+    def api_docs_enabled(self) -> bool:
+        if self.API_DOCS_ENABLED is not None:
+            return self.API_DOCS_ENABLED
+        return not self.is_production_like
+
+    @model_validator(mode="after")
+    def _disable_dev_shortcuts_in_production(self) -> "Settings":
+        """Dev shortcuts expose credentials or bypass auth: never active outside development."""
+        if not self.is_production_like:
+            return self
+        for flag in _DEV_ONLY_FLAGS:
+            if getattr(self, flag):
+                logger.critical("%s=True is not allowed when ENV=%s: forcing it to False", flag, self.ENV)
+                setattr(self, flag, False)
+        return self
+
+    def assert_production_secrets(self) -> None:
+        """Fail fast on placeholder or weak secrets in production-like environments.
+
+        Kept out of the pydantic validator on purpose: a ValidationError echoes a
+        slice of the raw settings input, which would leak secret fragments into
+        the platform logs.
+        """
+        if not self.is_production_like:
+            return
+        secret = (self.SECRET_KEY or "").strip()
+        if secret.lower() in _KNOWN_PLACEHOLDER_SECRETS or len(secret) < _MIN_SECRET_KEY_LENGTH:
+            raise RuntimeError(
+                f"SECRET_KEY must be a random value of at least {_MIN_SECRET_KEY_LENGTH} characters "
+                f"when ENV={self.ENV!r}; generate one with "
+                "`python -c \"import secrets; print(secrets.token_urlsafe(48))\"`"
+            )
+
 
 settings = Settings()
+settings.assert_production_secrets()

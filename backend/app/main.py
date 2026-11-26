@@ -80,7 +80,12 @@ app = FastAPI(
     title="PerX Cloud API",
     description="API backend per gestione sinistri cloud-first multiutente",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    # The public schema maps every endpoint: keep it off in production unless
+    # API_DOCS_ENABLED=True is set explicitly.
+    docs_url="/docs" if settings.api_docs_enabled else None,
+    redoc_url="/redoc" if settings.api_docs_enabled else None,
+    openapi_url="/openapi.json" if settings.api_docs_enabled else None,
 )
 
 # CORS middleware

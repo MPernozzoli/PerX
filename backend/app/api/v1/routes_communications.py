@@ -3,16 +3,18 @@ Unified communications routes.
 """
 from __future__ import annotations
 
+import secrets
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.communication import Call, CallParticipant, CommunicationSession
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import get_current_active_user
 from app.models.user import User
@@ -210,10 +212,27 @@ async def handle_session_action(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+def _require_webhook_secret(
+    x_perx_webhook_secret: str | None = Header(default=None, alias="X-PerX-Webhook-Secret"),
+) -> None:
+    """Gate for the provider webhook until real provider signature checks exist.
+
+    The telecom adapters do not verify provider signatures yet (see
+    TelnyxAdapter.validate_webhook_signature), so the endpoint stays disabled
+    unless COMMUNICATIONS_WEBHOOK_SECRET is configured and presented.
+    """
+    expected = (settings.COMMUNICATIONS_WEBHOOK_SECRET or "").strip()
+    if not expected:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not Found")
+    if not x_perx_webhook_secret or not secrets.compare_digest(x_perx_webhook_secret, expected):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid webhook secret")
+
+
 @router.post("/provider-webhook", response_model=ProviderWebhookResponse)
 async def provider_webhook(
     payload: ProviderWebhookRequest,
     db: AsyncSession = Depends(get_db),
+    _: None = Depends(_require_webhook_secret),
 ):
     return await CommunicationService().handle_provider_webhook(
         db=db,

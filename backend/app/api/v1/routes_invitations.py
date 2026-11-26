@@ -6,12 +6,13 @@ import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import delete, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.rate_limit import RateLimitRule, enforce_rate_limit
 from app.core.security import get_current_platform_admin
 from app.models.invitation import UserInvitation
 from app.models.role import Role, user_roles
@@ -26,6 +27,9 @@ from app.schemas.invitation import (
 )
 
 router = APIRouter()
+
+# Invitation tokens are bearer secrets: slow down token guessing.
+_INVITATION_IP = RateLimitRule(limit=20, window_seconds=60)
 
 
 def _normalize_email(value: str) -> str:
@@ -159,7 +163,8 @@ async def create_invitation(
 
 
 @router.get("/{token}", response_model=InvitationPublicResponse)
-async def get_invitation(token: str, db: AsyncSession = Depends(get_db)):
+async def get_invitation(token: str, request: Request, db: AsyncSession = Depends(get_db)):
+    enforce_rate_limit(request, "invitation-read", per_ip=_INVITATION_IP)
     invitation = await _get_invitation_by_token(db, token)
     await _expire_if_needed(db, invitation)
     if invitation.status != "pending":
@@ -183,8 +188,10 @@ async def get_invitation(token: str, db: AsyncSession = Depends(get_db)):
 async def accept_invitation(
     token: str,
     payload: InvitationAccept,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
+    enforce_rate_limit(request, "invitation-accept", per_ip=_INVITATION_IP)
     invitation = await _get_invitation_by_token(db, token)
     await _expire_if_needed(db, invitation)
     if invitation.status != "pending":

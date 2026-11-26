@@ -58,7 +58,13 @@ def _admin_full_name() -> str:
 
 
 def _admin_password() -> str:
-    return settings.SINGLE_TENANT_ADMIN_PASSWORD or settings.APP_ADMIN_DEFAULT_PASSWORD
+    password = settings.SINGLE_TENANT_ADMIN_PASSWORD or settings.APP_ADMIN_DEFAULT_PASSWORD
+    if settings.is_production_like and password == "change-me-now":
+        # The default is published in the repository: never seed it outside dev.
+        raise SystemExit(
+            "Refusing to bootstrap with the default admin password: set SINGLE_TENANT_ADMIN_PASSWORD."
+        )
+    return password
 
 
 def _domain_from_email(email: str) -> str | None:
