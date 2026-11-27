@@ -293,6 +293,9 @@ final class HubAPIAdapterClient {
 
     @discardableResult
     func loginToCloud(forceRefresh: Bool = false) async throws -> String {
+        if let session = BackendAPIClient.shared.currentAccessToken(), !session.isEmpty {
+            return session
+        }
         if !forceRefresh, let token = loadFromKeychain(forKey: "cloud_api_access_token"), !token.isEmpty {
             return token
         }

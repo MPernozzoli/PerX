@@ -77,6 +77,7 @@ final class AccountClaimSync {
         NotificationCenter.default.post(name: .accountClaimScopeChanged, object: nil)
         await mirrorClaims(ownerEmail: email, tenantId: tenantId)
         await mirrorDiary(ownerEmail: email)
+        AccountRuntime.applyCurrentProfile()
         NotificationCenter.default.post(name: .accountClaimScopeChanged, object: nil)
     }
 

@@ -22,6 +22,14 @@ Motivazione: ...
 
 ---
 
+## 2026-11-27 — I servizi partono solo se l'account li ha
+Contesto: nei log, Chiari avviava i trigger dello studio (follow-up atto e documenti),
+il polling WhatsApp di un account staccato e la sync mail con un token non suo (`unauthorized`).
+Decisione: posta, WhatsApp e trigger passivi si accendono dal profilo dell'account.
+Chiari tiene la posta, con il token dell'accesso Google. WhatsApp e i follow-up automatici restano spenti.
+La mail non riprova all'infinito se il server rifiuta l'accesso.
+Motivazione: ogni servizio deve appartenere all'account connesso.
+
 ## 2026-11-27 — Note, importi e stime Chiari nel diario della pratica
 Contesto: le 273 pratiche erano sul server senza le note libere, e l'app non copiava
 né il diario né gli importi.

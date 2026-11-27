@@ -357,6 +357,7 @@ class GoogleAuthService: ObservableObject {
         let displayName = Self.resolveDisplayName(email: user.email, fullName: user.full_name)
         persistAuthenticatedUser(email: user.email, fullName: user.full_name)
         AccountClaimScope.remember(tenantId: user.tenant_id)
+        HubAPIAdapterClient.shared.clearCloudSession()
         AccountVault.activate(email: user.email)
         userEmail = user.email
         userName = displayName

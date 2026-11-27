@@ -301,6 +301,9 @@ class HubEmailService: ObservableObject {
         } catch {
             self.error = error.localizedDescription
             print("[HubEmailService] ❌ Errore sync: \(error)")
+            if error.localizedDescription.localizedCaseInsensitiveContains("unauthorized") {
+                stopPolling()
+            }
         }
         
         isLoading = false
