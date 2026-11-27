@@ -27,7 +27,7 @@ from app.models.document import Document
 from app.models.document_version import DocumentVersion
 from app.models.email import Email, EmailClaimLink
 from app.models.user import User
-from app.services.gmail_sync_service import GmailSyncService, REF_RE, _link_claims
+from app.services.gmail_sync_service import GmailSyncService, link_email_to_claims
 from app.services.resend_email_service import ResendEmailMessage, ResendEmailService
 from app.services.email_routing_service import EmailRoutingService
 from app.services.vault_storage_service import VaultStorageService
@@ -889,7 +889,6 @@ async def compat_send_email(
         success, resend_message_id, error_message = await _send_email_via_resend(payload, current_user)
         from_address = _resolve_resend_from_address(payload, current_user)
         provider = "resend"
-    found_refs = REF_RE.findall(f"{payload.subject}\n{payload.body}")
     metadata = {
         "accountId": payload.accountId,
         "to": payload.to,
@@ -898,7 +897,7 @@ async def compat_send_email(
         "direction": "out",
         "compat": True,
         "provider": provider,
-        "sinistroRef": found_refs[0] if found_refs else None,
+        "sinistroRef": None,
         "isRead": True,
         "resendMessageId": resend_message_id if provider == "resend" else None,
         "gmailId": gmail_id,
@@ -922,9 +921,12 @@ async def compat_send_email(
         provider_id=gmail_id or resend_message_id or provider,
     )
     db.add(email)
-    if success and found_refs and current_user.tenant_id:
+    if success and current_user.tenant_id:
         await db.flush()
-        await _link_claims(db, current_user.tenant_id, email, found_refs)
+        found = await link_email_to_claims(db, current_user.tenant_id, email, payload.subject, payload.body)
+        metadata["sinistroRef"] = found.sinistro_ref
+        metadata["match"] = found.source
+        email.raw_headers = json.dumps(metadata)
     await db.commit()
     return {"success": success, "message_id": resend_message_id, "error": error_message}
 

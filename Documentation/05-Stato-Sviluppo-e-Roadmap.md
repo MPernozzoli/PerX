@@ -105,7 +105,8 @@ Vedi [[Login-Unificato-SSO]] per il piano completo (5 fasi). Ad oggi:
 - Migrazione `043` applicata sul database (2026-11-27). Tenant `chiari` e utente
   `massimo.pernozzoli@chiarisrl.it` creati: entra con Google, senza password.
 - Posta Gmail sul backend (2026-11-27): storico e mail nuove in `emails`, allegati su Storage,
-  invio dalla casella Workspace. Serve il client OAuth sulle variabili del server per il rinnovo.
+  invio dalla casella Workspace. La mail si abbina prima al riferimento `YY-NNNNNN`, poi al numero
+  compagnia, poi al nome assicurato. Serve il client OAuth sulle variabili del server per il rinnovo.
 
 ### Ancora da fare
 - Consenso e benchmark (F0), push Gmail Pub/Sub, copia dei dossier nel vault, worker sul Mac,

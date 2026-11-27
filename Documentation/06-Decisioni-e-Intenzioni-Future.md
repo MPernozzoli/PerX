@@ -22,6 +22,18 @@ Motivazione: ...
 
 ---
 
+## 2026-11-27 — Abbinamento mail al sinistro: riferimento, numero compagnia, nome
+Contesto: la sincronizzazione Gmail collegava la mail solo se nel testo c'era il riferimento
+`YY-NNNNNN`.
+Decisione: l'abbinamento è in cascata e si ferma al primo livello che trova una pratica.
+1. Riferimento interno `YY-NNNNNN` (`claims.external_ref`).
+2. Numero sinistro compagnia (`claims.numero_sinistro`, anche nella forma senza l'`1.` iniziale,
+   per esempio `825.26.00637` oltre a `1.825.26.00637`).
+3. Nome assicurato, solo se nel testo c'è un solo nominativo di quella lunghezza. Se due pratiche
+   hanno lo stesso nome, la mail si collega a entrambe.
+Motivazione: è l'ordine con cui lo studio riconosce la pratica. Il riferimento vince sul numero
+e sul nome anche se nella stessa mail compaiono gli altri.
+
 ## 2026-11-27 — Posta Gmail operativa sul backend, login Google da pubblicare
 Contesto: l'app Mac chiama `https://api.perx.it`. Il bottone «Accedi con Google» riceveva
 `Not Found` perché `POST /api/v1/auth/google/session` esisteva solo nel codice locale.

@@ -19,6 +19,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
+from app.domain.claim_mail_match import (
+    ClaimMailKey,
+    MailClaimMatch,
+    match_mail_to_claims,
+    plain_mail_text,
+)
 from app.models.attachment import Attachment
 from app.models.claim import Claim
 from app.models.email import Email, EmailClaimLink, Mailbox
@@ -159,6 +165,9 @@ class GmailSyncService:
         settings_json = dict(mailbox.settings_json or {})
         backfill = dict(settings_json.get("backfill") or {})
         imported = 0
+        claim_keys = await _claim_keys(db, mailbox.tenant_id)
+        await _relink_unmatched(db, mailbox.tenant_id, claim_keys)
+        await db.commit()
         async with httpx.AsyncClient(timeout=60) as client:
             if not mailbox.gmail_history_id:
                 profile = await _gmail(client, access, "GET", "/profile")
@@ -168,7 +177,7 @@ class GmailSyncService:
                     for _ in range(5):
                         if backfill.get(label) == "done":
                             break
-                        imported += await _import_page(db, client, mailbox, access, label, backfill)
+                        imported += await _import_page(db, client, mailbox, access, label, backfill, claim_keys)
                         settings_json["backfill"] = backfill
                         settings_json["backfill_done"] = all(
                             backfill.get(item) == "done" for item in ("INBOX", "SENT")
@@ -176,7 +185,7 @@ class GmailSyncService:
                         mailbox.settings_json = settings_json
                         await db.commit()
             try:
-                imported += await _import_history(db, client, mailbox, access)
+                imported += await _import_history(db, client, mailbox, access, claim_keys)
             except GmailHistoryExpired:
                 mailbox.gmail_history_id = None
                 settings_json["backfill_done"] = False
@@ -291,6 +300,7 @@ async def _import_page(
     access: str,
     label: str,
     backfill: dict,
+    claim_keys: list[ClaimMailKey],
 ) -> int:
     params: dict[str, Any] = {"labelIds": label, "maxResults": settings.GMAIL_SYNC_PAGE_SIZE}
     page = backfill.get(label)
@@ -299,13 +309,19 @@ async def _import_page(
     listing = await _gmail(client, access, "GET", "/messages", params=params)
     imported = 0
     for item in listing.get("messages") or []:
-        if await _import_message(db, client, mailbox, access, item.get("id") or ""):
+        if await _import_message(db, client, mailbox, access, item.get("id") or "", claim_keys):
             imported += 1
     backfill[label] = listing.get("nextPageToken") or "done"
     return imported
 
 
-async def _import_history(db: AsyncSession, client: httpx.AsyncClient, mailbox: Mailbox, access: str) -> int:
+async def _import_history(
+    db: AsyncSession,
+    client: httpx.AsyncClient,
+    mailbox: Mailbox,
+    access: str,
+    claim_keys: list[ClaimMailKey],
+) -> int:
     try:
         history = await _gmail(
             client,
@@ -322,7 +338,7 @@ async def _import_history(db: AsyncSession, client: httpx.AsyncClient, mailbox: 
     for item in history.get("history") or []:
         for added in item.get("messagesAdded") or []:
             message = (added.get("message") or {}).get("id")
-            if message and await _import_message(db, client, mailbox, access, message):
+            if message and await _import_message(db, client, mailbox, access, message, claim_keys):
                 imported += 1
     if history.get("historyId"):
         mailbox.gmail_history_id = str(history["historyId"])
@@ -335,6 +351,7 @@ async def _import_message(
     mailbox: Mailbox,
     access: str,
     gmail_id: str,
+    claim_keys: list[ClaimMailKey],
 ) -> bool:
     if not gmail_id:
         return False
@@ -343,13 +360,20 @@ async def _import_message(
         await db.execute(select(Email).where(Email.message_id == message_id))
     ).scalar_one_or_none()
     if existing is not None:
+        await _ensure_claim_link(db, existing, claim_keys)
         return False
     raw = await _gmail(client, access, "GET", f"/messages/{gmail_id}", params={"format": "full"})
     parsed = parse_gmail_message(raw)
     if not parsed["gmail_id"]:
         return False
+    found = match_mail_to_claims(
+        claim_keys,
+        parsed["subject"],
+        plain_mail_text(parsed["body_text"], parsed["body_html"]),
+    )
     metadata = {
-        "sinistroRef": parsed["references"][0] if parsed["references"] else None,
+        "sinistroRef": found.sinistro_ref,
+        "match": found.source,
         "direction": "out" if parsed["mailbox"] == "SENT" else "in",
         "isRead": parsed["is_read"],
         "gmailId": gmail_id,
@@ -373,23 +397,91 @@ async def _import_message(
     )
     db.add(email)
     await db.flush()
-    await _link_claims(db, mailbox.tenant_id, email, parsed["references"])
+    _add_claim_links(db, mailbox.tenant_id, email.id, found)
     await _store_attachments(db, client, mailbox, access, email, gmail_id, parsed["attachments"])
     return True
 
 
-async def _link_claims(db: AsyncSession, tenant_id: str, email: Email, references: list[str]) -> None:
-    if not references:
-        return
+async def _claim_keys(db: AsyncSession, tenant_id: str) -> list[ClaimMailKey]:
     result = await db.execute(
-        select(Claim).where(Claim.tenant_id == tenant_id, Claim.external_ref.in_(references))
+        select(Claim.id, Claim.external_ref, Claim.numero_sinistro, Claim.nome_assicurato).where(
+            Claim.tenant_id == tenant_id
+        )
     )
-    for claim in result.scalars().all():
+    return [
+        ClaimMailKey(
+            id=row.id,
+            external_ref=row.external_ref,
+            numero_sinistro=row.numero_sinistro,
+            nome_assicurato=row.nome_assicurato,
+        )
+        for row in result.all()
+    ]
+
+
+async def link_email_to_claims(
+    db: AsyncSession,
+    tenant_id: str,
+    email: Email,
+    subject: str,
+    body: str,
+) -> MailClaimMatch:
+    found = match_mail_to_claims(
+        await _claim_keys(db, tenant_id),
+        subject,
+        plain_mail_text(None, body),
+    )
+    _add_claim_links(db, tenant_id, email.id, found)
+    return found
+
+
+async def _ensure_claim_link(db: AsyncSession, email: Email, claim_keys: list[ClaimMailKey]) -> None:
+    existing = await db.execute(select(EmailClaimLink.id).where(EmailClaimLink.email_id == email.id).limit(1))
+    if existing.first() is not None:
+        return
+    found = match_mail_to_claims(
+        claim_keys,
+        email.subject or "",
+        plain_mail_text(email.body_text, email.body_html),
+    )
+    try:
+        metadata = json.loads(email.raw_headers or "{}")
+    except json.JSONDecodeError:
+        metadata = {}
+    if not isinstance(metadata, dict):
+        metadata = {}
+    metadata["sinistroRef"] = found.sinistro_ref
+    metadata["match"] = found.source or "nessuno"
+    email.raw_headers = json.dumps(metadata)
+    if found.claims:
+        _add_claim_links(db, email.tenant_id, email.id, found)
+
+
+async def _relink_unmatched(db: AsyncSession, tenant_id: str, claim_keys: list[ClaimMailKey]) -> int:
+    result = await db.execute(
+        select(Email)
+        .where(
+            Email.tenant_id == tenant_id,
+            Email.message_id.like("gmail:%"),
+            ~Email.id.in_(select(EmailClaimLink.email_id)),
+            Email.raw_headers.is_(None) | ~Email.raw_headers.contains('"match"'),
+        )
+        .order_by(Email.received_at.desc())
+        .limit(200)
+    )
+    rows = list(result.scalars().all())
+    for email in rows:
+        await _ensure_claim_link(db, email, claim_keys)
+    return len(rows)
+
+
+def _add_claim_links(db: AsyncSession, tenant_id: str, email_id: str, found: MailClaimMatch) -> None:
+    for claim in found.claims:
         db.add(
             EmailClaimLink(
                 id=str(uuid.uuid4()),
                 tenant_id=tenant_id,
-                email_id=email.id,
+                email_id=email_id,
                 claim_id=claim.id,
                 link_type="primary",
                 created_by="gmail-sync",
