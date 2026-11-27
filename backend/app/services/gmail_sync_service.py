@@ -710,19 +710,19 @@ async def _store_attachments(
     for item in files:
         if item["size"] and item["size"] > MAX_ATTACHMENT_BYTES:
             continue
-        payload = await _gmail(
-            client,
-            access,
-            "GET",
-            f"/messages/{gmail_id}/attachments/{item['attachment_id']}",
-        )
-        content = _b64_bytes(payload.get("data"))
-        if not content or len(content) > MAX_ATTACHMENT_BYTES:
-            continue
         safe_name = os.path.basename(item["filename"]) or "allegato"
         safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", safe_name).strip("._") or "allegato"
-        path = f"gmail/{mailbox.tenant_id}/{gmail_id}/{uuid.uuid4().hex}-{safe_name}"
         try:
+            payload = await _gmail(
+                client,
+                access,
+                "GET",
+                f"/messages/{gmail_id}/attachments/{item['attachment_id']}",
+            )
+            content = _b64_bytes(payload.get("data"))
+            if not content or len(content) > MAX_ATTACHMENT_BYTES:
+                continue
+            path = f"gmail/{mailbox.tenant_id}/{gmail_id}/{uuid.uuid4().hex}-{safe_name}"
             blob = await SupabaseStorageService.upload(
                 object_path=path,
                 content=content,
@@ -730,7 +730,7 @@ async def _store_attachments(
             )
         except Exception:
             logger.exception(
-                "Allegato Gmail non salvato su Storage: mailbox=%s message=%s file=%s",
+                "Allegato Gmail non importato: mailbox=%s message=%s file=%s",
                 mailbox.email_address,
                 gmail_id,
                 safe_name,

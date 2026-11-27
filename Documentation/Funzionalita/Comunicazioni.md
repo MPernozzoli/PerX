@@ -52,7 +52,8 @@ dell’assicurato. L’invio dall’app usa Gmail se la casella è collegata, co
 altrimenti Resend. Il rinnovo del token sta sul server (`GOOGLE_OAUTH_CLIENT_ID` /
 `GOOGLE_OAUTH_CLIENT_SECRET`). Il Mac interroga il backend ogni 60 secondi.
 Il watch viene registrato prima del backfill; un singolo allegato rifiutato da Storage viene
-registrato nei log ma non blocca l’import della mail né il rinnovo del watch.
+registrato nei log ma non blocca l’import della mail né il rinnovo del watch. Lo stesso vale se
+Gmail rifiuta o non restituisce il contenuto binario di un singolo allegato.
 Il webhook Pub/Sub salva inoltre l’evento padre prima di accodare il relativo job, rispettando la
 chiave esterna anche senza una relazione ORM esplicita tra i due modelli. I retry concorrenti
 della stessa casella vengono serializzati con un lock sul record `Mailbox`; l’idempotenza viene
