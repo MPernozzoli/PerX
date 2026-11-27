@@ -37,6 +37,31 @@ final class DashboardSummaryService: ObservableObject {
         return calendar.startOfDay(for: Date())
     }
     
+    /// Conta su un contesto di background, così la dashboard non blocca il disegno.
+    nonisolated func loadCounts(email: String?, assignmentsSince reference: Date) async -> (gestione: Int, assegnazioni: Int) {
+        guard let email = email?.lowercased(), !email.isEmpty else { return (0, 0) }
+        let chiusa = StatoManager.StatoSinistro.chiusa.descrizione
+        let context = PersistenceController.shared.container.newBackgroundContext()
+        return await context.perform {
+            let gestione = NSFetchRequest<Sinistro>(entityName: "Sinistro")
+            gestione.predicate = NSPredicate(
+                format: "(assignedToUserEmail ==[c] %@ OR ownerEmail ==[c] %@) AND (stato != %@ OR stato == nil)",
+                email, email, chiusa
+            )
+            gestione.includesSubentities = false
+            let assegnazioni = NSFetchRequest<Sinistro>(entityName: "Sinistro")
+            assegnazioni.predicate = NSPredicate(
+                format: "(assignedToUserEmail ==[c] %@ OR ownerEmail ==[c] %@) AND dataAssegnazione >= %@",
+                email, email, reference as NSDate
+            )
+            assegnazioni.includesSubentities = false
+            return (
+                (try? context.count(for: gestione)) ?? 0,
+                (try? context.count(for: assegnazioni)) ?? 0
+            )
+        }
+    }
+
     /// Sinistri attualmente in gestione per l'utente corrente (non chiusi, assegnati a me).
     func sinistriInGestione(context: NSManagedObjectContext, userEmail: String?) -> Int {
         guard let email = userEmail?.lowercased(), !email.isEmpty else { return 0 }

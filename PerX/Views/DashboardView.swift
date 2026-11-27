@@ -23,12 +23,17 @@ struct DashboardView: View {
     @State private var taskPerOggi: [ScheduledTask] = []
     @State private var sinistriInGestione: Int = 0
     @State private var assegnazioniRecenti: Int = 0
+    @State private var numbersReady = false
+    @ObservedObject private var activity = UIActivity.shared
 
     private var currentUserEmail: String? { CurrentUserService.shared.currentEmail }
 
-    private func refreshSummaryCounters() {
-        sinistriInGestione = summaryService.sinistriInGestione(context: viewContext, userEmail: currentUserEmail)
-        assegnazioniRecenti = summaryService.assegnazioniDallUltimoAccesso(context: viewContext, userEmail: currentUserEmail)
+    private func refreshSummaryCounters() async {
+        let reference = summaryService.referenceDateForAssignments()
+        let counts = await summaryService.loadCounts(email: currentUserEmail, assignmentsSince: reference)
+        sinistriInGestione = counts.gestione
+        assegnazioniRecenti = counts.assegnazioni
+        numbersReady = true
     }
 
     private func refreshTaskPerOggi() {
@@ -64,12 +69,13 @@ struct DashboardView: View {
         .onAppear { applyClaimScope() }
         .onReceive(NotificationCenter.default.publisher(for: .accountClaimScopeChanged)) { _ in
             applyClaimScope()
-            refreshSummaryCounters()
+            Task { await refreshSummaryCounters() }
         }
         .onReceive(taskManager.$updateCounter.dropFirst()) { _ in
             Task { @MainActor in
+                await Task.yield()
                 refreshTaskPerOggi()
-                refreshSummaryCounters()
+                await refreshSummaryCounters()
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .taskCreated)) { _ in
@@ -91,15 +97,9 @@ struct DashboardView: View {
         }
         .onAppear {
             Task { @MainActor in
-                refreshSummaryCounters()
+                await Task.yield()
+                await refreshSummaryCounters()
                 refreshTaskPerOggi()
-            }
-            Task {
-                await taskManager.regenerateTaskTitles()
-                await taskManager.regenerateBaseTasks()
-                await MainActor.run { refreshTaskPerOggi() }
-            }
-            Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 800_000_000)
                 requestAISummaryIfNeeded()
             }
@@ -266,18 +266,23 @@ struct DashboardView: View {
     
     private var statsGrid: some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
-            DashboardStatCard(
-                title: "Sinistri in gestione",
-                value: "\(sinistriInGestione)",
-                icon: "folder.fill",
-                color: .blue
-            )
-            DashboardStatCard(
-                title: "Assegnazioni dall'ultimo accesso",
-                value: "\(assegnazioniRecenti)",
-                icon: "envelope.badge.fill",
-                color: .orange
-            )
+            if numbersReady {
+                DashboardStatCard(
+                    title: "Sinistri in gestione",
+                    value: "\(sinistriInGestione)",
+                    icon: "folder.fill",
+                    color: .blue
+                )
+                DashboardStatCard(
+                    title: "Assegnazioni dall'ultimo accesso",
+                    value: "\(assegnazioniRecenti)",
+                    icon: "envelope.badge.fill",
+                    color: .orange
+                )
+            } else {
+                SkeletonCard()
+                SkeletonCard()
+            }
         }
     }
     
@@ -294,7 +299,15 @@ struct DashboardView: View {
                 }
                 .font(.caption)
             }
-            if taskPerOggi.isEmpty {
+            if !numbersReady || activity.isBusy {
+                VStack(alignment: .leading, spacing: 10) {
+                    GearCaption(text: activity.label ?? "Preparo la giornata")
+                    SkeletonBlock()
+                    SkeletonBlock()
+                    SkeletonBlock(height: 18)
+                }
+                .padding(.vertical, 8)
+            } else if taskPerOggi.isEmpty {
                 ContentUnavailableView(
                     "Nessuna task",
                     systemImage: "checkmark.circle",
@@ -392,7 +405,7 @@ struct DashboardView: View {
             await taskManager.regenerateBaseTasks()
             await taskManager.ensureBaseTasksAreScheduled()
             ScheduleManager.shared.reorganizeAllTasksBasedOnSchedule(userInitiated: true)
-            refreshSummaryCounters()
+            await refreshSummaryCounters()
             refreshTaskPerOggi()
             isRefreshing = false
         }

@@ -11,7 +11,6 @@ class BaseTaskGenerator {
     private let workScheduleManager = WorkScheduleManager.shared
     private let priorityCalculator = PriorityCalculator.shared
     private let validator = OptionalTaskValidator.shared
-    private let cpuThrottler = CPUThrottler.shared
     
     private init() {}
     
@@ -20,89 +19,75 @@ class BaseTaskGenerator {
     /// Genera task di base per tutti i sinistri attivi dell'utente loggato
     /// Chiamato giornalmente all'orario dinamico (inizio lavoro - 15 min) o all'avvio app
     func generateDailyBaseTasks() async {
+        UIActivity.shared.begin("Calcolo i task")
+        defer { UIActivity.shared.end() }
         print("[BaseTaskGenerator] 🔄 Generazione task di base giornaliera...")
-        
+
+        let currentUserEmail = GoogleAuthService.shared.userEmail?.lowercased()
+        let claimIDs = await loadActiveClaimIDs(userEmail: currentUserEmail)
+        print("[BaseTaskGenerator] 📊 Trovati \(claimIDs.count) sinistri dell'utente")
+
+        let monthlyGoal = workScheduleManager.getMonthlyTarget(for: Date())
+        let currentMonthClosures = await getCurrentMonthClosuresCount()
+        let needsAcceleration = await shouldAccelerateClosures()
         let context = PersistenceController.shared.container.viewContext
-        let request = NSFetchRequest<Sinistro>(entityName: "Sinistro")
-        
-        // Filtra sinistri non chiusi/revocati/annullati
+
+        var essentialTasksCreated = 0
+        for id in claimIDs {
+            await Task.yield()
+            guard let sinistro = try? context.existingObject(with: id) as? Sinistro else { continue }
+            let tasks = await generateEssentialTasksOnly(
+                sinistro,
+                monthlyGoal: monthlyGoal,
+                currentClosures: currentMonthClosures,
+                needsAcceleration: needsAcceleration
+            )
+            essentialTasksCreated += tasks.count
+        }
+        print("[BaseTaskGenerator] ✅ Generate \(essentialTasksCreated) task essenziali")
+
+        var optionalTasksCreated = 0
+        for id in claimIDs {
+            await Task.yield()
+            guard let sinistro = try? context.existingObject(with: id) as? Sinistro else { continue }
+            let tasks = await generateOptionalTasksOnly(
+                sinistro,
+                monthlyGoal: monthlyGoal,
+                currentClosures: currentMonthClosures,
+                needsAcceleration: needsAcceleration
+            )
+            optionalTasksCreated += tasks.count
+        }
+        print("[BaseTaskGenerator] ✅ Generate \(optionalTasksCreated) task opzionali")
+        print("[BaseTaskGenerator] 🎯 Totale: \(essentialTasksCreated + optionalTasksCreated) task")
+    }
+
+    /// Gli ID si leggono su un contesto di background. Il thread della UI non fa il fetch.
+    private nonisolated func loadActiveClaimIDs(userEmail: String?) async -> [NSManagedObjectID] {
         let excludedStates = [
             StatoManager.StatoSinistro.chiusa.descrizione,
             StatoManager.StatoSinistro.revocata.descrizione,
             StatoManager.StatoSinistro.annullata.descrizione
         ]
-        
-        // IMPORTANTE: Filtra SOLO sinistri dell'utente loggato
-        let currentUserEmail = GoogleAuthService.shared.userEmail?.lowercased()
-        
-        var predicates: [NSPredicate] = [
-            NSPredicate(format: "NOT (stato IN %@)", excludedStates)
-        ]
-        
-        if let userEmail = currentUserEmail {
-            // Sinistri assegnati all'utente corrente
-            predicates.append(
-                NSPredicate(format: "assignedToUserEmail ==[c] %@ OR ownerEmail ==[c] %@", userEmail, userEmail)
-            )
-        }
-        
-        request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: predicates)
-        
-        guard let allSinistri = try? context.fetch(request) else { return }
-        
-        print("[BaseTaskGenerator] 📊 Trovati \(allSinistri.count) sinistri dell'utente")
-        
-        let monthlyGoal = workScheduleManager.getMonthlyTarget(for: Date())
-        let currentMonthClosures = await getCurrentMonthClosuresCount()
-        let needsAcceleration = await shouldAccelerateClosures()
-        
-        // FASE 1: Genera SOLO task essenziali (priorità alta)
-        var essentialTasksCreated = 0
-        let batchSize = 5 // Batch piccoli per ridurre carico CPU
-        
-        for batch in allSinistri.chunked(into: batchSize) {
-            // Throttle CPU prima di ogni batch
-            await cpuThrottler.throttleIfNeeded()
-            
-            for sinistro in batch {
-                let tasks = await generateEssentialTasksOnly(
-                    sinistro,
-                    monthlyGoal: monthlyGoal,
-                    currentClosures: currentMonthClosures,
-                    needsAcceleration: needsAcceleration
+        let context = PersistenceController.shared.container.newBackgroundContext()
+        return await context.perform {
+            let request = NSFetchRequest<NSManagedObjectID>(entityName: "Sinistro")
+            request.resultType = .managedObjectIDResultType
+            var predicates: [NSPredicate] = [
+                NSPredicate(format: "NOT (stato IN %@)", excludedStates)
+            ]
+            if let userEmail {
+                predicates.append(
+                    NSPredicate(
+                        format: "assignedToUserEmail ==[c] %@ OR ownerEmail ==[c] %@",
+                        userEmail,
+                        userEmail
+                    )
                 )
-                essentialTasksCreated += tasks.count
             }
-            
-            // Pausa tra batch (riduce carico CPU al 30%)
-            try? await Task.sleep(nanoseconds: 300_000_000) // 300ms
+            request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: predicates)
+            return (try? context.fetch(request)) ?? []
         }
-        
-        print("[BaseTaskGenerator] ✅ Generate \(essentialTasksCreated) task essenziali")
-        
-        // FASE 2: Genera task opzionali SOLO se task essenziali completate
-        var optionalTasksCreated = 0
-        
-        for batch in allSinistri.chunked(into: batchSize) {
-            // Throttle CPU prima di ogni batch
-            await cpuThrottler.throttleIfNeeded()
-            
-            for sinistro in batch {
-                let tasks = await generateOptionalTasksOnly(
-                    sinistro,
-                    monthlyGoal: monthlyGoal,
-                    currentClosures: currentMonthClosures,
-                    needsAcceleration: needsAcceleration
-                )
-                optionalTasksCreated += tasks.count
-            }
-            
-            // Pausa tra batch
-            try? await Task.sleep(nanoseconds: 300_000_000) // 300ms
-        }
-        
-        print("[BaseTaskGenerator] ✅ Generate \(optionalTasksCreated) task opzionali")
-        print("[BaseTaskGenerator] 🎯 Totale: \(essentialTasksCreated + optionalTasksCreated) task")
     }
     
     /// Verifica e aggiorna task esistenti, poi genera nuove se necessarie
@@ -321,7 +306,7 @@ class BaseTaskGenerator {
             .attoRicevutoSottoscritto, .accettataVerbalmente, .chiusa, .revocata, .annullata
         ]
         if !statiPostAtto.contains(stato) {
-            if validator.needsPolizza(sinistro: sinistro) {
+            if await validator.needsPolizza(sinistro: sinistro) {
                 if canCreateTask(for: riferimento, type: "polizza") {
                     // Priorità ALTA: bloccante per gestione
                     tasks.append(createPolizzaTask(sinistro: sinistro, priority: min(priority + 0.3, 1.0)))
@@ -331,7 +316,7 @@ class BaseTaskGenerator {
         
         // Foto ubicazione (OPZIONALE - per sinistri in gestione)
         if [.inGestione, .inGestioneDocumentale, .periziaDaEseguire].contains(stato) {
-            if validator.needsFotoUbicazione(sinistro: sinistro) {
+            if await validator.needsFotoUbicazione(sinistro: sinistro) {
                 if canCreateTask(for: riferimento, type: "foto_ubicazione") {
                     tasks.append(createFotoUbicazioneTask(sinistro: sinistro, priority: priority * 0.5))
                 }
@@ -339,7 +324,7 @@ class BaseTaskGenerator {
         }
         
         // Preventivo (OPZIONALE - solo per danneggiato non assicurato)
-        if validator.needsPreventivo(sinistro: sinistro) {
+        if await validator.needsPreventivo(sinistro: sinistro) {
             if canCreateTask(for: riferimento, type: "preventivo") {
                 tasks.append(createPreventivoTask(sinistro: sinistro, priority: priority * 0.5))
             }
@@ -714,23 +699,23 @@ class BaseTaskGenerator {
         }
     }
     
-    private func getCurrentMonthClosuresCount() async -> Int {
-        let context = PersistenceController.shared.container.viewContext
-        let request = NSFetchRequest<Sinistro>(entityName: "Sinistro")
-        
+    private nonisolated func getCurrentMonthClosuresCount() async -> Int {
         let calendar = Calendar.current
         let now = Date()
         let monthStart = calendar.date(from: calendar.dateComponents([.year, .month], from: now))!
         let monthEnd = calendar.date(byAdding: .month, value: 1, to: monthStart)!
-        
-        request.predicate = NSPredicate(
-            format: "stato == %@ AND dataChiusura >= %@ AND dataChiusura < %@",
-            StatoManager.StatoSinistro.chiusa.descrizione,
-            monthStart as NSDate,
-            monthEnd as NSDate
-        )
-        
-        return (try? context.count(for: request)) ?? 0
+        let chiusa = StatoManager.StatoSinistro.chiusa.descrizione
+        let context = PersistenceController.shared.container.newBackgroundContext()
+        return await context.perform {
+            let request = NSFetchRequest<Sinistro>(entityName: "Sinistro")
+            request.predicate = NSPredicate(
+                format: "stato == %@ AND dataChiusura >= %@ AND dataChiusura < %@",
+                chiusa,
+                monthStart as NSDate,
+                monthEnd as NSDate
+            )
+            return (try? context.count(for: request)) ?? 0
+        }
     }
     
     /// Determina se serve accelerare le chiusure

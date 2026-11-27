@@ -351,17 +351,17 @@ extension MailHTMLView {
 // Estensione per ottenere il colore in formato esadecimale per il CSS
 extension NSColor {
     var hexString: String {
-        let cgColor = self.cgColor
-        let components = cgColor.components
-        let r: CGFloat = components?[0] ?? 0.0
-        let g: CGFloat = components?[1] ?? 0.0
-        let b: CGFloat = components?[2] ?? 0.0
-
+        let rgb = usingColorSpace(.sRGB) ?? self
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        rgb.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
         return String(
             format: "#%02lX%02lX%02lX",
-            lround(r * 255),
-            lround(g * 255),
-            lround(b * 255)
+            lround(red * 255),
+            lround(green * 255),
+            lround(blue * 255)
         )
     }
 } 

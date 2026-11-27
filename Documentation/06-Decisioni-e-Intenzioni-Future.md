@@ -22,6 +22,50 @@ Motivazione: ...
 
 ---
 
+## 2026-11-27 — Piano di intervento aggiornato per Chiari/Regia
+Contesto: dopo la revisione dei commit `17fe7bb`…`0e87d10` (voce qui sotto), il piano
+[[Regia-Agenti-e-Tenant-Chiari]] ha una sezione nuova, «10. Piano di intervento aggiornato», con
+interventi, test, criteri di «fatto» e ordine di esecuzione.
+Decisione / intenzione: P0 integrità e sicurezza (token agente separato dal perito, un campo
+esplicito per il codice di stato del tenant, login Supabase solo da Google con verifica locale del
+JWT, repo privato o pulizia dei dati reali, test di `regia_service`); P1 basi (CI backend e web,
+import periodico idempotente, chiave Gmail ruotabile, topic Pub/Sub, lease con lock); P2 Regia viva
+(mail → `classifica_mail`, primo compito L1 con FoundationModels, `mac_idle` vero, benchmark F0);
+P3 dossier, test golden, Sala regia, estensione, MCP, passaggio. Nessun lavoro automatico che cambi
+stati o importi in produzione prima di P0.1 e P0.2.
+Motivazione: oggi la Regia ha la struttura ma non distingue il perito da un agente, e la
+documentazione degli stati non coincide con il codice. Decisioni attese dall'utente: repo, token
+agente, corpus, frequenza dell'import, accordo dati per L2/L3.
+
+## 2026-11-27 — Revisione dell'implementazione Chiari/Regia: punti da correggere
+Contesto: revisione, su richiesta dell'utente, dei commit `17fe7bb`…`0e87d10` rispetto a
+[[Regia-Agenti-e-Tenant-Chiari]]. F1 è fatta; F2 è fatta tranne il topic Pub/Sub; F3 in parte
+(273 pratiche importate una volta, senza dossier, polizze e test golden); F4/F5 hanno tabelle,
+API e scala ma nessun produttore di lavori e nessuna chiamata ai modelli; F0, F6 (oltre la vista
+minima), F7, F8, F9 non iniziate. I 31 test nuovi passano; `regia_service` non ha test.
+Punti trovati (da correggere, non ancora corretti):
+1. Il repo GitHub è **pubblico**: il vecchio client secret Google (`GoogleAuthService.swift`,
+   tolto dal sorgente in `17fe7bb`) resta nella storia git, ma l'utente conferma (2026-11-27) che
+   quel progetto Google è stato cancellato insieme all'intero account: nessuna azione. Restano
+   in questo vault la mail Chiari del perito e un numero sinistro Vittoria reale.
+2. Le invarianti della Regia non distinguono il perito da un agente: `POST
+   /regia/pratiche/{id}/stato` registra sempre `source="perito"`; l'approvazione accetta
+   qualunque utente del tenant e anche revisioni superate; `amount_exception_reason` può essere
+   passato da chiunque e scavalca la regola dell'importo già proposto.
+3. Gli stati non seguono la voce «Stati Chiari rimappati»: `set_state` scrive il codice Chiari in
+   `stato_corrente` (invece dello slug PerX) e `_apply_review_state` scrive `da_revisionare`
+   senza conservare quale dei tre esiti Chiari si applica.
+4. Il login Supabase collega l'utente per sola mail, senza verificare che l'identità venga da
+   Google: va spento il provider email/password di Supabase oppure controllato il provider.
+5. La copia delle pratiche su PerX è una fotografia di ieri: il sistema locale continua a
+   cambiare. Serve un import periodico finché non si passa la fonte di verità (decisione aperta 1).
+6. La chiave di cifratura del token Gmail deriva da `SECRET_KEY`: ruotarla rende illeggibile il
+   token della casella.
+7. CI su `main`: Backend rossa per il drift storico delle migration (non verifica 043/044), Web
+   rossa da `0e87d10` per una regola ESLint mancante in `perx-insight-studio`.
+
+---
+
 ## 2026-11-27 — Elenco file vault senza pratica: lista vuota
 Contesto: il Mac, a ogni sync, chiede `GET /api/v1/hub/vault/sinistri/{ref}/files` per ogni
 pratica locale ancora aperta. I riferimenti `2508006` sono l’anno 2025 a 7 cifre. Nel database
@@ -65,6 +109,27 @@ prompt. `RegiaWorker` sul Mac esegue L0 e rimette in coda i livelli superiori se
 c’è, senza consumare i tre tentativi. Apple Intelligence, Ollama e Claude non sono ancora
 chiamati dal worker.
 Motivazione: la coda e i livelli sono il modo di lavorare di PerX.
+
+## 2026-11-27 — I calcoli non bloccano il disegno
+Contesto: generare i task, contare i sinistri e leggere i file delle cartelle avveniva sul
+thread che disegna la finestra. La sidebar e la dashboard si fermavano.
+Decisione: il fetch dei sinistri per i task e il conteggio della dashboard girano su un
+contesto Core Data di background. La scansione dei file (polizza, foto, preventivo) gira
+in un task staccato. Tra un sinistro e l’altro il calcolo cede il passo al disegno.
+`UIActivity` pubblica la scritta «Calcolo i task»: ingranaggio nella toolbar e scheletro
+sui riquadri della dashboard finché i numeri non sono pronti.
+Motivazione: la UI resta usabile mentre il lavoro pesante continua.
+
+## 2026-11-27 — La sidebar mostra una sola pagina
+Contesto: passare da una voce all’altra della sidebar era lento. `NavigationView` teneva
+sempre montata `SinistriView` (fetch di tutti i sinistri, filtri, contatori) e in più
+costruiva la pagina scelta. La dashboard, a ogni apertura, rigenerava tutti i task.
+Decisione: in memoria c’è solo la pagina selezionata. Il pannello è un `HStack`, non
+`NavigationSplitView`: quel componente chiudeva l’app all’avvio con `EXC_BAD_ACCESS`.
+La rigenerazione dei task resta all’avvio, alla mail e al pulsante di aggiornamento, non a
+ogni visita della dashboard.
+Motivazione: il costo del cambio pagina era la vista sinistri sempre viva, non il disegno
+della riga di menu.
 
 ## 2026-11-27 — Meno lavoro in background sull’app Mac
 Contesto: l’app risultava lenta. Più timer facevano la stessa cosa e alcuni ricalcoli

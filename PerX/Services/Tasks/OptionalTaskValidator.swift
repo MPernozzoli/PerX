@@ -7,53 +7,35 @@ import CoreData
 class OptionalTaskValidator {
     static let shared = OptionalTaskValidator()
     
-    private let fileService = FileService.shared
-    
     private init() {}
     
     /// Verifica se servono foto ubicazione
     /// Ritorna true se ci sono meno di 2 foto con tag "foto ubicazione del rischio" e allegare: true
-    func needsFotoUbicazione(sinistro: Sinistro) -> Bool {
-        guard let riferimento = sinistro.riferimento,
-              let folderPath = fileService.getSinistroPath(riferimento: riferimento, create: false) else {
-            return false
-        }
-        
-        // Conta file con tag "foto ubicazione del rischio" e allegare: true
-        let fotoUbicazioneCount = fileService.countFilesWithTag(
-            in: folderPath,
-            tag: "foto ubicazione del rischio",
-            allegare: true
+    func needsFotoUbicazione(sinistro: Sinistro) async -> Bool {
+        guard let riferimento = sinistro.riferimento else { return false }
+        let count = await Self.countTaggedFiles(
+            riferimento: riferimento,
+            tag: "foto ubicazione del rischio"
         )
-        
-        // Se < 2, serve richiedere
-        return fotoUbicazioneCount < 2
+        return count < 2
     }
     
     /// Verifica se serve polizza
     /// Ritorna true se manca il documento polizza (o simplo di polizza).
     /// Usa "simplo_di_polizza" come in FileTagManager / TagManager.
-    func needsPolizza(sinistro: Sinistro) -> Bool {
-        guard let riferimento = sinistro.riferimento,
-              let folderPath = fileService.getSinistroPath(riferimento: riferimento, create: false) else {
-            return false
-        }
-        
-        let polizza = fileService.countFilesWithTag(in: folderPath, tag: "polizza", allegare: true)
-        let simploPolizza = fileService.countFilesWithTag(in: folderPath, tag: "simplo_di_polizza", allegare: true)
-        
-        return polizza == 0 && simploPolizza == 0
+    func needsPolizza(sinistro: Sinistro) async -> Bool {
+        guard let riferimento = sinistro.riferimento else { return false }
+        async let polizza = Self.countTaggedFiles(riferimento: riferimento, tag: "polizza")
+        async let simplo = Self.countTaggedFiles(riferimento: riferimento, tag: "simplo_di_polizza")
+        let polizzaCount = await polizza
+        let simploCount = await simplo
+        return polizzaCount == 0 && simploCount == 0
     }
     
     /// Verifica se servono preventivi (solo se danneggiato non assicurato).
     /// Ritorna false se: (a) c'è "preventivo" o "giustificativo", (b) atto già inviato (non ha senso chiederli).
-    func needsPreventivo(sinistro: Sinistro) -> Bool {
-        guard let riferimento = sinistro.riferimento,
-              let folderPath = fileService.getSinistroPath(riferimento: riferimento, create: false) else {
-            return false
-        }
-        
-        // Una volta inviato l'atto, non ha senso richiedere preventivo/fattura
+    func needsPreventivo(sinistro: Sinistro) async -> Bool {
+        guard let riferimento = sinistro.riferimento else { return false }
         let postAtto: [StatoManager.StatoSinistro] = [
             .attoInviato, .esitoComunicato, .esitoDaComunicare,
             .attoRicevutoSottoscritto, .accettataVerbalmente, .chiusa
@@ -63,13 +45,22 @@ class OptionalTaskValidator {
            postAtto.contains(stato) {
             return false
         }
-        
-        let preventivi = fileService.countFilesWithTag(in: folderPath, tag: "preventivo", allegare: true)
-        let giustificativi = fileService.countFilesWithTag(in: folderPath, tag: "giustificativo", allegare: true)
-        
-        if preventivi > 0 || giustificativi > 0 { return false }
-        
+        async let preventivi = Self.countTaggedFiles(riferimento: riferimento, tag: "preventivo")
+        async let giustificativi = Self.countTaggedFiles(riferimento: riferimento, tag: "giustificativo")
+        let preventiviCount = await preventivi
+        let giustificativiCount = await giustificativi
+        if preventiviCount > 0 || giustificativiCount > 0 { return false }
         return sinistro.nomeDanneggiato != nil
+    }
+
+    /// Conta i file sul disco fuori dal thread della UI.
+    private static func countTaggedFiles(riferimento: String, tag: String) async -> Int {
+        await Task.detached(priority: .utility) {
+            guard let folderPath = FileService.shared.getSinistroPath(riferimento: riferimento, create: false) else {
+                return 0
+            }
+            return FileService.shared.countFilesWithTag(in: folderPath, tag: tag, allegare: true)
+        }.value
     }
     
     /// Verifica se servono coordinate bancarie
