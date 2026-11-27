@@ -297,6 +297,7 @@ class GoogleAuthService: ObservableObject {
         UserDefaults.standard.removeObject(forKey: "last_google_user_id")
         UserDefaults.standard.removeObject(forKey: "current_user_email")
         UserDefaults.standard.removeObject(forKey: "userEmail")
+        AccountVault.suspend()
         AccountClaimScope.clear()
         hasCompletedInitialCheck = false
         

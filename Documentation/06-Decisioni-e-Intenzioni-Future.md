@@ -22,6 +22,14 @@ Motivazione: ...
 
 ---
 
+## 2026-11-27 — Ogni account ha calendario, impostazioni e archivio propri
+Contesto: separare solo i sinistri lasciava calendario, orari, impostazioni e preferenze
+nello stesso archivio del Mac.
+Decisione: all'accesso l'app apre l'archivio e le preferenze di quell'account. Calendario,
+orari, impostazioni dello studio, filtri e notizie locali non passano all'account successivo.
+L'archivio che c'era già sul Mac resta all'account precedente, non a chi entra dopo.
+Motivazione: ogni account si porta le proprie cose.
+
 ## 2026-11-27 — Utente e tenant sempre separati
 Contesto: la prima chiusura mostrava i sinistri dell'altro account solo quando si entrava con
 Chiari. La divisione non è una regola di quel tenant.

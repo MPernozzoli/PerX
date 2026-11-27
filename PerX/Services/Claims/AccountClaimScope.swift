@@ -66,6 +66,7 @@ final class AccountClaimSync {
     }
 
     private func run(email: String) async {
+        AccountVault.activate(email: email)
         _ = await TenantSettingsAPIService.shared.loadTenantSettings()
         let tenantId = AccountClaimScope.activeTenantId
         guard !tenantId.isEmpty else {

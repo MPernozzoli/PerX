@@ -15,7 +15,7 @@ struct PerXApp: App {
     @StateObject private var authService = GoogleAuthService.shared
     @StateObject private var whatsNewService = WhatsNewService.shared
     @StateObject private var onboardingService = OnboardingService.shared
-    let persistenceController = PersistenceController.shared
+    @ObservedObject private var persistenceController = PersistenceController.shared
     @State private var showWhatsNew = false
     @State private var showOnboarding = false
 
@@ -34,7 +34,8 @@ struct PerXApp: App {
                 // ContentView solo quando autenticato (così non è in memoria sulla splash)
                 if authService.isAuthenticated {
                     ContentView()
-                        .environment(\.managedObjectContext, persistenceController.container.viewContext)
+                        .id("\(authService.userEmail ?? "")-\(ObjectIdentifier(persistenceController.viewContext).hashValue)")
+                        .environment(\.managedObjectContext, persistenceController.viewContext)
                         .onAppear {
                             setupFolderScanning()
                             _ = FatturatoCacheInvalidator.shared
@@ -48,8 +49,8 @@ struct PerXApp: App {
                 }
                 
                 // Splash SEMPRE in albero così non viene mai distrutta e .task parte una sola volta
-                SplashScreenView()
-                    .environment(\.managedObjectContext, persistenceController.container.viewContext)
+                    SplashScreenView()
+                        .environment(\.managedObjectContext, persistenceController.viewContext)
                     .opacity(authService.isAuthenticated ? 0 : 1)
                     .allowsHitTesting(!authService.isAuthenticated)
                     .zIndex(authService.isAuthenticated ? 0 : 1)
@@ -129,7 +130,7 @@ struct PerXApp: App {
     
     private func setupFolderScanning() {
         // Inizializza ImportService
-        ImportService.configure(with: persistenceController.container.viewContext)
+        ImportService.configure(with: persistenceController.viewContext)
         
         // Esegui l'inizializzazione in modo asincrono per evitare blocchi
         Task {

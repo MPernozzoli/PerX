@@ -473,6 +473,12 @@ class SmartSchedulePreferences: ObservableObject {
         }
     }
     
+    func reloadForAccount() {
+        autoScheduleEnabled = defaults.bool(forKey: autoScheduleKey)
+        defaultScheduleTime = defaults.string(forKey: defaultScheduleTimeKey) ?? "08:00"
+        usePersonalSchedule = defaults.bool(forKey: usePersonalScheduleKey)
+    }
+
     private init() {
         self.autoScheduleEnabled = defaults.bool(forKey: autoScheduleKey)
         self.defaultScheduleTime = defaults.string(forKey: defaultScheduleTimeKey) ?? "08:00"

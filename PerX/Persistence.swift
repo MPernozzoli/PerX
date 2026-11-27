@@ -2,33 +2,31 @@
 //  Persistence.swift
 //  PerX
 //
-//  Created by Massimo Pernozzoli on 13/11/24.
-//
 
 import CoreData
 
-final class PersistenceController {
+final class PersistenceController: ObservableObject {
     static let shared = PersistenceController()
-    
+
     static var preview: PersistenceController = {
         let controller = PersistenceController(inMemory: true)
-        let viewContext = controller.container.viewContext
-        
+        let viewContext = controller.viewContext
+
         let sinistro = Sinistro(context: viewContext)
         sinistro.riferimento = "2405747"
         sinistro.stato = StatoManager.StatoSinistro.istruzione.descrizione
         sinistro.dataAperturaGestione = Date()
-        
+
         try? viewContext.save()
-        
+
         return controller
     }()
-    
-    let container: NSPersistentContainer
-    
+
+    private(set) var container: NSPersistentContainer
+    @Published private(set) var viewContext: NSManagedObjectContext
+
     init(inMemory: Bool = false) {
-        container = NSPersistentContainer(name: "PerX")
-        
+        let container = NSPersistentContainer(name: "PerX")
         if let description = container.persistentStoreDescriptions.first {
             description.shouldMigrateStoreAutomatically = true
             description.shouldInferMappingModelAutomatically = true
@@ -36,17 +34,40 @@ final class PersistenceController {
                 description.url = URL(fileURLWithPath: "/dev/null")
             }
         }
-        
+        self.container = container
+        self.viewContext = container.viewContext
+        load(container)
+    }
+
+    var storeURL: URL? {
+        container.persistentStoreDescriptions.first?.url
+    }
+
+    func releaseStore() {
+        for store in container.persistentStoreCoordinator.persistentStores {
+            try? container.persistentStoreCoordinator.remove(store)
+        }
+    }
+
+    func useStore(at url: URL) {
+        guard storeURL?.standardizedFileURL != url.standardizedFileURL else { return }
+        let next = NSPersistentContainer(name: "PerX")
+        let description = NSPersistentStoreDescription(url: url)
+        description.shouldMigrateStoreAutomatically = true
+        description.shouldInferMappingModelAutomatically = true
+        next.persistentStoreDescriptions = [description]
+        load(next)
+        container = next
+        viewContext = next.viewContext
+    }
+
+    private func load(_ container: NSPersistentContainer) {
         container.loadPersistentStores { description, error in
             if let error = error as NSError? {
                 print("❌ Errore caricamento Core Data: \(error.localizedDescription)")
-
-                guard let storeURL = description.url ?? self.container.persistentStoreDescriptions.first?.url else {
-                    fatalError("Impossibile ottenere l'URL dello store per la cancellazione: \(error)")
+                guard let storeURL = description.url else {
+                    fatalError("Impossibile ottenere l'URL dello store: \(error)")
                 }
-
-                // Il database non si cancella: si sposta in una copia di backup accanto all'originale
-                // (es. migrazione fallita dopo un cambio di modello), così perizie e stime sono recuperabili.
                 do {
                     let formatter = DateFormatter()
                     formatter.dateFormat = "yyyyMMdd-HHmmss"
@@ -56,14 +77,11 @@ final class PersistenceController {
                         .appendingPathExtension(storeURL.pathExtension)
                     print("🧹 Sposto il database non apribile in: \(backupURL.path)")
                     try FileManager.default.moveItem(at: storeURL, to: backupURL)
-
                     for estensione in ["-shm", "-wal"] {
                         let sorgente = URL(fileURLWithPath: storeURL.path + estensione)
                         let destinazione = URL(fileURLWithPath: backupURL.path + estensione)
                         try? FileManager.default.moveItem(at: sorgente, to: destinazione)
                     }
-
-                    print("✅ Database salvato in backup. L'app verrà terminata. Riavvia per creare un nuovo database.")
                     fatalError("Database spostato in backup (\(backupURL.lastPathComponent)), riavvia l'app. Errore originale: \(error)")
                 } catch {
                     fatalError("❌ Impossibile spostare il database a \(storeURL.path). Errore: \(error)")
@@ -72,17 +90,15 @@ final class PersistenceController {
                 print("✅ Core Data caricato correttamente")
             }
         }
-        
         container.viewContext.automaticallyMergesChangesFromParent = true
         container.viewContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
     }
-    
+
     func save() {
-        let context = container.viewContext
+        let context = viewContext
         if context.hasChanges {
             do {
                 try context.save()
-                print("💾 Context salvato correttamente")
             } catch {
                 print("❌ Errore salvataggio context: \(error)")
             }

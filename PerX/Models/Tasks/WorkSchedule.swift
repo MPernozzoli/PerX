@@ -132,6 +132,15 @@ class WorkScheduleManager: ObservableObject {
         updateCounter += 1
         objectWillChange.send()
     }
+
+    func replaceFromDefaults() {
+        weekdaySchedules = [:]
+        specialDays = []
+        monthlyTargets = [:]
+        loadFromDefaults()
+        updateCounter += 1
+        objectWillChange.send()
+    }
     
     private func loadFromDefaults() {
         if let saved = UserDefaults.standard.data(forKey: "weekdaySchedules"),

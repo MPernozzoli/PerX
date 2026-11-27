@@ -321,6 +321,13 @@ final class StudioNewsService: ObservableObject {
         }
     }
     
+    func reloadForAccount() {
+        news = []
+        processedEmailIds = []
+        processedBirthdays = []
+        load()
+    }
+
     private func load() {
         guard let data = UserDefaults.standard.data(forKey: storageKey),
               let decoded = try? JSONDecoder().decode([StudioNewsItem].self, from: data) else { return }
