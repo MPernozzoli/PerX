@@ -3,121 +3,36 @@ import AppKit
 
 struct ContentView: View {
     @StateObject private var appState = AppState.shared
+    @ObservedObject private var activity = UIActivity.shared
     @ObservedObject private var workSchedule = WorkScheduleManager.shared
     @State private var selection: String? = "dashboard"
+    @State private var displayed: String? = "dashboard"
     @State private var isSidebarVisible = true
     @State private var studio = TenantMailSettingsService.shared.settings.studioAccess
+    @Environment(\.managedObjectContext) private var viewContext
     
     var body: some View {
-        NavigationView {
-            // Sidebar
-            VStack(spacing: 0) {
-                // Menu principale
-                List(selection: $selection) {
-                    NavigationLink(
-                        destination: LazyView(DashboardView()),
-                        tag: "dashboard",
-                        selection: $selection
-                    ) {
-                        Label("Dashboard", systemImage: "gauge")
-                    }
-
-                    if studio.salaRegia {
-                        NavigationLink(
-                            destination: LazyView(SalaRegiaView()),
-                            tag: "sala-regia",
-                            selection: $selection
-                        ) {
-                            Label("Sala regia", systemImage: "sparkles.rectangle.stack")
-                        }
-                    }
-                    
-                    NavigationLink(
-                        destination: LazyView(SinistriView()),
-                        tag: "sinistri",
-                        selection: $selection
-                    ) {
-                        Label("Sinistri", systemImage: "folder")
-                    }
-                    
-                    if studio.posta {
-                        NavigationLink(
-                            destination: LazyView(ComunicazioniView()),
-                            tag: "comunicazioni",
-                            selection: $selection
-                        ) {
-                            Label("Comunicazioni", systemImage: "envelope")
-                        }
-                    }
-
-                    if studio.studioCondiviso {
-                        NavigationLink(
-                            destination: LazyView(TeamMonitorView()),
-                            tag: "team",
-                            selection: $selection
-                        ) {
-                            Label("Team", systemImage: "person.3")
-                        }
-
-                        NavigationLink(
-                            destination: LazyView(StudioMonitorView()),
-                            tag: "studio",
-                            selection: $selection
-                        ) {
-                            Label("Studio", systemImage: "building.2")
-                        }
-                    }
-                    
-                    if studio.consuntivo {
-                        NavigationLink(
-                            destination: LazyView(
-                                ConsuntivoView { sinistro in
-                                    appState.openSinistro(sinistro)
-                                    selection = "sinistri"
-                                }
-                                .environmentObject(workSchedule)
-                            ),
-                            tag: "consuntivo",
-                            selection: $selection
-                        ) {
-                            Label("Consuntivo", systemImage: "chart.bar")
-                        }
-                    }
-                    
-                    NavigationLink(
-                        destination: LazyView(WorkScheduleView()),
-                        tag: "programmazione",
-                        selection: $selection
-                    ) {
-                        Label("Programmazione", systemImage: "calendar.badge.clock")
-                    }
-                }
-                .listStyle(SidebarListStyle())
-                
-                Spacer()
-                
-                // Lista separata per Impostazioni
-                List {
-                    NavigationLink(
-                        destination: LazyView(SettingsView().environmentObject(appState)),
-                        tag: "impostazioni",
-                        selection: $selection
-                    ) {
-                        Label("Impostazioni", systemImage: "gear")
-                    }
-                }
-                .listStyle(SidebarListStyle())
-                .frame(height: 45)
+        HStack(spacing: 0) {
+            if isSidebarVisible {
+                sidebar
+                    .frame(width: 220)
+                Divider()
             }
-            .frame(minWidth: 200)
-            
-            // Vista principale - mostra la dashboard come default
-            SinistriView()
-                .toolbarBackground(.visible, for: .windowToolbar)
-                .toolbarBackgroundVisibility(.automatic, for: .windowToolbar)
+            selectedPage
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .layoutPriority(1)
+                .environment(\.managedObjectContext, viewContext)
+        }
+        .overlay(alignment: .topTrailing) {
+            if let label = activity.label {
+                GearCaption(text: label)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(.thinMaterial, in: Capsule())
+                    .padding()
+            }
         }
         .toolbar {
-            // Pulsante fisso: deve essere visibile anche quando la detail view cambia (Dashboard/Comunicazioni/etc.)
             ToolbarItem(placement: .navigation) {
                 Button(action: toggleSidebar) {
                     Image(systemName: isSidebarVisible ? "sidebar.leading" : "sidebar.trailing")
@@ -126,15 +41,26 @@ struct ContentView: View {
             }
         }
         .frame(minWidth: 1000, minHeight: 600)
+        .onChange(of: selection) { newValue in
+            guard let newValue else { return }
+            if appState.selectedView != newValue {
+                appState.selectedView = newValue
+            }
+            guard displayed != newValue else { return }
+            displayed = nil
+            Task { @MainActor in
+                await Task.yield()
+                guard selection == newValue else { return }
+                displayed = newValue
+            }
+        }
         .onChange(of: appState.selectedView) { newView in
-            selection = newView
+            if selection != newView {
+                selection = newView
+            }
         }
         .onAppear {
             studio = TenantMailSettingsService.shared.settings.studioAccess
-            // Allinea lo state allo stato reale della sidebar (es. se l'utente l'ha chiusa dal menu di sistema)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                syncSidebarVisibilityFromSystem()
-            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .tenantSettingsChanged)) { _ in
             studio = TenantMailSettingsService.shared.settings.studioAccess
@@ -143,7 +69,6 @@ struct ContentView: View {
             if (selection == "team" || selection == "studio") && !studio.studioCondiviso { selection = "dashboard" }
             if selection == "consuntivo" && !studio.consuntivo { selection = "dashboard" }
         }
-        .background(SidebarVisibilityMonitor(isVisible: $isSidebarVisible))
         // Intercetta i tasti freccia quando la tab Cartella è attiva per bloccare la sidebar
         .onKeyPress(.leftArrow) {
             if isCartellaTabActive {
@@ -175,45 +100,105 @@ struct ContentView: View {
         }
         .environmentObject(appState)
     }
+
+    private var sidebar: some View {
+        VStack(spacing: 0) {
+            List(selection: $selection) {
+                Label("Dashboard", systemImage: "gauge")
+                    .tag("dashboard")
+
+                if studio.salaRegia {
+                    Label("Sala regia", systemImage: "sparkles.rectangle.stack")
+                        .tag("sala-regia")
+                }
+
+                Label("Sinistri", systemImage: "folder")
+                    .tag("sinistri")
+
+                if studio.posta {
+                    Label("Comunicazioni", systemImage: "envelope")
+                        .tag("comunicazioni")
+                }
+
+                if studio.studioCondiviso {
+                    Label("Team", systemImage: "person.3")
+                        .tag("team")
+
+                    Label("Studio", systemImage: "building.2")
+                        .tag("studio")
+                }
+
+                if studio.consuntivo {
+                    Label("Consuntivo", systemImage: "chart.bar")
+                        .tag("consuntivo")
+                }
+
+                Label("Programmazione", systemImage: "calendar.badge.clock")
+                    .tag("programmazione")
+            }
+            .listStyle(.sidebar)
+
+            Spacer()
+
+            List(selection: $selection) {
+                Label("Impostazioni", systemImage: "gear")
+                    .tag("impostazioni")
+            }
+            .listStyle(.sidebar)
+            .frame(height: 45)
+        }
+        .frame(maxHeight: .infinity)
+    }
+
+    @ViewBuilder
+    private var selectedPage: some View {
+        switch displayed {
+        case nil:
+            VStack(alignment: .leading, spacing: 14) {
+                GearCaption(text: "Apro la sezione")
+                SkeletonBlock(height: 28)
+                SkeletonCard()
+                SkeletonBlock()
+                SkeletonBlock()
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        default:
+            mountedPage
+        }
+    }
+
+    @ViewBuilder
+    private var mountedPage: some View {
+        switch displayed {
+        case "sala-regia":
+            SalaRegiaView()
+        case "sinistri":
+            SinistriView()
+        case "comunicazioni":
+            ComunicazioniView()
+        case "team":
+            TeamMonitorView()
+        case "studio":
+            StudioMonitorView()
+        case "consuntivo":
+            ConsuntivoView { sinistro in
+                appState.openSinistro(sinistro)
+                selection = "sinistri"
+            }
+            .environmentObject(workSchedule)
+        case "programmazione":
+            WorkScheduleView()
+        case "impostazioni":
+            SettingsView()
+                .environmentObject(appState)
+        default:
+            DashboardView()
+        }
+    }
     
     private func toggleSidebar() {
-        // Metodo più affidabile su macOS: usa l'azione di sistema sulla responder chain
-        NSApp.sendAction(#selector(NSSplitViewController.toggleSidebar(_:)), to: nil, from: nil)
-        
-        // Riallinea lo state dopo l'animazione
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            syncSidebarVisibilityFromSystem()
-        }
-    }
-    
-    private func syncSidebarVisibilityFromSystem() {
-        if let collapsed = isSidebarCollapsed() {
-            isSidebarVisible = !collapsed
-        }
-    }
-    
-    private func currentWindow() -> NSWindow? {
-        NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows.first(where: { $0.isVisible })
-    }
-    
-    private func isSidebarCollapsed() -> Bool? {
-        guard let window = currentWindow() else { return nil }
-        
-        func findSplitViewController(in viewController: NSViewController?) -> NSSplitViewController? {
-            guard let vc = viewController else { return nil }
-            if let splitVC = vc as? NSSplitViewController { return splitVC }
-            for child in vc.children {
-                if let splitVC = findSplitViewController(in: child) { return splitVC }
-            }
-            return nil
-        }
-        
-        guard
-            let splitViewController = findSplitViewController(in: window.contentViewController),
-            let sidebar = splitViewController.splitViewItems.first
-        else { return nil }
-        
-        return sidebar.isCollapsed
+        isSidebarVisible.toggle()
     }
     
     private var isCartellaTabActive: Bool {
@@ -222,34 +207,6 @@ struct ContentView: View {
             return false
         }
         return tab.selectedTab == "Cartella"
-    }
-}
-
-// ViewModifier per monitorare la visibilità della sidebar
-struct SidebarVisibilityMonitor: NSViewRepresentable {
-    @Binding var isVisible: Bool
-    
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        return view
-    }
-    
-    func updateNSView(_ nsView: NSView, context: Context) {
-        // Non modificare state durante updateNSView - causa loop infiniti
-        // La visibilità viene gestita solo tramite toggleSidebar()
-    }
-}
-
-// Wrapper lazy per evitare pre-rendering delle view non visibili
-struct LazyView<Content: View>: View {
-    let build: () -> Content
-    
-    init(_ build: @autoclosure @escaping () -> Content) {
-        self.build = build
-    }
-    
-    var body: Content {
-        build()
     }
 }
 

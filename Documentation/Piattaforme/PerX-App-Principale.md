@@ -43,7 +43,13 @@ logica di base con `PerXCore/` (~17 file, moduli riutilizzabili).
 check verso `/health`, ogni 5 minuti. `HubModeService` non fa un secondo polling: legge
 `isHubReachable`. `CurrentUserService` espone email/username correnti. Perdere il focus
 della finestra non ferma posta, WhatsApp e sync cartelle: quella pausa scatta solo a sleep
-e wake del Mac. Dettaglio della decisione → [[06-Decisioni-e-Intenzioni-Future]].
+e wake del Mac. La sidebar principale (`ContentView`) è un pannello affiancato alla pagina scelta:
+in memoria c’è solo quella pagina, non la lista sinistri sotto le altre sezioni.
+`NavigationSplitView` all’avvio terminava il processo (`EXC_BAD_ACCESS` nel body).
+Il calcolo dei task non blocca il disegno: fetch e conteggi stanno su un contesto
+Core Data di background, la scansione file è staccata, e `UIActivity` mostra
+ingranaggio e scheletro finché il risultato non è pronto.
+Dettaglio della decisione → [[06-Decisioni-e-Intenzioni-Future]].
 
 ## Local Agent (XPC)
 

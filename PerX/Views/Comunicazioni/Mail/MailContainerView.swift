@@ -7,7 +7,7 @@ struct MailContainerView: View {
     @ObservedObject private var principaleViewModel = PrincipaleViewModel.shared
     @Binding var selectedEmail: Email?
     
-    @State private var selectedMailboxId: String = "PRINCIPALE"
+    @State private var selectedMailboxId: String = "INBOX"
     @State private var selectedThread: SinistroEmailThread?
     
     // --- Stati per filtri e ricerca ---
@@ -40,7 +40,7 @@ struct MailContainerView: View {
             MailboxSettingsView(viewModel: viewModel)
         }
         .onAppear {
-            if selectedMailboxId == "PRINCIPALE", principaleViewModel.displayedThreads.isEmpty {
+            if selectedMailboxId == "PRINCIPALE" {
                 selectedMailboxId = "INBOX"
             }
             Task { @MainActor in

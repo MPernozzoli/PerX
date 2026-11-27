@@ -28,19 +28,33 @@ struct SinistriView: View {
     
     // MARK: - Body
     
+    @State private var contentReady = false
+
     var body: some View {
-        GeometryReader { geometry in
-            VStack(spacing: 0) {
-                tabBarView
-                Divider()
-                mainContentView
+        Group {
+            if contentReady {
+                loadedBody
+            } else {
+                VStack(alignment: .leading, spacing: 14) {
+                    GearCaption(text: "Apro i sinistri")
+                    SkeletonBlock(height: 32)
+                    SkeletonBlock()
+                    SkeletonBlock()
+                    SkeletonBlock()
+                    SkeletonBlock()
+                }
+                .padding(24)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
-            .frame(width: geometry.size.width, height: geometry.size.height)
-            .clipped()
         }
         .onAppear {
             performFolderScanIfNeeded()
             applyClaimScope()
+            guard !contentReady else { return }
+            Task { @MainActor in
+                await Task.yield()
+                contentReady = true
+            }
         }
         .onChange(of: sinistri.count) { _ in
             viewModel.invalidateCache()
@@ -50,6 +64,18 @@ struct SinistriView: View {
         }
         .onChange(of: appState.googleAuthService.userEmail) { _ in
             applyClaimScope()
+        }
+    }
+
+    private var loadedBody: some View {
+        GeometryReader { geometry in
+            VStack(spacing: 0) {
+                tabBarView
+                Divider()
+                mainContentView
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .clipped()
         }
         .background(
             Group {

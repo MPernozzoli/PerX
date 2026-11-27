@@ -42,7 +42,7 @@ Provider **Resend**: invio via `RESEND_API_KEY`/`RESEND_DEFAULT_FROM_EMAIL`, sch
 `backend/docs/resend_supabase_inbound_pipeline.md` (non ancora incorporata in questo vault — da
 fare se questa pipeline viene toccata).
 
-Lato app c’è un solo polling, `HubEmailService`, verso `GET /api/v1/hub/emails`, con il token e l’email dell’account connesso. Al cambio account la lista e i thread in memoria si svuotano: non resta la posta dell’account precedente. La cache locale delle mail non viene più ridisegnata sopra l’elenco. Dal 2026-11-27 un salvataggio Core Data qualunque non ricarica più tutti i thread: il reload parte da `reloadThreads()` quando cambia la posta.
+Lato app c’è un solo polling, `HubEmailService`, verso `GET /api/v1/hub/emails`, con il token e l’email dell’account connesso. Al cambio account la lista e i thread in memoria si svuotano. Comunicazioni si apre sulla posta in arrivo dell’account connesso. In Principale restano solo i thread dei sinistri di quell’account: niente pratiche di un altro utente e niente thread senza sinistro. La cache locale delle mail non viene più ridisegnata sopra l’elenco. Dal 2026-11-27 un salvataggio Core Data qualunque non ricarica più tutti i thread: il reload parte da `reloadThreads()` quando cambia la posta.
 Gmail sul Mac e `MailManager` non scaricano più la posta. Il server, all’accesso Google, recupera
 la posta in arrivo e inviata e poi le mail nuove. Se `GMAIL_PUBSUB_TOPIC` è impostato, Gmail
 avvisa `POST /api/v1/emails/gmail/push` e lo scarico parte subito; altrimenti il server ricontrolla

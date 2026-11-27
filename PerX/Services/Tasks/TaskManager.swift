@@ -837,6 +837,8 @@ class TaskManager: ObservableObject {
     // MARK: - Generation and Scheduling
     
     func regenerateBaseTasks(triggeredByEmail: Bool = false) async {
+        UIActivity.shared.begin("Calcolo i task")
+        defer { UIActivity.shared.end() }
         let now = Date()
         let defaults = UserDefaults.standard
         

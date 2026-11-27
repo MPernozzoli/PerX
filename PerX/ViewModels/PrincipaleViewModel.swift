@@ -135,7 +135,7 @@ class PrincipaleViewModel: ObservableObject {
                         // Filtra thread con email escluse
                         var filteredBatch: [SinistroEmailThread] = []
                         
-                        for thread in fetchedThreads {
+                        for thread in fetchedThreads where self.belongsToSignedInUser(thread) {
                             let originalIds = thread.messageIds
                             let filteredIds = originalIds.filter { !threadCustomizationService.isEmailExcluded(emailId: $0) }
                             
@@ -216,7 +216,18 @@ class PrincipaleViewModel: ObservableObject {
             }
         }
     }
-    
+
+    private func belongsToSignedInUser(_ thread: SinistroEmailThread) -> Bool {
+        guard let sinistro = thread.sinistro else { return false }
+        let email = (GoogleAuthService.shared.userEmail ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard !email.isEmpty else { return false }
+        let owner = (sinistro.ownerEmail ?? "").lowercased()
+        let assignee = (sinistro.assignedToUserEmail ?? "").lowercased()
+        return owner == email || assignee == email
+    }
+
     /// Ordina i thread in background senza bloccare la UI
     private func sortThreadsInBackground() async {
         // Ordina solo i primi 100 thread per non bloccare
