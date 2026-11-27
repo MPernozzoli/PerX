@@ -254,6 +254,24 @@ struct TenantMailSettings: Codable {
     var videoInspectionSettings: TenantVideoInspectionSettings
     var providerSettings: TenantInspectionProviderSettings?
     var branding: TenantBrandingSettings?
+    var studioAccess: StudioAccess
+
+    enum CodingKeys: String, CodingKey {
+        case tenantName
+        case tenantSlug
+        case portalDomains
+        case internalDomains
+        case internalEmails
+        case systemEmails
+        case secretariatEmails
+        case claimGaranzie
+        case defaultClaimGaranzia
+        case catSettings
+        case videoInspectionSettings
+        case providerSettings
+        case branding
+        case studioAccess
+    }
 
     init(
         tenantName: String,
@@ -268,7 +286,8 @@ struct TenantMailSettings: Codable {
         catSettings: TenantCATSettings,
         videoInspectionSettings: TenantVideoInspectionSettings,
         providerSettings: TenantInspectionProviderSettings?,
-        branding: TenantBrandingSettings?
+        branding: TenantBrandingSettings?,
+        studioAccess: StudioAccess = .studio
     ) {
         self.tenantName = tenantName
         self.tenantSlug = tenantSlug
@@ -283,6 +302,7 @@ struct TenantMailSettings: Codable {
         self.videoInspectionSettings = videoInspectionSettings
         self.providerSettings = providerSettings
         self.branding = branding
+        self.studioAccess = studioAccess
     }
 
     init(from decoder: Decoder) throws {
@@ -300,6 +320,26 @@ struct TenantMailSettings: Codable {
         videoInspectionSettings = try container.decodeIfPresent(TenantVideoInspectionSettings.self, forKey: .videoInspectionSettings) ?? .default
         providerSettings = try container.decodeIfPresent(TenantInspectionProviderSettings.self, forKey: .providerSettings)
         branding = try container.decodeIfPresent(TenantBrandingSettings.self, forKey: .branding)
+        studioAccess = try container.decodeIfPresent(StudioAccess.self, forKey: .studioAccess)
+            ?? StudioAccess.resolved(profile: nil, singleOperator: nil, capabilities: nil, slug: tenantSlug)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(tenantName, forKey: .tenantName)
+        try container.encode(tenantSlug, forKey: .tenantSlug)
+        try container.encode(portalDomains, forKey: .portalDomains)
+        try container.encode(internalDomains, forKey: .internalDomains)
+        try container.encode(internalEmails, forKey: .internalEmails)
+        try container.encode(systemEmails, forKey: .systemEmails)
+        try container.encode(secretariatEmails, forKey: .secretariatEmails)
+        try container.encode(claimGaranzie, forKey: .claimGaranzie)
+        try container.encode(defaultClaimGaranzia, forKey: .defaultClaimGaranzia)
+        try container.encode(catSettings, forKey: .catSettings)
+        try container.encode(videoInspectionSettings, forKey: .videoInspectionSettings)
+        try container.encodeIfPresent(providerSettings, forKey: .providerSettings)
+        try container.encodeIfPresent(branding, forKey: .branding)
+        try container.encode(studioAccess, forKey: .studioAccess)
     }
 
     static let `default` = TenantMailSettings(
@@ -382,7 +422,8 @@ final class TenantMailSettingsService {
             catSettings: normalizeCATSettings(value.catSettings),
             videoInspectionSettings: normalizeVideoInspectionSettings(value.videoInspectionSettings),
             providerSettings: value.providerSettings.map(normalizeProviderSettings),
-            branding: value.branding
+            branding: value.branding,
+            studioAccess: normalizeSlug(value.tenantSlug) == "chiari" ? value.studioAccess.lockedChiari() : value.studioAccess
         )
     }
 

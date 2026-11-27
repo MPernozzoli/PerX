@@ -43,6 +43,13 @@ final class GoogleAuthServiceiOS: ObservableObject {
             return
         }
 
+        if await refreshStoredSession(baseURL: baseURL),
+           let token = loadFromKeychain(forKey: "access_token"),
+           await fetchUserInfo(accessToken: token, baseURL: baseURL) {
+            isAuthenticated = true
+            return
+        }
+
         if let email = loadFromKeychain(forKey: "active_email"),
            let password = AccountManager.shared.getPassword(for: email),
            !password.isEmpty {
@@ -63,7 +70,25 @@ final class GoogleAuthServiceiOS: ObservableObject {
     }
 
     func signIn() async throws {
-        throw AuthError.missingCredentials
+        let baseURL = normalizedBaseURL()
+        let tokens = try await GoogleWorkspaceSignIn.shared.signIn(apiBaseURL: baseURL)
+        saveToKeychain(token: tokens.access_token, forKey: "access_token")
+        saveToKeychain(token: tokens.refresh_token, forKey: "refresh_token")
+        hubClient.cloudAPIBaseURL = baseURL
+        guard await fetchUserInfo(accessToken: tokens.access_token, baseURL: baseURL) else {
+            signOut()
+            throw AuthError.userInfoFailed
+        }
+        if let email = userEmail {
+            saveToKeychain(token: email, forKey: "active_email")
+            hubClient.storeCloudSession(
+                accessToken: tokens.access_token,
+                refreshToken: tokens.refresh_token,
+                email: email,
+                password: ""
+            )
+        }
+        isAuthenticated = true
     }
 
     func signIn(email: String, password: String, baseURL: String? = nil) async throws {
@@ -211,6 +236,28 @@ final class GoogleAuthServiceiOS: ObservableObject {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let resolved = candidate.isEmpty ? HubAPIClient.fixedCloudAPIBaseURL : candidate
         return resolved.hasSuffix("/") ? String(resolved.dropLast()) : resolved
+    }
+
+    private func refreshStoredSession(baseURL: String) async -> Bool {
+        guard let refreshToken = loadFromKeychain(forKey: "refresh_token"),
+              let url = URL(string: "\(baseURL)/api/v1/auth/refresh") else {
+            return false
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.httpBody = try? JSONEncoder().encode(["refresh_token": refreshToken])
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, 200...299 ~= http.statusCode else { return false }
+            let tokens = try JSONDecoder().decode(TokenResponseJSON.self, from: data)
+            saveToKeychain(token: tokens.access_token, forKey: "access_token")
+            saveToKeychain(token: tokens.refresh_token, forKey: "refresh_token")
+            return true
+        } catch {
+            return false
+        }
     }
 
     private func errorMessage(from data: Data, statusCode: Int) -> String {

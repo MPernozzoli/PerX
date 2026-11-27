@@ -50,10 +50,12 @@ from app.api.v1 import (
     routes_folder_packages,
     routes_realtime,
     routes_devices,
+    routes_regia,
 )
 from app.services.inspection_workflow_service import InspectionAutomationRuntime
 from app.services.video_inspection_workflow_service import VideoInspectionAutomationRuntime
 from app.services.automation_service import AutomationRuntime
+from app.services.gmail_sync_service import GmailSyncRuntime
 from app.services.scheduled_email_service import ScheduledEmailRuntime
 
 
@@ -65,6 +67,7 @@ async def lifespan(app: FastAPI):
     # Create tables (in production, use migrations)
     # Base.metadata.create_all(bind=engine)
     await ScheduledEmailRuntime.start()
+    await GmailSyncRuntime.start()
     await AutomationRuntime.start()
     await InspectionAutomationRuntime.start()
     await VideoInspectionAutomationRuntime.start()
@@ -73,6 +76,7 @@ async def lifespan(app: FastAPI):
     await VideoInspectionAutomationRuntime.stop()
     await InspectionAutomationRuntime.stop()
     await AutomationRuntime.stop()
+    await GmailSyncRuntime.stop()
     await ScheduledEmailRuntime.stop()
 
 
@@ -135,6 +139,7 @@ app.include_router(routes_processed_emails_sync.router, prefix="/api/v1/processe
 app.include_router(routes_folder_packages.router, prefix="/api/v1/folder-packages", tags=["folder-packages"])
 app.include_router(routes_realtime.router, prefix="/api/v1/realtime", tags=["realtime"])
 app.include_router(routes_devices.router, prefix="/api/v1/devices", tags=["devices"])
+app.include_router(routes_regia.router, prefix="/api/v1/regia", tags=["regia"])
 
 
 @app.get("/")

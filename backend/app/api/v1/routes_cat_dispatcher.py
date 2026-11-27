@@ -18,8 +18,9 @@ from app.schemas.cat_dispatcher import (
     CatDispatcherLookupResponse,
 )
 from app.services.cat_dispatcher_service import CatDispatcherService
+from app.api.capability_deps import require_capability
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_capability("cat_dispatcher"))])
 
 
 class CatDispatcherDispatchPayload(BaseModel):

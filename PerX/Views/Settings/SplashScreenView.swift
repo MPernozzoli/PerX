@@ -82,7 +82,7 @@ struct SplashScreenView: View {
                 .font(.system(size: 42, weight: .bold, design: .rounded))
                 .foregroundColor(.white)
 
-            Text("Accedi con un account demo o con credenziali backend PerX")
+            Text("Accedi con Google oppure con un account già salvato")
                 .font(.headline)
                 .foregroundStyle(.white.opacity(0.72))
         }
@@ -91,6 +91,8 @@ struct SplashScreenView: View {
     @ViewBuilder
     private var contentView: some View {
         VStack(spacing: 24) {
+            googleButton
+
             if !hubConfig.cloudAPIBaseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text(hubConfig.cloudAPIBaseURL)
                     .font(.caption)
@@ -136,11 +138,11 @@ struct SplashScreenView: View {
                 .frame(maxWidth: 760)
             }
 
-            if isLoggingIn, let selectedAccount {
+            if isLoggingIn {
                 VStack(spacing: 10) {
                     ProgressView()
                         .progressViewStyle(.circular)
-                    Text("Accesso in corso per \(selectedAccount.email)...")
+                    Text(selectedAccount.map { "Accesso in corso per \($0.email)..." } ?? "Accesso con Google...")
                         .font(.caption)
                         .foregroundStyle(.white.opacity(0.7))
                 }
@@ -153,6 +155,27 @@ struct SplashScreenView: View {
             .controlSize(.large)
             .tint(.white)
         }
+    }
+
+    private var googleButton: some View {
+        Button {
+            guard !isLoggingIn else { return }
+            isLoggingIn = true
+            errorMessage = nil
+            Task {
+                do {
+                    try await authService.signInWithGoogle()
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
+                isLoggingIn = false
+            }
+        } label: {
+            Label("Accedi con Google", systemImage: "g.circle.fill")
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+        .disabled(isLoggingIn)
     }
 
     private func login(with account: AccountManager.SavedAccount) {

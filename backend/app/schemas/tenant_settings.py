@@ -119,6 +119,9 @@ class TenantSettingsResponse(BaseModel):
     provider_settings: TenantInspectionProviderSettingsPayload | None = None
     ai_settings: TenantAISettingsPayload | None = None
     branding: TenantBrandingPayload | None = None
+    workflow_profile: str = "studio"
+    single_operator: bool = False
+    capabilities: dict[str, bool] = Field(default_factory=dict)
 
 
 class TenantUserResponse(BaseModel):

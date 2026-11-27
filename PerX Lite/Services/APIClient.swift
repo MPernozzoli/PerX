@@ -77,6 +77,14 @@ final class APIClient {
         UserDefaults.standard.set(email.lowercased(), forKey: emailKey)
     }
 
+    func storeSession(accessToken: String, refreshToken: String, email: String?) {
+        KeychainHelper.save(accessToken, for: tokenKey)
+        KeychainHelper.save(refreshToken, for: refreshKey)
+        if let email, !email.isEmpty {
+            UserDefaults.standard.set(email.lowercased(), forKey: emailKey)
+        }
+    }
+
     private struct RefreshRequest: Encodable { let refresh_token: String }
 
     private func refreshAccessToken() async throws {

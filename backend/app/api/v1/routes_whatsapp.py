@@ -22,8 +22,9 @@ from app.schemas.comms import (
     WhatsAppThreadResponse,
 )
 from app.services.claim_service import ClaimService
+from app.api.capability_deps import require_capability
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_capability("whatsapp"))])
 
 
 @router.get("/threads", response_model=WhatsAppThreadListResponse)

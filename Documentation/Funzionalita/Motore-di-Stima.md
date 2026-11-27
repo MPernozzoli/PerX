@@ -33,6 +33,7 @@ Atto (vedi [[PerX-App-Principale]], [[Gestione-Sinistri]]).
 | `PerX/Services/Claims/Stima/StimaEngine.swift` | Validazione, calcolo, avvisi, scomposizione, arrotondamento assistito, IBAN mod 97, hash |
 | `PerX/Services/Claims/Stima/StimaTesti.swift` | Testi generati: frase per l'atto, conclusioni per esito, frase IVA, grammatica dei beni |
 | `PerX/Services/Claims/Stima/StimaService.swift` | Ponte Core Data ↔ motore, valori derivati delle voci, revisioni, approvazione, verifica atto firmato |
+| `PerX/Services/Claims/Stima/ChiariStimaWorkflow.swift` | Profilo Chiari: Light / Over / Sopralluogo Senza stima. Stesse soglie di `backend/app/domain/chiari_stima.py` |
 | `PerX/Services/Claims/CalcoliService.swift` | Facciata storica: stessa API di prima, ora delega al motore |
 | `PerX/Views/Sinistri/Perizia/Stima/StimaComponents.swift` | Riquadri Richiesto/Accertato/Liquidabile, scomposizione, avvisi, esito, revisioni |
 | `PerXTests/StimaEngineTests.swift` | Test Swift Testing del motore |
@@ -164,4 +165,4 @@ più sinistri dello stesso assicurato, override di chiusura. Vedi
 [[06-Decisioni-e-Intenzioni-Future]] e [[05-Stato-Sviluppo-e-Roadmap]].
 
 ---
-Ultimo aggiornamento: 2026-11-26
+Ultimo aggiornamento: 2026-11-26 (profilo ReClaim Chiari accanto al motore)

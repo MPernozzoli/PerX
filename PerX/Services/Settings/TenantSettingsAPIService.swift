@@ -87,6 +87,9 @@ struct TenantSettingsDTO: Codable {
     let video_inspection_settings: TenantVideoInspectionSettingsDTO
     let provider_settings: TenantInspectionProviderSettingsDTO?
     let branding: TenantBrandingDTO?
+    let workflow_profile: String?
+    let single_operator: Bool?
+    let capabilities: [String: Bool]?
 }
 
 struct TenantSettingsPayloadDTO: Encodable {
@@ -467,7 +470,13 @@ final class TenantSettingsAPIService: ObservableObject {
                     logoDataURL: $0.logo_data_url,
                     primaryColor: $0.primary_color
                 )
-            }
+            },
+            studioAccess: StudioAccess.resolved(
+                profile: dto.workflow_profile,
+                singleOperator: dto.single_operator,
+                capabilities: dto.capabilities,
+                slug: dto.tenant_slug
+            )
         )
     }
 

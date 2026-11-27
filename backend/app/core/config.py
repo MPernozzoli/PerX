@@ -48,6 +48,11 @@ class Settings(BaseSettings):
     SUPABASE_ANON_KEY: Optional[str] = None
     SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None
     SUPABASE_STORAGE_BUCKET: str = "perx-portal-uploads"
+    GOOGLE_OAUTH_CLIENT_ID: str = ""
+    GOOGLE_OAUTH_CLIENT_SECRET: str = ""
+    GMAIL_SYNC_ENABLED: bool = True
+    GMAIL_SYNC_POLL_SECONDS: int = 90
+    GMAIL_SYNC_PAGE_SIZE: int = 40
     APP_PUBLIC_URL: str = "https://app.perx.it"
     LOGIN_PUBLIC_URL: str = "https://login.perx.it"
     

@@ -1,6 +1,6 @@
 ---
 tags: [perx, funzionalita, ai, ollama]
-updated: 2026-09-05
+updated: 2026-11-26
 ---
 
 # AI locale e cloud
@@ -28,6 +28,11 @@ Questi nomi sono il framing di prodotto rivolto a periti/compagnie; a livello te
 appoggiano ai componenti descritti sotto (`AIManager`, `CloudAIService`/`ClaudeAIService`,
 `LocalModelService`, servizi backend `ai_*`). Se nel codice emerge una mappatura esplicita
 nome-agente ↔ servizio, aggiornare questa nota con il collegamento preciso.
+
+> [!note] Direzione pianificata (2026-11-26)
+> L'IA di PerX dovrebbe organizzarsi attorno a una **Regia** di agenti che gestisce i sinistri
+> con una scala di livelli (regole → Apple Intelligence on-device → Private Cloud Compute/Ollama
+> → cloud → perito supervisore). Piano → [[Regia-Agenti-e-Tenant-Chiari]].
 
 ## Local Agent (AI locale su macOS)
 
@@ -104,4 +109,4 @@ un sinistro). Feature flag: `FF_LOCAL_AI_PROCESS_JOBS_ENABLED`. Vedi anche
 [[04-Infrastruttura-e-Deploy]].
 
 ---
-Ultimo aggiornamento: 2026-09-05
+Ultimo aggiornamento: 2026-11-26 (rimando al piano Regia agenti)

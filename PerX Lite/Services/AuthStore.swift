@@ -31,6 +31,16 @@ final class AuthStore: ObservableObject {
         await refreshProfile()
     }
 
+    func signInWithGoogle() async throws {
+        let tokens = try await GoogleWorkspaceSignIn.shared.signIn(apiBaseURL: APIClient.shared.baseURL)
+        APIClient.shared.storeSession(accessToken: tokens.access_token, refreshToken: tokens.refresh_token, email: nil)
+        self.isAuthenticated = true
+        await refreshProfile()
+        if let email = self.email {
+            APIClient.shared.storeSession(accessToken: tokens.access_token, refreshToken: tokens.refresh_token, email: email)
+        }
+    }
+
     func logout() async {
         await CallSessionShared.shared.endActive()
         await PushDispatcher.shared.unregisterAll()

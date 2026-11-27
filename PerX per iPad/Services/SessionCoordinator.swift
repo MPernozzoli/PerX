@@ -14,6 +14,7 @@ final class SessionCoordinator: ObservableObject {
     @Published private(set) var currentUserEmail: String?
     @Published private(set) var currentUserName: String?
     @Published private(set) var currentCloudProfile: CloudProfileDTO?
+    @Published private(set) var regiaCapabilities: [String: Bool] = [:]
     @Published private(set) var isLoading = false
 
     // MARK: - Core Data (per-utente)
@@ -120,6 +121,7 @@ final class SessionCoordinator: ObservableObject {
                 print("[SessionCoordinator] ⚠️ Profilo cloud non disponibile: \(error)")
             }
         }
+        await loadRegiaCapabilities()
 
         print("[SessionCoordinator] ✅ Sessione attiva per: \(normalizedEmail)")
     }
@@ -140,6 +142,7 @@ final class SessionCoordinator: ObservableObject {
         currentUserEmail = nil
         currentUserName = nil
         currentCloudProfile = nil
+        regiaCapabilities = [:]
         isAuthenticated = false
 
         print("[SessionCoordinator] ✅ Sessione terminata")
@@ -164,4 +167,21 @@ final class SessionCoordinator: ObservableObject {
     private func accountManagerUpdateNameIfNeeded(email: String, displayName: String) {
         AccountManager.shared.updateDisplayName(displayName, for: email)
     }
+
+    private func loadRegiaCapabilities() async {
+        do {
+            let url = try hubClient.cloudURL("/api/v1/regia/profilo")
+            let request = hubClient.authorizedCloudRequest(url: url)
+            let (data, response) = try await hubClient.cloudSession.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return }
+            let profile = try JSONDecoder().decode(RegiaProfilePayload.self, from: data)
+            regiaCapabilities = profile.capabilities
+        } catch {
+            print("[SessionCoordinator] Profilo regia non disponibile: \(error)")
+        }
+    }
+}
+
+private struct RegiaProfilePayload: Decodable {
+    let capabilities: [String: Bool]
 }

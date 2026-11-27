@@ -44,6 +44,7 @@ from app.services.communication_extension_service import (
 )
 from app.services.communication_service import CommunicationService
 from app.services.livekit_token_service import LiveKitNotConfiguredError
+from app.api.capability_deps import require_capability
 
 router = APIRouter()
 
@@ -141,6 +142,7 @@ async def start_communication(
     payload: CommunicationStartRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
+    _: None = Depends(require_capability("chiamate_perx")),
 ):
     # Client UI seeds destination.tenant_id as the placeholder "default" because it
     # doesn't know the authenticated user's real tenant. Normalize that case to the
@@ -248,6 +250,7 @@ async def create_scheduled_communication(
     payload: ScheduledCommunicationCreateRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
+    _: None = Depends(require_capability("chiamate_perx")),
 ):
     if payload.ends_at <= payload.starts_at:
         raise HTTPException(status_code=400, detail="ends_at must be after starts_at")
@@ -259,6 +262,7 @@ async def create_external_invite_link(
     payload: ExternalInviteCreateRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
+    _: None = Depends(require_capability("link_pubblici")),
 ):
     if payload.valid_until <= payload.valid_from:
         raise HTTPException(status_code=400, detail="valid_until must be after valid_from")
@@ -272,6 +276,7 @@ async def assign_extension(
     payload: ExtensionAssignRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
+    _: None = Depends(require_capability("studio_condiviso")),
 ):
     user = await _tenant_user(db, current_user, payload.user_id)
     try:

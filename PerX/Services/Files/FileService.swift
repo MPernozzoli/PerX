@@ -821,23 +821,7 @@ class FileService {
             guard fm.fileExists(atPath: itemPath, isDirectory: &isDirectory) else { continue }
             
             // Estrai il riferimento dal nome (pattern: 7 cifre all'inizio)
-            var riferimento: String?
-            
-            // Pattern 1: "{riferimento} {resto}" (es. "2600465 foto.docx")
-            if item.count >= 7 {
-                let prefix = String(item.prefix(7))
-                if prefix.allSatisfy({ $0.isNumber }) {
-                    riferimento = prefix
-                }
-            }
-            
-            // Pattern 2: "{riferimento}_{numero}" (es. "2600465_96323")
-            if riferimento == nil {
-                let components = item.split(separator: "_")
-                if let first = components.first, first.count == 7, first.allSatisfy({ $0.isNumber }) {
-                    riferimento = String(first)
-                }
-            }
+            var riferimento = RiferimentoValidator.reference(inFolderName: item)
             
             // Pattern 3: Solo riferimento (es. "2600465") - questo è corretto, skip
             if riferimento == item {

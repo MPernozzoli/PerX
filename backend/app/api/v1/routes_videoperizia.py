@@ -34,8 +34,9 @@ from app.services.livekit_token_service import (
 )
 from app.services.supabase_storage_service import SupabaseStorageService
 from app.services.videoperizia_session_service import VideoperiziaSessionService
+from app.api.capability_deps import require_capability
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_capability("videoperizia"))])
 
 
 def _tenant_id(current_user: User) -> str:

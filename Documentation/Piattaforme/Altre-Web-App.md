@@ -1,6 +1,6 @@
 ---
 tags: [perx, piattaforma, web]
-updated: 2026-11-25
+updated: 2026-11-26
 ---
 
 # Altre web app satellite
@@ -16,34 +16,35 @@ Web app per consultare e gestire i "bignami" di polizza (riassunti/condizioni po
   dedicato **`bignami`** (non `public`), per non collidere con le tabelle applicative PerX.
 - Variabili chiave: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`,
   `NEXT_PUBLIC_SUPABASE_DB_SCHEMA=bignami`, `NEXT_PUBLIC_SITE_URL` (produzione:
-  `https://bignami.perx.it`; target 2026-11-25: `https://bignamionline.pynkstudio.eu`).
+  `https://bignami.perx.it`; alias secondario: `https://bignamionline.pynkstudio.eu`).
 - Lo schema `bignami` deve essere esposto nella Data API di Supabase e avere grant/RLS applicati
   dalle migrazioni PerX.
 - Stack: Next.js App Router (migrato da Vite, `react-router-dom` ancora presente), React,
   TypeScript.
 - Dal 2026-11-07 il client e i tipi generati puntano coerentemente allo schema `bignami` (incluse
   le mutation tipizzate); il typecheck globale è tornato verde.
-- Dominio configurato/storico: `bignami.perx.it`; target:
-  `bignamionline.pynkstudio.eu`, da integrare nel gateway se deve condividere SSO/policy con gli
-  altri portali (vedi
+- Dominio principale: `bignami.perx.it`; `bignamionline.pynkstudio.eu` resta alias secondario
+  instradato dallo stesso gateway per condividere SSO/policy con gli altri portali (vedi
   [[05-Stato-Sviluppo-e-Roadmap]] e [[06-Decisioni-e-Intenzioni-Future]]).
 - Dal 2026-11-25 l'origin Vercel `bignami-online.vercel.app` è in produzione e il gateway è
-  configurato per inoltrarlo; il nuovo dominio è associato a Vercel ma attende il record DNS su
-  Register.it. Il canonical di default dell'app punta già a `bignamionline.pynkstudio.eu`.
+  configurato per inoltrarlo. Il canonical dell'app punta a `bignami.perx.it`.
 
 ## PerX Insight Studio (`apps/perx-insight-studio`)
 
-App con proprie `supabase/migrations` e `supabase/functions` dedicate (in
-`apps/perx-insight-studio/supabase/`), quindi con un perimetro dati più autonomo rispetto alle
-altre app satellite. Struttura interna: `src/app`, `src/screens`, `src/integrations`,
-`src/components`, `src/hooks`, `src/lib`. Stack: Next.js 16 App Router, React 18, TypeScript
-(migrata da Vite come le altre). Dominio previsto: dominio marketing PerX; secondo
-`web-portals-next-vercel` può restare come progetto Next.js separato invece di confluire nel
-gateway unico.
+Landing marketing di PerX (`perx.it` e alias collegati).
 
-> Contenuto funzionale non ancora documentato in dettaglio in questo vault: se lavori su questa
-> app, aggiungi qui una descrizione di cosa fa concretamente (nome "Insight Studio" suggerisce
-> analisi/reportistica, da confermare leggendo `src/screens`).
+- **Home (`/`)** — presentazione brand + CTA verso il percorso e il contatto.
+- **Come funziona (`/come-funziona`)** — storytelling di **una sola pratica inventata**
+  (`PX-2026-0847`, danno da acqua a Padova): elenco → dettaglio → bignami → Studio/Team →
+  Cat Dispatcher → portale → PerX Lite → elaborato calcoli.
+- Le interfacce nel percorso sono **screenshot delle app reali** (dati demo), non clone HTML.
+  Brief e numeri in `src/content/pratica-demo.ts`; PNG in `src/assets/story/` registrati in
+  `src/components/story/story-assets.ts`.
+- Form contatto (`info@perx.it`) e newsletter su Supabase dedicato
+  (`apps/perx-insight-studio/supabase/`), client opzionale se mancano le env pubbliche.
+- Struttura: `src/app`, `src/screens`, `src/components/story/`, `src/content/`,
+  `src/integrations`. Stack: Next.js 16 App Router, React 18, TypeScript.
+- Progetto Vercel separato rispetto al gateway portale (vedi [[04-Infrastruttura-e-Deploy]]).
 
 ## Randa / Studio Randa (`apps/randa`)
 
@@ -67,4 +68,4 @@ lato Studio Randa: piattaforma unica (app perito, hub comunicazioni, portale ass
 costante, scalabilità e trasparenza.
 
 ---
-Ultimo aggiornamento: 2026-11-25
+Ultimo aggiornamento: 2026-11-26

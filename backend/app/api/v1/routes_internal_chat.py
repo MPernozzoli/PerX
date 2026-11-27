@@ -22,8 +22,9 @@ from app.schemas.collab import (
     InternalChatThreadResponse,
 )
 from app.services.claim_service import ClaimService
+from app.api.capability_deps import require_capability
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_capability("chat_colleghi"))])
 
 
 @router.get("/threads", response_model=InternalChatThreadListResponse)

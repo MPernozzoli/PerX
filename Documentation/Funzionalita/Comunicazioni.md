@@ -1,6 +1,6 @@
 ---
 tags: [perx, funzionalita, comunicazioni]
-updated: 2026-11-26
+updated: 2026-11-27
 ---
 
 # Comunicazioni
@@ -42,11 +42,14 @@ Provider **Resend**: invio via `RESEND_API_KEY`/`RESEND_DEFAULT_FROM_EMAIL`, sch
 `backend/docs/resend_supabase_inbound_pipeline.md` (non ancora incorporata in questo vault — da
 fare se questa pipeline viene toccata).
 
-Lato app, `GmailService.swift` è oggi uno stub disattivato: la sincronizzazione Gmail diretta dai
-client non è più usata. **Intenzione (2026-11-26, non implementata):** reintrodurre Gmail come
-provider di casella per il tenant Chiari, ma lato server (Gmail push → Edge Function
-`gmail-inbound` → Supabase → client via API backend). Dettagli in
-[[06-Decisioni-e-Intenzioni-Future]].
+Lato app, `GmailService.swift` resta uno stub: i client non parlano con Gmail. Dal 2026-11-27
+la casella Workspace del tenant Chiari la sincronizza il backend (`gmail_sync_service.py`):
+all'accesso Google parte il recupero di posta in arrivo e inviata, poi le mail nuove; gli
+allegati fino a 15 MB finiscono su Supabase Storage e il riferimento `26-602322` collega la mail
+alla pratica. L'elenco che l'app già legge da `GET /api/v1/hub/emails` mostra quelle righe.
+L'invio dall'app usa Gmail se la casella è collegata, altrimenti Resend. Il rinnovo del token
+sta sul server (`GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET`). La push Pub/Sub
+descritta sotto resta il passo successivo, non il flusso attuale.
 
 ## Chat assicurato → team interno
 
@@ -70,4 +73,4 @@ Questo triage è responsabilità dell'agente AI applicativo **Elettra** — vedi
 route `routes_devices.py` — notifiche push verso app native (APNs) e web.
 
 ---
-Ultimo aggiornamento: 2026-11-26 (intenzione Gmail lato server per il tenant Chiari)
+Ultimo aggiornamento: 2026-11-27 (posta Gmail sincronizzata dal backend per il tenant Chiari)

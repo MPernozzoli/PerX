@@ -639,12 +639,11 @@ struct SinistriSettingsView: View {
         do {
             let contents = try fm.contentsOfDirectory(atPath: rootPath)
             for item in contents {
-                if item.count == 7 && item.allSatisfy({ $0.isNumber }) {
-                    let fullPath = (rootPath as NSString).appendingPathComponent(item)
-                    var isDir: ObjCBool = false
-                    if fm.fileExists(atPath: fullPath, isDirectory: &isDir) && isDir.boolValue {
-                        folders.append((path: fullPath, riferimento: item))
-                    }
+                guard let riferimento = RiferimentoValidator.reference(inFolderName: item) else { continue }
+                let fullPath = (rootPath as NSString).appendingPathComponent(item)
+                var isDir: ObjCBool = false
+                if fm.fileExists(atPath: fullPath, isDirectory: &isDir) && isDir.boolValue {
+                    folders.append((path: fullPath, riferimento: riferimento))
                 }
             }
         } catch {
@@ -656,7 +655,7 @@ struct SinistriSettingsView: View {
         }
         if folders.isEmpty {
             await MainActor.run {
-                importMessage = "Nessuna cartella sinistro (nome a 7 cifre)"
+                importMessage = "Nessuna cartella sinistro"
                 isImporting = false
             }
             return

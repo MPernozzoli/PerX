@@ -30,9 +30,26 @@ struct ComunicazioniListView: View {
         }
     }
 
+    private var visibleTabs: [ComunicazioniTab] {
+        let capabilities = session.regiaCapabilities
+        guard !capabilities.isEmpty else { return Array(ComunicazioniTab.allCases) }
+        return ComunicazioniTab.allCases.filter { tab in
+            switch tab {
+            case .email, .outbox:
+                return capabilities["posta"] != false
+            case .whatsapp:
+                return capabilities["whatsapp"] == true
+            case .telefono:
+                return capabilities["chiamate_perx"] == true
+            case .messaggi:
+                return capabilities["chat_colleghi"] == true
+            }
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            ComunicazioniTabBar(selected: $selectedTab)
+            ComunicazioniTabBar(selected: $selectedTab, tabs: visibleTabs)
             Divider()
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -40,6 +57,11 @@ struct ComunicazioniListView: View {
         .background(Color(.systemGroupedBackground))
         .navigationTitle("Comunicazioni")
         .navigationBarTitleDisplayMode(.inline)
+        .onChange(of: session.regiaCapabilities) { _, _ in
+            if !visibleTabs.contains(selectedTab), let first = visibleTabs.first {
+                selectedTab = first
+            }
+        }
     }
 
     @ViewBuilder
@@ -63,11 +85,12 @@ struct ComunicazioniListView: View {
 
 private struct ComunicazioniTabBar: View {
     @Binding var selected: ComunicazioniListView.ComunicazioniTab
+    let tabs: [ComunicazioniListView.ComunicazioniTab]
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ForEach(ComunicazioniListView.ComunicazioniTab.allCases, id: \.self) { tab in
+                ForEach(tabs, id: \.self) { tab in
                     Button {
                         selected = tab
                     } label: {

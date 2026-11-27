@@ -28,6 +28,7 @@ from app.models.document import Document
 from app.models.document_version import DocumentVersion
 from app.models.email import Email, EmailClaimLink
 from app.models.user import User
+from app.services.gmail_sync_service import GmailSyncService, REF_RE, _link_claims
 from app.services.resend_email_service import ResendEmailMessage, ResendEmailService
 from app.services.email_routing_service import EmailRoutingService
 from app.services.vault_storage_service import VaultStorageService
@@ -709,7 +710,9 @@ async def compat_list_emails(
     for email in result.scalars().all():
         if user:
             recipients = json.loads(email.to_addresses or "[]")
-            if user.lower() not in email.from_address.lower() and user.lower() not in ",".join(recipients).lower():
+            copied = json.loads(email.cc_addresses or "[]")
+            involved = ",".join([*recipients, *copied, email.from_address]).lower()
+            if user.lower() not in involved:
                 continue
         metadata = _email_metadata(email)
         items.append({
@@ -722,7 +725,7 @@ async def compat_list_emails(
             "sinistroRef": metadata.get("sinistroRef"),
             "direction": metadata.get("direction") or ("out" if email.status.startswith("outbound") or email.status == "scheduled" else "in"),
             "mailbox": email.mailbox_id,
-            "isRead": True,
+            "isRead": metadata.get("isRead", True),
         })
     return items
 
@@ -872,7 +875,31 @@ async def compat_send_email(
     current_user: User = Depends(get_current_active_user),
 ):
     now = datetime.now(timezone.utc)
-    success, resend_message_id, error_message = await _send_email_via_resend(payload, current_user)
+    mailbox = await GmailSyncService.mailbox_for_user(db, current_user.tenant_id, current_user.email)
+    gmail_id = None
+    if mailbox is not None:
+        try:
+            gmail_id = await GmailSyncService.send_message(
+                db,
+                mailbox,
+                to=payload.to,
+                cc=payload.cc,
+                bcc=payload.bcc,
+                subject=payload.subject,
+                body=payload.body,
+                is_html=payload.isHtml,
+                thread_id=payload.replyToThreadId,
+            )
+            success, resend_message_id, error_message = True, gmail_id, None
+        except Exception as exc:
+            success, resend_message_id, error_message = False, None, str(exc)
+        from_address = mailbox.email_address
+        provider = "gmail"
+    else:
+        success, resend_message_id, error_message = await _send_email_via_resend(payload, current_user)
+        from_address = _resolve_resend_from_address(payload, current_user)
+        provider = "resend"
+    found_refs = REF_RE.findall(f"{payload.subject}\n{payload.body}")
     metadata = {
         "accountId": payload.accountId,
         "to": payload.to,
@@ -880,16 +907,19 @@ async def compat_send_email(
         "bcc": payload.bcc or [],
         "direction": "out",
         "compat": True,
-        "provider": "resend",
-        "resendMessageId": resend_message_id,
+        "provider": provider,
+        "sinistroRef": found_refs[0] if found_refs else None,
+        "isRead": True,
+        "resendMessageId": resend_message_id if provider == "resend" else None,
+        "gmailId": gmail_id,
         "error": error_message,
     }
     email = Email(
         id=str(uuid.uuid4()),
         tenant_id=current_user.tenant_id,
-        message_id=resend_message_id or f"resend-failed-{uuid.uuid4()}",
+        message_id=(f"gmail:{gmail_id}" if gmail_id else resend_message_id) or f"{provider}-failed-{uuid.uuid4()}",
         thread_id=payload.replyToThreadId,
-        from_address=_resolve_resend_from_address(payload, current_user),
+        from_address=from_address,
         to_addresses=json.dumps(payload.to),
         cc_addresses=json.dumps(payload.cc or []),
         subject=payload.subject,
@@ -898,10 +928,13 @@ async def compat_send_email(
         received_at=now,
         status="outbound_sent" if success else "outbound_failed",
         raw_headers=json.dumps(metadata),
-        mailbox_id=payload.accountId,
-        provider_id=resend_message_id or "resend",
+        mailbox_id="SENT" if provider == "gmail" else payload.accountId,
+        provider_id=gmail_id or resend_message_id or provider,
     )
     db.add(email)
+    if success and found_refs and current_user.tenant_id:
+        await db.flush()
+        await _link_claims(db, current_user.tenant_id, email, found_refs)
     await db.commit()
     return {"success": success, "message_id": resend_message_id, "error": error_message}
 
@@ -924,12 +957,18 @@ async def compat_schedule_email(
         "body": payload.body,
         "isHtml": False,
     }
+    mailbox = await GmailSyncService.mailbox_for_user(db, current_user.tenant_id, current_user.email)
+    if mailbox is not None:
+        from_address = mailbox.email_address
+        metadata["provider"] = "gmail"
+    else:
+        from_address = _resolve_resend_schedule_from_address(payload.accountId, current_user)
     email = Email(
         id=str(uuid.uuid4()),
         tenant_id=current_user.tenant_id,
         message_id=f"scheduled-{uuid.uuid4()}",
         thread_id=None,
-        from_address=_resolve_resend_schedule_from_address(payload.accountId, current_user),
+        from_address=from_address,
         to_addresses=json.dumps(payload.to),
         cc_addresses=json.dumps(payload.cc or []),
         subject=payload.subject,

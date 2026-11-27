@@ -100,11 +100,12 @@ Contesto e decisione → [[06-Decisioni-e-Intenzioni-Future]]; variabili → [[0
 | AI | `routes_ai_chat.py`, `routes_ai_prompts.py`, `routes_ai_routing.py` | Vedi [[AI-Locale-e-Cloud]] |
 | Portale assicurati | `routes_portal.py`, `routes_portal_me.py` | Vedi [[Portal-Web-Assicurati]] |
 | CAT Dispatcher | `routes_cat_dispatcher.py` | Vedi [[CatDispatcher]] |
-| Videoperizia | `routes_videoperizia.py` | Vedi [[Videoperizia]] |
-| Process jobs (Mac mini) | `routes_process_jobs.py` | Vedi [[04-Infrastruttura-e-Deploy]] |
+| Videoperizia | `routes_videoperizia.py` | Vedi [[Videoperizia]]. Chiusa se il tenant non ha la capacità |
+| Regia | `routes_regia.py` | Profilo, stati, revisioni, questioni, regole, job. Vedi [[Regia-Agenti-e-Tenant-Chiari]] |
+| Process jobs (Mac mini) | `routes_process_jobs.py` | Vedi [[04-Infrastruttura-e-Deploy]]. I job della Regia aggiungono fase, risorsa e livello |
 | Pianificazione | `routes_planning.py`, `routes_reporting.py`, `routes_routing.py`, `routes_rubrica.py` | Agenda, reportistica, instradamento, rubrica contatti |
 | Bignami | `routes_bignami.py` | Ponte verso lo schema Postgres `bignami` — vedi [[Altre-Web-App]] |
-| Hub | `routes_hub_compat.py` | Compatibilità verso [[PerXHub]]. Il vault passa da `VaultStorageService` (provider `local`, `mac_mini`, `s3`) |
+| Hub | `routes_hub_compat.py` | Compatibilità verso [[PerXHub]]. Il vault passa da `VaultStorageService` (provider `local`, `mac_mini`, `s3`); la posta Gmail del tenant Chiari arriva in queste righe dopo la sincronizzazione del backend |
 
 Per l'elenco esaustivo degli endpoint con verbo HTTP, vedi `backend/README.md` (mantenuto
 aggiornato per l'uso pratico/setup; i concetti architetturali restano qui).
@@ -116,7 +117,8 @@ Domini principali: `claim*` (sinistro, stato, eventi, assegnazioni, diario), `do
 assicurati, sessioni, notifiche, privacy), `videoperizia`, `case_task`, `process_job`,
 `ai_*` (chat, prompt template + versioning, routing policy), `route_planning`, `inspection`,
 `invitation`, `tenant`, `user*`, `role`, `audit_log`, `rubrica`, `compagnia`, `actor`,
-`automation`, `device_token`, `platform_error_log`.
+`automation`, `device_token`, `platform_error_log`, `regia` (stati del tenant, workflow Chiari,
+gruppi, revisioni, atti, questioni, regolario).
 
 ## Multi-tenant e platform admin
 
@@ -124,7 +126,9 @@ assicurati, sessioni, notifiche, privacy), `videoperizia`, `case_task`, `process
   esplicitamente a `False` in produzione: la piattaforma prod **non** è ristretta a un singolo
   tenant. Bootstrap del tenant singolo (uso locale/dev) via `scripts/bootstrap_single_tenant.py`;
   provisioning di un tenant reale via `scripts/bootstrap_tenant.py` (usato per Studio Randa, tenant
-  `randa-srl` — vedi [[Altre-Web-App]]).
+  `randa-srl` — vedi [[Altre-Web-App]]). Il tenant Chiari si prepara con
+  `scripts/bootstrap_chiari.py` (prova a vuoto senza `--apply`) e le pratiche con
+  `scripts/import_chiari_sinistri.py`, anch'esso in prova a vuoto finché non si passa `--apply`.
 - **Platform admin** (`User.is_platform_admin=True`) ha accesso cross-tenant completo via
   `/api/v1/admin/*` (`routes_admin.py`, `routes_admin_errors.py`): tenant, settings (incluse le
   secret provider/AI), utenti, domain-routes, error log.
@@ -167,4 +171,4 @@ estensioni), **device token/push**, **AI prompt versioning & routing runs**, **r
 [[05-Stato-Sviluppo-e-Roadmap]].
 
 ---
-Ultimo aggiornamento: 2026-11-26 (provider S3 predisposto; migrazioni ricostruibili da zero)
+Ultimo aggiornamento: 2026-11-27 (API Regia e profilo tenant Chiari; provider S3 predisposto; migrazioni ricostruibili da zero)

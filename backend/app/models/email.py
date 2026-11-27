@@ -56,6 +56,8 @@ class Mailbox(Base):
     password_secret_ref = Column(String, nullable=True)  # Reference to secret manager
     settings_json = Column(JSON, nullable=True)  # Provider-specific settings
     active = Column(String, nullable=False, default="true")  # Boolean as string for simplicity
+    gmail_history_id = Column(String, nullable=True)
+    gmail_watch_expiration = Column(DateTime(timezone=True), nullable=True)
 
 
 class TenantEmailDomain(Base):

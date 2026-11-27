@@ -34,6 +34,26 @@ struct ComunicazioniView: View {
     // Layout preferences (persistenti)
     @AppStorage("mailSidebarWidth") private var sidebarWidth: Double = 320
     @AppStorage("mailDetailWidth") private var detailWidth: Double = 600
+    @State private var studio = TenantMailSettingsService.shared.settings.studioAccess
+
+    private var visibleTabs: [Tab] {
+        Tab.allCases.filter { tab in
+            switch tab {
+            case .mail:
+                return studio.posta
+            case .messaggi:
+                return studio.chatColleghi || studio.messaggiEsterni
+            case .whatsapp:
+                return studio.whatsapp
+            case .telegram:
+                return studio.telegram
+            case .chiamate, .ibrida:
+                return studio.chiamatePerx
+            case .rubrica:
+                return studio.rubrica
+            }
+        }
+    }
 
     var body: some View {
         mainContent
@@ -52,6 +72,12 @@ struct ComunicazioniView: View {
             }
             .onAppear(perform: handleOnAppear)
             .onDisappear(perform: handleOnDisappear)
+            .onReceive(NotificationCenter.default.publisher(for: .tenantSettingsChanged)) { _ in
+                studio = TenantMailSettingsService.shared.settings.studioAccess
+                if !visibleTabs.contains(selectedTab), let first = visibleTabs.first {
+                    selectedTab = first
+                }
+            }
             .sheet(isPresented: $showingQRCode) {
                 if let qrCode = whatsappViewModel.qrCode {
                     QRCodeView(qrCode: qrCode)
@@ -88,7 +114,7 @@ struct ComunicazioniView: View {
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .principal) {
             Picker("Comunicazioni", selection: $selectedTab) {
-                ForEach(Tab.allCases, id: \.self) { tab in
+                ForEach(visibleTabs, id: \.self) { tab in
                     Text(tab.rawValue).tag(tab)
                 }
             }

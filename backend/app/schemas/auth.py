@@ -20,6 +20,11 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class GoogleSessionRequest(BaseModel):
+    code: str
+    code_verifier: str
+
+
 class RefreshRequest(BaseModel):
     refresh_token: str
 

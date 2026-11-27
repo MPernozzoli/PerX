@@ -939,11 +939,9 @@ class ImportService: ObservableObject {
     
     // MARK: - Validazione Riferimento
     
-    /// Valida il formato del riferimento: deve essere esattamente 7 cifre numeriche
+    /// Valida il formato del riferimento: 7 cifre, oppure riferimento Chiari `26-602322`.
     private func isValidRiferimentoFormat(_ riferimento: String) -> Bool {
-        // Deve essere esattamente 7 caratteri e tutti numerici
-        guard riferimento.count == 7 else { return false }
-        return riferimento.allSatisfy { $0.isNumber }
+        RiferimentoValidator.isValidFormat(riferimento)
     }
     
     // MARK: - Utility per parsing

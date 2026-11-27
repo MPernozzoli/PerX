@@ -14,6 +14,16 @@
 				<string>com.googleusercontent.apps.150443834793-vn4s39ofgbgr695vq3h5k2agf2asomcu</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>PerXLogin</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.pernozzoli.perx</string>
+			</array>
+		</dict>
 	</array>
 	<key>UIBackgroundModes</key>
 	<array>

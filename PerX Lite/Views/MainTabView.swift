@@ -2,23 +2,31 @@ import SwiftUI
 
 struct MainTabView: View {
     @EnvironmentObject private var auth: AuthStore
+    @State private var capabilities: [String: Bool] = [:]
+
+    private var showCalls: Bool { capabilities.isEmpty || capabilities["chiamate_perx"] == true }
+    private var showSchedule: Bool { capabilities.isEmpty || capabilities["programmazione_rete"] == true }
+    private var showCatRoutes: Bool { auth.isCATUser && (capabilities.isEmpty || capabilities["cat_dispatcher"] == true) }
 
     var body: some View {
         ZStack(alignment: .top) {
             VStack(spacing: 0) {
                 ActiveCallBanner()
                 TabView {
-                    CommunicationsView()
-                        .tabItem { Label("Comunicazioni", systemImage: "phone.fill") }
+                    if showCalls {
+                        CommunicationsView()
+                            .tabItem { Label("Comunicazioni", systemImage: "phone.fill") }
+                    }
 
                     CalendarView()
                         .tabItem { Label("Calendario", systemImage: "calendar") }
 
-                    ScheduleView()
-                        .tabItem { Label("Programmazione", systemImage: "clock.fill") }
+                    if showSchedule {
+                        ScheduleView()
+                            .tabItem { Label("Programmazione", systemImage: "clock.fill") }
+                    }
 
-                    // Route + navigator tab: visible only for CAT-role users
-                    if auth.isCATUser {
+                    if showCatRoutes {
                         CATRoutesView()
                             .tabItem { Label("Route CAT", systemImage: "map.fill") }
                     }
@@ -32,6 +40,12 @@ struct MainTabView: View {
             IncomingCallBanner()
                 .animation(.spring(response: 0.4, dampingFraction: 0.8), value: IncomingCallBannerState.shared.pendingCall?.sessionId)
                 .zIndex(100)
+        }
+        .task {
+            struct Payload: Decodable { let capabilities: [String: Bool] }
+            if let payload: Payload = try? await APIClient.shared.get("/api/v1/regia/profilo") {
+                capabilities = payload.capabilities
+            }
         }
     }
 }

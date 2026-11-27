@@ -71,6 +71,7 @@ from app.services.livekit_token_service import (
 )
 from app.services.portal_service import PortalService
 from app.services.videoperizia_session_service import VideoperiziaSessionService
+from app.api.capability_deps import tenant_allows
 
 router = APIRouter()
 
@@ -104,13 +105,18 @@ async def create_claim_access_link(
     claim = await PortalService.get_claim_for_tenant(db, current_user.tenant_id, claim_id)
     if not claim:
         raise HTTPException(status_code=404, detail="Claim not found")
-
-    access, challenge, raw_token = await PortalService.issue_access_link(
-        db,
-        current_user.tenant_id,
-        claim,
-        payload,
-    )
+    try:
+        access, challenge, raw_token = await PortalService.issue_access_link(
+            db,
+            current_user.tenant_id,
+            claim,
+            payload,
+        )
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Questa funzione non è disponibile per questo studio.",
+        ) from exc
     return PortalAccessInviteResponse(
         portal_access_id=access.id,
         challenge_id=challenge.id,
@@ -137,6 +143,8 @@ async def start_auth(
     )
     payload.portal_host = _portal_host(payload.portal_host, x_forwarded_host, host)
     access, challenge, raw_token = await PortalService.start_public_auth(db, payload)
+    if access and not await tenant_allows(db, access.tenant_id, "portal_assicurati"):
+        return PortalAuthStartResponse(status="accepted")
     if not access or not challenge:
         return PortalAuthStartResponse(status="accepted")
 

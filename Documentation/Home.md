@@ -49,6 +49,8 @@ Dettagli → [[01-Panoramica]].
 - [[Videoperizia]] — perizia da remoto via videochiamata
 - [[Login-Unificato-SSO]] — identity layer unico pianificato (target
   `login-perx.pynkstudio.eu`; host storico `login.perx.it` durante la migrazione)
+- [[Regia-Agenti-e-Tenant-Chiari]] — piano: Regia agenti come cuore dell'app (Apple
+  Intelligence → modelli grandi → perito supervisore) e porting del tenant Chiari
 
 ---
 Ultimo aggiornamento: 2026-11-26

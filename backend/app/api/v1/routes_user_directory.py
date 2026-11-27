@@ -21,8 +21,9 @@ from app.schemas.user_settings import (
     UserDirectoryListResponse,
     UserProfileUpdate,
 )
+from app.api.capability_deps import require_capability
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_capability("directory_colleghi"))])
 
 
 async def _get_or_create_user_settings(db: AsyncSession, user: User) -> UserSettings:
