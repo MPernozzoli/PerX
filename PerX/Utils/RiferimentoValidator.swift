@@ -3,20 +3,37 @@ import Foundation
 /// Utility per validare i riferimenti sinistro
 struct RiferimentoValidator {
     
-    /// Estrae l'anno dal riferimento (prime 2 cifre)
-    /// Esempio: 2500876 -> 2025
+    /// Anno dalle prime due cifre. Vale per `2500876` e per `26-602322`.
     static func extractYear(from riferimento: String) -> Int? {
-        guard riferimento.count == 7, riferimento.allSatisfy({ $0.isNumber }) else {
-            return nil
+        guard isValidFormat(riferimento) else { return nil }
+        let yearDigits = riferimento.prefix(2).filter(\.isNumber)
+        guard yearDigits.count == 2, let year = Int(yearDigits) else { return nil }
+        return 2000 + year
+    }
+
+    /// `2500876` oppure il riferimento Chiari `26-602322`.
+    static func isValidFormat(_ riferimento: String) -> Bool {
+        if riferimento.count == 7, riferimento.allSatisfy(\.isNumber) {
+            return true
         }
-        
-        let yearString = String(riferimento.prefix(2))
-        guard let yearDigits = Int(yearString) else {
-            return nil
+        guard riferimento.count == 9, riferimento.dropFirst(2).first == "-" else { return false }
+        let year = riferimento.prefix(2)
+        let serial = riferimento.suffix(6)
+        return year.allSatisfy(\.isNumber) && serial.allSatisfy(\.isNumber)
+    }
+
+    /// Riferimento in testa a un nome di cartella: `26-602322_Rossi` o `2500876 foto`.
+    static func reference(inFolderName name: String) -> String? {
+        if isValidFormat(name) { return name }
+        if let range = name.range(of: #"^\d{2}-\d{6}(?=[_\s.]|$)"#, options: .regularExpression) {
+            return String(name[range])
         }
-        
-        // Converti in anno completo (20 -> 2020, 25 -> 2025, ecc.)
-        return 2000 + yearDigits
+        guard name.count >= 7 else { return nil }
+        let prefix = String(name.prefix(7))
+        guard prefix.allSatisfy(\.isNumber) else { return nil }
+        if name.count == 7 { return prefix }
+        let boundary = name[name.index(name.startIndex, offsetBy: 7)]
+        return boundary.isNumber ? nil : prefix
     }
     
     /// Verifica se un riferimento è "recente" (anno corrente o anno precedente)
@@ -55,13 +72,8 @@ struct RiferimentoValidator {
     /// - Parameter riferimento: Il riferimento da validare
     /// - Returns: nil se valido, messaggio di errore se non valido
     static func validate(_ riferimento: String) -> String? {
-        // 1. Verifica formato: deve essere esattamente 7 caratteri e tutti numerici
-        guard riferimento.count == 7 else {
-            return "Riferimento deve essere esattamente 7 cifre"
-        }
-        
-        guard riferimento.allSatisfy({ $0.isNumber }) else {
-            return "Riferimento deve contenere solo numeri"
+        guard RiferimentoValidator.isValidFormat(riferimento) else {
+            return "Riferimento non valido: atteso 7 cifre oppure 26-602322"
         }
         
         // 2. Estrai anno dalle prime 2 cifre

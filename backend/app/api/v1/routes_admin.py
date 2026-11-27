@@ -25,6 +25,7 @@ from app.schemas.admin import (
 )
 from app.schemas.tenant_settings import TenantMailSettingsPayload, TenantSettingsResponse
 from app.api.v1.routes_tenants import _normalize_portal_domains, _normalized_settings
+from app.domain.tenant_capabilities import apply_profile_locks
 
 router = APIRouter()
 
@@ -209,6 +210,8 @@ async def update_tenant_settings(
     if payload.branding is not None:
         updated_settings["branding"] = payload.branding.model_dump(exclude_none=True)
 
+    updated_settings = apply_profile_locks(updated_settings)
+    portal_domains = list(updated_settings.get("portal_domains") or [])
     tenant.settings_json = updated_settings
     await db.execute(delete(TenantPortalDomain).where(TenantPortalDomain.tenant_id == tenant.id))
     for index, domain in enumerate(portal_domains):

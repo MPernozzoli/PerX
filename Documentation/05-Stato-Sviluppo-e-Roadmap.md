@@ -1,6 +1,6 @@
 ---
 tags: [perx, stato, roadmap]
-updated: 2026-11-26
+updated: 2026-11-27
 ---
 
 # Stato di sviluppo e roadmap
@@ -95,6 +95,22 @@ Vedi [[Login-Unificato-SSO]] per il piano completo (5 fasi). Ad oggi:
 - 91 verifiche del motore superate in esecuzione standalone (`swiftc`) con i casi di
   `test_stima.py`; suite `StimaEngineTests` compilata nel target `PerXTests`.
 
+## Regia e tenant Chiari — dettaglio stato
+
+### In corso (2026-11-27)
+- Profilo `chiari`: un solo perito, senza portale assicurati, Cat Dispatcher e funzioni verso
+  colleghi o assicurati. Vedi [[Regia-Agenti-e-Tenant-Chiari]] e la decisione dello stesso giorno.
+- Import delle 273 pratiche Chiari sul tenant (2026-11-27): riferimenti nel formato
+  `26-602322`, 658 revisioni, 259 atti, 6357 eventi. I file dei dossier restano nella cartella locale.
+- Migrazione `043` applicata sul database (2026-11-27). Tenant `chiari` e utente
+  `massimo.pernozzoli@chiarisrl.it` creati: entra con Google, senza password.
+- Posta Gmail sul backend (2026-11-27): storico e mail nuove in `emails`, allegati su Storage,
+  invio dalla casella Workspace. Serve il client OAuth sulle variabili del server per il rinnovo.
+
+### Ancora da fare
+- Consenso e benchmark (F0), push Gmail Pub/Sub, copia dei dossier nel vault, worker sul Mac,
+  estensione, MCP. Il piano resta la sequenza F0–F9.
+
 ### Da fare / da verificare
 - Prova a mano nell'app delle sei pagine su perizie reali (non ancora fatta: l'avvio migra lo store locale).
 - Annualità del massimale (più sinistri dello stesso assicurato nella stessa annualità).
@@ -166,4 +182,4 @@ Vedi [[06-Decisioni-e-Intenzioni-Future]] (2026-09-06) per contesto e motivazion
   `apps/portal-web`.
 
 ---
-Ultimo aggiornamento: 2026-11-26 (motore di stima nell'app; cinque host web associati al gateway Vercel PerX)
+Ultimo aggiornamento: 2026-11-27 (migrazione 043 e utente Chiari sul database)

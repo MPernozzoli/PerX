@@ -30,7 +30,7 @@ database Supabase. Configura `NEXT_PUBLIC_PERX_API_BASE_URL` e chiama `/api/v1/c
 > [!WARNING]
 > Stato reale del codice (verificato 2026-11-26): le schermate `/`, `/admin`,
 > `/admin/gis-editor` e `/api` (`apps/catdispatcher/src`) usano **ancora** il client Supabase con
-> la chiave publishable e interrogano direttamente le tabelle `allowed_domains`, `cat_commune`,
+> la chiave publishable e interrogano direttamente `allowed_domains`, `cat_commune`,
 > `cat_suspensions`, `cats`, `communes`, `geojson_backup_log`, `provinces`, `regions`, `tenants`,
 > `user_roles`, `user_tenants` (più le RPC `get_user_role`, `find_commune_at_point`).
 > Nel database PerX (`public`) esistono però solo `tenants` e `user_roles`, tabelle core usate dal
@@ -49,13 +49,15 @@ Il primo algoritmo di route planning è **volutamente deterministico** (ordina a
 schedulati poi richieste per priorità): la struttura dati è pronta per sostituirlo con un
 ottimizzatore geografico senza cambiare il contratto API.
 
-Dominio pubblico corrente: `catdispatcher.it`/`www.catdispatcher.it`. Target deciso il
-2026-11-25: `catdispatcher.pynkstudio.eu`, mantenendo i domini storici come alias/redirect durante
-la migrazione. Vedi [[06-Decisioni-e-Intenzioni-Future]].
+Dominio principale deciso il 2026-11-26: `catdispatcher.perx.it`.
+`catdispatcher.pynkstudio.eu` resta un alias secondario; `catdispatcher.it` e
+`www.catdispatcher.it` possono restare alias/redirect storici durante la migrazione. Vedi
+[[06-Decisioni-e-Intenzioni-Future]].
 
-Stato 2026-11-25: l'origin `catdispatcher.vercel.app` è distribuito e risponde HTTP 200; il
-gateway e il manifest dell'estensione puntano al nuovo host. L'associazione Vercel è pronta, ma
-manca il record DNS Register.it. Il dominio storico `catdispatcher.it` al momento non risolve.
+Stato 2026-11-26: l'origin `catdispatcher.vercel.app` è distribuito dietro al gateway; il manifest
+dell'estensione punta al dominio principale `catdispatcher.perx.it`. Le variabili Supabase e API
+PerX devono essere valorizzate sull'origin prima del deploy, altrimenti il bundle browser va in
+crash anche se l'HTML risponde HTTP 200.
 
 ## Stack
 
@@ -78,4 +80,4 @@ visualizzazione/interrogazione mappa → supporto assegnazione geografica → fi
 [[05-Stato-Sviluppo-e-Roadmap]] per lo stato di integrazione nel gateway Vercel unico.
 
 ---
-Ultimo aggiornamento: 2026-11-25
+Ultimo aggiornamento: 2026-11-26

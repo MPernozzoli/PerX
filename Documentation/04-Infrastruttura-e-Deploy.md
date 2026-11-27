@@ -66,9 +66,10 @@ introducono nuove SPA Vite o runtime incompatibili col gateway Next.js (vedi anc
 
 ### Migrazione domini PynkStudio
 
-Dal 2026-11-25 il target è consolidare i prodotti proprietari sotto `pynkstudio.eu`: in prima
-battuta `perx.pynkstudio.eu`, `catdispatcher.pynkstudio.eu` e
-`bignamionline.pynkstudio.eu`. Per compatibilità con il pannello DNS Register.it, i servizi PerX
+Dal 2026-11-25 i prodotti proprietari espongono anche ingressi sotto `pynkstudio.eu`:
+`perx.pynkstudio.eu`, `catdispatcher.pynkstudio.eu` e `bignamionline.pynkstudio.eu`. La decisione
+del 2026-11-26 mantiene però `catdispatcher.perx.it` e `bignami.perx.it` come domini principali;
+gli equivalenti `pynkstudio.eu` sono alias secondari. Per compatibilità con il pannello DNS Register.it, i servizi PerX
 usano nomi piatti (`app-perx.pynkstudio.eu`, `api-perx.pynkstudio.eu`,
 `login-perx.pynkstudio.eu`). `admin.pynkstudio.eu` rimane il pannello unico cross-product e
 dialoga con i backend esclusivamente tramite API server-to-server.
@@ -83,15 +84,16 @@ i cinque host web previsti sono associati al progetto Vercel `perx` e il DNS è 
 |---|---|---|
 | `perx.pynkstudio.eu` | `A 76.76.21.21` | attivo su Vercel, landing PerX |
 | `app-perx.pynkstudio.eu` | `A 76.76.21.21` | attivo; fallback temporaneo alla landing PerX |
-| `catdispatcher.pynkstudio.eu` | `A 76.76.21.21` | attivo su Vercel, CAT Dispatcher |
-| `bignamionline.pynkstudio.eu` | `A 76.76.21.21` | attivo su Vercel, Bignami Online |
+| `catdispatcher.perx.it` | CNAME Vercel indicato dal progetto | dominio principale CAT Dispatcher |
+| `catdispatcher.pynkstudio.eu` | `A 76.76.21.21` | alias secondario CAT Dispatcher |
+| `bignami.perx.it` | CNAME Vercel indicato dal progetto | dominio principale Bignami Online |
+| `bignamionline.pynkstudio.eu` | `A 76.76.21.21` | alias secondario Bignami Online |
 | `login-perx.pynkstudio.eu` | `A 76.76.21.21` | attivo; fallback temporaneo alla landing PerX finché manca SSO |
 | `perx.it` | sostituire l'A attuale con `76.76.21.21` | DNS/certificato non validi |
 
 Gli origin Vercel production sono `perx-insight-studio.vercel.app`,
-`catdispatcher.vercel.app` e `bignami-online.vercel.app`; rispondono tutti HTTP 200 e non sono
-gli URL canonici da mostrare agli utenti. `catdispatcher.it` non risolve al 2026-11-25 e
-`bignami.perx.it` presenta un certificato scaduto. Dettagli →
+`catdispatcher.vercel.app` e `bignami-online.vercel.app`; non sono gli URL canonici da mostrare
+agli utenti. `catdispatcher.it` non risolve al 2026-11-25. Dettagli →
 [[06-Decisioni-e-Intenzioni-Future]] (2026-11-25).
 
 Correzione runtime del 2026-11-26: l'origin Insight Studio restituiva HTML 200 ma il bundle
@@ -99,6 +101,14 @@ browser andava in crash con `supabaseUrl is required` perché il progetto origin
 pubbliche Supabase. Il client Supabase è ora opzionale: la landing resta renderizzabile senza
 configurazione, mentre modulo contatti e disiscrizione mostrano un errore controllato finché
 `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` non vengono configurate.
+
+Diagnosi runtime CatDispatcher/Bignami del 2026-11-26: anche questi origin restituivano HTML 200
+ma mostravano `This page couldn't load`. Le env Vercel esistevano con valore vuoto: CatDispatcher
+falliva con `supabaseUrl is required`, Bignami con `Missing NEXT_PUBLIC_SUPABASE_URL or
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. Gli origin richiedono un nuovo deploy dopo aver impostato
+le env pubbliche Supabase; CatDispatcher richiede inoltre
+`NEXT_PUBLIC_PERX_API_BASE_URL=https://api.perx.it/api/v1` e Bignami
+`NEXT_PUBLIC_SUPABASE_DB_SCHEMA=bignami` più `NEXT_PUBLIC_SITE_URL=https://bignami.perx.it`.
 
 L'ingresso pubblico web gira sul progetto gateway Vercel **`perx`**
 (`prj_4GoA9R3qLkHjnu7DgmBmcS7KmlR3`, team `team_Y4HXMUA0RyX5rQO1GZNOmmSc`); le app non ancora

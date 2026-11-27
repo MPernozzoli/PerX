@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.portal import PortalClaimAccess
+from app.api.capability_deps import tenant_allows
 
 portal_bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -149,6 +150,11 @@ async def get_current_portal_session(
         )
     )
     if not access_result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Portal access revoked or unavailable",
+        )
+    if not await tenant_allows(db, tenant_id, "portal_assicurati"):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Portal access revoked or unavailable",

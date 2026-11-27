@@ -2,6 +2,7 @@
 Authentication routes
 """
 from datetime import datetime
+import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,12 +17,19 @@ from app.core.security import (
     create_access_token,
     get_current_active_user,
     is_supabase_auth_enabled,
+    supabase_credentials_configured,
     supabase_password_login,
+    supabase_pkce_exchange,
     supabase_refresh_token,
+    get_supabase_user,
 )
+from app.domain.tenant_capabilities import email_domain_allowed
 from app.models.role import Role, user_roles
+from app.models.tenant import Tenant
 from app.models.user import User
-from app.schemas.auth import LoginRequest, RefreshRequest, Token, UserResponse
+from app.schemas.auth import GoogleSessionRequest, LoginRequest, RefreshRequest, Token, UserResponse
+from app.services.gmail_sync_service import GmailSyncService
+from app.services.google_workspace_auth import store_google_mailbox_tokens
 from app.services.user_email_service import ensure_personal_email, ensure_professional_email, get_user_aliases
 
 router = APIRouter()
@@ -120,13 +128,104 @@ async def login(
     }
 
 
+@router.post("/google/session", response_model=Token)
+async def google_session(
+    payload: GoogleSessionRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Scambia il codice PKCE di Supabase e tiene il token Google della casella sul server."""
+    token_response = await supabase_pkce_exchange(payload.code, payload.code_verifier)
+    access_token = token_response.get("access_token") or ""
+    refresh_token = token_response.get("refresh_token") or ""
+    if not access_token or not refresh_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Accesso Google non completato")
+
+    supabase_user = await get_supabase_user(access_token)
+    email = (supabase_user.get("email") or "").lower()
+    supabase_id = supabase_user.get("id")
+    if not email:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Google non ha restituito una mail")
+
+    result = await db.execute(
+        select(User).where(User.is_active.is_(True)).where(
+            (User.email == email) | (User.personal_email == email) | (User.professional_email == email)
+        )
+    )
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Questo account Google non è abilitato su PerX",
+        )
+    if user.tenant_id:
+        tenant = await db.get(Tenant, user.tenant_id)
+        allowed = ((tenant.settings_json or {}).get("access") or {}).get("allowed_domains") if tenant else None
+        if isinstance(allowed, list) and allowed and not email_domain_allowed(email, allowed):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Questo account non è abilitato per lo studio.",
+            )
+    if supabase_id and user.idp_subject != supabase_id:
+        user.idp_subject = supabase_id
+    user.last_login_at = datetime.utcnow()
+    await store_google_mailbox_tokens(
+        db,
+        tenant_id=user.tenant_id,
+        email=email,
+        refresh_token=token_response.get("provider_refresh_token"),
+        access_token=token_response.get("provider_token"),
+    )
+    await db.commit()
+    if user.tenant_id and (token_response.get("provider_token") or token_response.get("provider_refresh_token")):
+        asyncio.create_task(GmailSyncService.sync_mailbox_for(user.tenant_id, email))
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": token_response.get("token_type") or "bearer",
+    }
+
+
 @router.post("/refresh", response_model=Token)
 async def refresh(
     payload: RefreshRequest,
     db: AsyncSession = Depends(get_db),
 ):
     """Scambia un refresh_token con una nuova coppia di token."""
-    if is_supabase_auth_enabled():
+    perx_claims = None
+    try:
+        perx_claims = jwt.decode(
+            payload.refresh_token,
+            settings.SECRET_KEY,
+            algorithms=[settings.ALGORITHM],
+        )
+    except JWTError:
+        perx_claims = None
+
+    if perx_claims and perx_claims.get("type") == "refresh" and perx_claims.get("sub"):
+        user = (await db.execute(select(User).where(User.id == perx_claims["sub"]))).scalar_one_or_none()
+        if not user or not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid refresh token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        access_token = create_access_token(
+            data={
+                "sub": user.id,
+                "tenant_id": user.tenant_id,
+                "is_platform_admin": user.is_platform_admin,
+            }
+        )
+        new_refresh = create_access_token(
+            data={"sub": user.id, "type": "refresh"}, expires_delta=None
+        )
+        return {
+            "access_token": access_token,
+            "refresh_token": new_refresh,
+            "token_type": "bearer",
+        }
+
+    if supabase_credentials_configured():
         token_response = await supabase_refresh_token(payload.refresh_token)
         return {
             "access_token": token_response["access_token"],
@@ -134,45 +233,11 @@ async def refresh(
             "token_type": token_response.get("token_type", "bearer"),
         }
 
-    invalid = HTTPException(
+    raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid refresh token",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    try:
-        claims = jwt.decode(
-            payload.refresh_token,
-            settings.SECRET_KEY,
-            algorithms=[settings.ALGORITHM],
-        )
-    except JWTError:
-        raise invalid
-
-    if claims.get("type") != "refresh":
-        raise invalid
-    user_id = claims.get("sub")
-    if not user_id:
-        raise invalid
-
-    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
-    if not user or not user.is_active:
-        raise invalid
-
-    access_token = create_access_token(
-        data={
-            "sub": user.id,
-            "tenant_id": user.tenant_id,
-            "is_platform_admin": user.is_platform_admin,
-        }
-    )
-    new_refresh = create_access_token(
-        data={"sub": user.id, "type": "refresh"}, expires_delta=None
-    )
-    return {
-        "access_token": access_token,
-        "refresh_token": new_refresh,
-        "token_type": "bearer",
-    }
 
 
 @router.get("/me", response_model=UserResponse)

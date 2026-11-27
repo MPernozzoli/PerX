@@ -108,8 +108,26 @@ async def supabase_password_login(email: str, password: str) -> dict:
     )
 
 
+async def supabase_pkce_exchange(auth_code: str, code_verifier: str) -> dict:
+    if not supabase_credentials_configured():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Accesso Google non configurato",
+        )
+    return await _supabase_http_request(
+        "POST",
+        "/auth/v1/token?grant_type=pkce",
+        headers={
+            "apikey": settings.SUPABASE_ANON_KEY,
+            "Authorization": f"Bearer {settings.SUPABASE_ANON_KEY}",
+            "Accept": "application/json",
+        },
+        payload={"auth_code": auth_code, "code_verifier": code_verifier},
+    )
+
+
 async def supabase_refresh_token(refresh_token: str) -> dict:
-    if not is_supabase_auth_enabled():
+    if not supabase_credentials_configured():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Supabase auth is not enabled",
@@ -126,8 +144,12 @@ async def supabase_refresh_token(refresh_token: str) -> dict:
     )
 
 
+def supabase_credentials_configured() -> bool:
+    return bool(settings.SUPABASE_URL and settings.SUPABASE_ANON_KEY)
+
+
 async def get_supabase_user(token: str) -> dict:
-    if not is_supabase_auth_enabled():
+    if not supabase_credentials_configured():
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Cloud auth not enabled",
@@ -160,39 +182,51 @@ async def get_current_user(
     user_email: str | None = None
     idp_subject: str | None = None
 
-    if is_supabase_auth_enabled():
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        user_id = payload.get("sub")
+    except JWTError:
+        user_id = None
+
+    from sqlalchemy import select
+    from app.domain.tenant_capabilities import email_domain_allowed
+    from app.models.tenant import Tenant
+
+    if user_id:
+        result = await db.execute(select(User).where(User.id == user_id).where(User.is_active.is_(True)))
+        user = result.scalar_one_or_none()
+        if user is None:
+            raise credentials_exception
+    elif supabase_credentials_configured():
         supabase_user = await get_supabase_user(token)
         user_email = (supabase_user.get("email") or "").lower()
         idp_subject = supabase_user.get("id")
         if not user_email:
             raise credentials_exception
-    else:
-        try:
-            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-            user_id = payload.get("sub")
-            if user_id is None:
-                raise credentials_exception
-        except JWTError:
-            raise credentials_exception
-    
-    # Fetch user from DB
-    from sqlalchemy import select
-    if is_supabase_auth_enabled():
-        query = select(User).where(User.is_active == True).where(
-            (User.idp_subject == idp_subject) | (User.personal_email == user_email) | (User.email == user_email)
+        result = await db.execute(
+            select(User).where(User.is_active.is_(True)).where(
+                (User.idp_subject == idp_subject) | (User.personal_email == user_email) | (User.email == user_email)
+            )
         )
+        user = result.scalar_one_or_none()
+        if user is None:
+            raise credentials_exception
+        if idp_subject and user.idp_subject != idp_subject:
+            user.idp_subject = idp_subject
+            await db.commit()
     else:
-        query = select(User).where(User.id == user_id).where(User.is_active == True)
-
-    result = await db.execute(query)
-    user = result.scalar_one_or_none()
-    if user is None:
         raise credentials_exception
 
-    if is_supabase_auth_enabled() and idp_subject and user.idp_subject != idp_subject:
-        user.idp_subject = idp_subject
-        await db.commit()
-    
+    if user.tenant_id:
+        tenant = await db.get(Tenant, user.tenant_id)
+        allowed = ((tenant.settings_json or {}).get("access") or {}).get("allowed_domains") if tenant else None
+        emails = [user.email, user.personal_email, user.professional_email]
+        if isinstance(allowed, list) and allowed and not any(email_domain_allowed(item, allowed) for item in emails):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Questo account non è abilitato per lo studio.",
+            )
+
     return user
 
 

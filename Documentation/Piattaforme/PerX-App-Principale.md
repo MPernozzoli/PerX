@@ -61,6 +61,14 @@ Target principale configurato per **Developer ID diretto** con hardened runtime,
 assunzioni di sandbox App Store. Per il rilascio, l'intero bundle (app + XPC service annidato) va
 archiviato e notarizzato insieme, mantenendo hardened runtime sull'XPC service.
 
+**Entitlements e firma automatica.** Il target `PerX` usa `CODE_SIGN_STYLE = Automatic` con due file:
+`PerX/PerX-Debug.entitlements` (config Debug) e `PerX/PerX.entitlements` (Release). Non vanno
+dichiarati a mano `com.apple.application-identifier` (iOS: `application-identifier`) né
+`com.apple.developer.team-identifier`: li inietta Xcode in firma, e dichiararli nel file produce
+l'errore «Entitlement com.apple.application-identifier not found and could not be included in
+profile». Dal 2026-11-26 la chiave è stata rimossa da entrambi i file; restano `aps-environment`,
+`com.apple.developer.aps-environment` e `keychain-access-groups`.
+
 ## Test e CI
 
 Dal 2026-11-07 `PerXCore` contiene un test target Swift Testing con una prima copertura delle

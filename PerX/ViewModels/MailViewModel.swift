@@ -1469,7 +1469,7 @@ class MailViewModel: ObservableObject {
     }
 
     private func extractRiferimentoSinistro(from testo: String, body: String? = nil) -> String? {
-        let pattern = #"\b([0-9]{7})\b"# // 7 cifre consecutive, delimitato da word boundaries
+        let pattern = #"\b(\d{2}-\d{6}|[0-9]{7})\b"# // 7 cifre consecutive, delimitato da word boundaries
         
         // Prima cerca nell'oggetto
         if let riferimento = trovaPattern(pattern, in: testo) {
@@ -1511,7 +1511,7 @@ class MailViewModel: ObservableObject {
     /// Estrae il riferimento interno dello studio (7 cifre: 2 anno + 5 progressive)
     /// Cerca prima nell'oggetto, poi nel corpo se fornito
     private func estraiRiferimentoInterno(da testo: String, corpo: String? = nil) -> String? {
-        let pattern = #"\b([0-9]{7})\b"# // 7 cifre consecutive, delimitato da word boundaries
+        let pattern = #"\b(\d{2}-\d{6}|[0-9]{7})\b"# // 7 cifre consecutive, delimitato da word boundaries
         
         // Prima cerca nell'oggetto
         if let riferimento = trovaPattern(pattern, in: testo) {
@@ -1535,7 +1535,7 @@ class MailViewModel: ObservableObject {
     /// Estrae TUTTI i riferimenti interni presenti nel testo (per gestire multi-tag)
     private func estraiTuttiRiferimentiInterni(da oggetto: String, corpo: String? = nil) -> [String] {
         var riferimenti: [String] = []
-        let pattern = #"\b([0-9]{7})\b"#
+        let pattern = #"\b(\d{2}-\d{6}|[0-9]{7})\b"#
         
         // Cerca nell'oggetto
         riferimenti.append(contentsOf: trovaTuttiPattern(pattern, in: oggetto).filter { isValidRiferimentoInterno($0) })
@@ -1551,17 +1551,12 @@ class MailViewModel: ObservableObject {
     
     /// Verifica se un numero di 7 cifre è un valido riferimento interno
     private func isValidRiferimentoInterno(_ riferimento: String) -> Bool {
-        guard riferimento.count == 7, riferimento.allSatisfy({ $0.isNumber }) else {
+        guard RiferimentoValidator.isValidFormat(riferimento),
+              let year = RiferimentoValidator.extractYear(from: riferimento) else {
             return false
         }
-        
-        // Estrae l'anno (prime 2 cifre)
-        let annoString = String(riferimento.prefix(2))
-        guard let anno = Int(annoString) else { return false }
-        
-        // Verifica che l'anno sia ragionevole (es. dal 2020 al 2030)
-        // 20 = 2020, 21 = 2021, ..., 30 = 2030
-        return anno >= 20 && anno <= 30
+        let yy = year - 2000
+        return yy >= 20 && yy <= 30
     }
     
     /// Trova il primo match di un pattern regex
@@ -1780,9 +1775,9 @@ class MailViewModel: ObservableObject {
         // Supporta varianti: [tipo opzionale] - sinistro n[°.] [numero] - Assicurato [nome] - ns[.] rif[.] [riferimento 7 cifre]
         let patterns = [
             // Con tipo: [tipo] - sinistro n. [numero] - Assicurato [nome] - ns. rif. [rif]
-            #"([^-]+?)\s*-\s*sinistro\s+n[°.]?\s*([0-9A-Z]+)\s*-\s*[Aa]ssicurato\s+([^-]+?)\s*-\s*ns[.]?\s*rif[.]?\s*([0-9]{7})"#,
+            #"([^-]+?)\s*-\s*sinistro\s+n[°.]?\s*([0-9A-Z]+)\s*-\s*[Aa]ssicurato\s+([^-]+?)\s*-\s*ns[.]?\s*rif[.]?\s*(\d{2}-\d{6}|[0-9]{7})"#,
             // Senza tipo: sinistro n. [numero] - Assicurato [nome] - ns. rif. [rif]
-            #"sinistro\s+n[°.]?\s*([0-9A-Z]+)\s*-\s*[Aa]ssicurato\s+([^-]+?)\s*-\s*ns[.]?\s*rif[.]?\s*([0-9]{7})"#
+            #"sinistro\s+n[°.]?\s*([0-9A-Z]+)\s*-\s*[Aa]ssicurato\s+([^-]+?)\s*-\s*ns[.]?\s*rif[.]?\s*(\d{2}-\d{6}|[0-9]{7})"#
         ]
         
         for (index, pattern) in patterns.enumerated() {
@@ -1816,7 +1811,7 @@ class MailViewModel: ObservableObject {
                     }
                     
                     // Valida che almeno numero o riferimento siano presenti
-                    if (numero != nil && !numero!.isEmpty) || (riferimento != nil && riferimento!.count == 7) {
+                    if (numero != nil && !numero!.isEmpty) || (riferimento != nil && RiferimentoValidator.isValidFormat(riferimento!)) {
                         return StandardEmailFormat(
                             tipo: tipo,
                             numeroAgenzia: numero,

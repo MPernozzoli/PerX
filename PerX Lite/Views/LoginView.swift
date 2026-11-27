@@ -60,6 +60,18 @@ struct LoginView: View {
                         ))
                         .disabled(!canSubmit || isLoading)
 
+                        Button {
+                            focusedField = nil
+                            Task { await signInWithGoogle() }
+                        } label: {
+                            Label("Accedi con Google", systemImage: "g.circle.fill")
+                        }
+                        .buttonStyle(PrimaryButtonStyle(
+                            isLoading: isLoading,
+                            background: Color(red: 0.15, green: 0.17, blue: 0.22)
+                        ))
+                        .disabled(isLoading)
+
                         if isLoading && !statusMessage.isEmpty {
                             Text(statusMessage)
                                 .font(.caption)
@@ -144,6 +156,25 @@ struct LoginView: View {
         do {
             statusMessage = "Verifica credenziali…"
             try await auth.login(email: email, password: password)
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        } catch {
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func signInWithGoogle() async {
+        guard !isLoading else { return }
+        errorMessage = nil
+        isLoading = true
+        statusMessage = "Apro Google…"
+        defer {
+            isLoading = false
+            statusMessage = ""
+        }
+        do {
+            try await auth.signInWithGoogle()
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         } catch {
             UINotificationFeedbackGenerator().notificationOccurred(.error)

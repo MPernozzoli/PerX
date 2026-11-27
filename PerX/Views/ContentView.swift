@@ -6,6 +6,7 @@ struct ContentView: View {
     @ObservedObject private var workSchedule = WorkScheduleManager.shared
     @State private var selection: String? = "dashboard"
     @State private var isSidebarVisible = true
+    @State private var studio = TenantMailSettingsService.shared.settings.studioAccess
     
     var body: some View {
         NavigationView {
@@ -20,6 +21,16 @@ struct ContentView: View {
                     ) {
                         Label("Dashboard", systemImage: "gauge")
                     }
+
+                    if studio.salaRegia {
+                        NavigationLink(
+                            destination: LazyView(SalaRegiaView()),
+                            tag: "sala-regia",
+                            selection: $selection
+                        ) {
+                            Label("Sala regia", systemImage: "sparkles.rectangle.stack")
+                        }
+                    }
                     
                     NavigationLink(
                         destination: LazyView(SinistriView()),
@@ -29,42 +40,48 @@ struct ContentView: View {
                         Label("Sinistri", systemImage: "folder")
                     }
                     
-                    NavigationLink(
-                        destination: LazyView(ComunicazioniView()),
-                        tag: "comunicazioni",
-                        selection: $selection
-                    ) {
-                        Label("Comunicazioni", systemImage: "envelope")
+                    if studio.posta {
+                        NavigationLink(
+                            destination: LazyView(ComunicazioniView()),
+                            tag: "comunicazioni",
+                            selection: $selection
+                        ) {
+                            Label("Comunicazioni", systemImage: "envelope")
+                        }
                     }
 
-                    NavigationLink(
-                        destination: LazyView(TeamMonitorView()),
-                        tag: "team",
-                        selection: $selection
-                    ) {
-                        Label("Team", systemImage: "person.3")
-                    }
+                    if studio.studioCondiviso {
+                        NavigationLink(
+                            destination: LazyView(TeamMonitorView()),
+                            tag: "team",
+                            selection: $selection
+                        ) {
+                            Label("Team", systemImage: "person.3")
+                        }
 
-                    NavigationLink(
-                        destination: LazyView(StudioMonitorView()),
-                        tag: "studio",
-                        selection: $selection
-                    ) {
-                        Label("Studio", systemImage: "building.2")
+                        NavigationLink(
+                            destination: LazyView(StudioMonitorView()),
+                            tag: "studio",
+                            selection: $selection
+                        ) {
+                            Label("Studio", systemImage: "building.2")
+                        }
                     }
                     
-                    NavigationLink(
-                        destination: LazyView(
-                            ConsuntivoView { sinistro in
-                                appState.openSinistro(sinistro)
-                                selection = "sinistri"  // Forza la navigazione a Sinistri
-                            }
-                            .environmentObject(workSchedule)
-                        ),
-                        tag: "consuntivo",
-                        selection: $selection
-                    ) {
-                        Label("Consuntivo", systemImage: "chart.bar")
+                    if studio.consuntivo {
+                        NavigationLink(
+                            destination: LazyView(
+                                ConsuntivoView { sinistro in
+                                    appState.openSinistro(sinistro)
+                                    selection = "sinistri"
+                                }
+                                .environmentObject(workSchedule)
+                            ),
+                            tag: "consuntivo",
+                            selection: $selection
+                        ) {
+                            Label("Consuntivo", systemImage: "chart.bar")
+                        }
                     }
                     
                     NavigationLink(
@@ -113,10 +130,18 @@ struct ContentView: View {
             selection = newView
         }
         .onAppear {
+            studio = TenantMailSettingsService.shared.settings.studioAccess
             // Allinea lo state allo stato reale della sidebar (es. se l'utente l'ha chiusa dal menu di sistema)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                 syncSidebarVisibilityFromSystem()
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .tenantSettingsChanged)) { _ in
+            studio = TenantMailSettingsService.shared.settings.studioAccess
+            if selection == "sala-regia" && !studio.salaRegia { selection = "dashboard" }
+            if selection == "comunicazioni" && !studio.posta { selection = "dashboard" }
+            if (selection == "team" || selection == "studio") && !studio.studioCondiviso { selection = "dashboard" }
+            if selection == "consuntivo" && !studio.consuntivo { selection = "dashboard" }
         }
         .background(SidebarVisibilityMonitor(isVisible: $isSidebarVisible))
         // Intercetta i tasti freccia quando la tab Cartella è attiva per bloccare la sidebar

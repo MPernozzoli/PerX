@@ -176,7 +176,8 @@ struct AccountSelectorView: View {
     // MARK: - Footer
     
     private var footerView: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 12) {
+            googleButton
             if isLoggingIn {
                 ProgressView()
                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
@@ -187,8 +188,32 @@ struct AccountSelectorView: View {
                     .foregroundColor(.white.opacity(0.7))
             }
         }
-        .frame(height: 60)
+        .frame(minHeight: 88)
         .padding(.bottom, 20)
+    }
+
+    private var googleButton: some View {
+        Button {
+            guard !isLoggingIn else { return }
+            isLoggingIn = true
+            Task {
+                do {
+                    try await session.signIn()
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
+                isLoggingIn = false
+            }
+        } label: {
+            Label("Accedi con Google", systemImage: "g.circle.fill")
+                .font(.headline)
+                .foregroundColor(.white)
+                .padding(.horizontal, 28)
+                .padding(.vertical, 14)
+                .background(Color.white.opacity(0.14))
+                .cornerRadius(12)
+        }
+        .disabled(isLoggingIn)
     }
     
     // MARK: - Actions

@@ -1,6 +1,6 @@
 ---
 tags: [perx, decisioni, adr]
-updated: 2026-11-26
+updated: 2026-11-27
 ---
 
 # Decisioni architetturali e intenzioni di sviluppo future
@@ -19,6 +19,86 @@ Contesto: ...
 Decisione / intenzione: ...
 Motivazione: ...
 ```
+
+---
+
+## 2026-11-27 — Posta Gmail operativa sul backend, login Google da pubblicare
+Contesto: l'app Mac chiama `https://api.perx.it`. Il bottone «Accedi con Google» riceveva
+`Not Found` perché `POST /api/v1/auth/google/session` esisteva solo nel codice locale.
+Decisione: la posta del tenant Chiari la sincronizza il backend, non l'app. All'accesso Google
+si conserva il token della casella e parte il recupero di posta in arrivo e inviata, poi le mail
+nuove tramite `history.list`. Il riferimento `26-602322` nel testo collega la mail alla pratica.
+Gli allegati fino a 15 MB vanno su Supabase Storage. L'invio dall'app, se la casella Gmail è
+collegata, parte da Gmail e non da Resend. Il rinnovo del token richiede sul server le variabili
+`GOOGLE_OAUTH_CLIENT_ID` e `GOOGLE_OAUTH_CLIENT_SECRET`, gli stessi valori già messi nel
+provider Google di Supabase: non stanno nel sorgente. La push Pub/Sub del piano F2 resta
+successiva: per ora il server interroga Gmail circa ogni 90 secondi.
+Motivazione: senza la rotta pubblicata l'accesso non può funzionare, e senza sync sul server
+la posta vecchia e nuova non arriva in PerX.
+
+## 2026-11-27 — Riferimento Chiari `26-602322` e import delle pratiche
+Contesto: tutte le 273 pratiche locali usano il riferimento `anno-sei cifre` (es. `26-602322`).
+L'import dell'app accettava solo 7 cifre consecutive.
+Decisione: il riferimento si conserva così com'è, in `claims.external_ref`. Il validatore accetta
+sia le 7 cifre sia `26-602322`, e lo stesso formato si riconosce in mail e nei nomi cartella.
+Le 273 pratiche sono sul tenant `chiari`. I documenti dei dossier non sono stati copiati.
+Motivazione: è il numero con cui lo studio identifica la pratica; non va schiacciato sulle 7 cifre.
+
+## 2026-11-27 — Migrazione 043 applicata e utente Chiari creato
+Contesto: l'utente ha chiesto di applicare le migrazioni e creare l'accesso Google.
+Esito: il database è a `043_chiari_regia`. Il tenant `chiari` esiste, con l'utente
+`massimo.pernozzoli@chiarisrl.it` (senza password: entra con Google), dominio ammesso
+`chiarisrl.it`, portale e Cat Dispatcher spenti, 14 stati e 34 regole.
+Motivazione: senza la riga utente il bottone «Accedi con Google» rifiuta la mail.
+
+## 2026-11-26 — Accesso Chiari: Google Workspace interno, client web su Supabase
+Contesto: il perito del tenant Chiari è `massimo.pernozzoli@chiarisrl.it`. Ha creato su Google
+Workspace Chiari, uso interno, un client OAuth di tipo applicazione web, pensando a un bottone
+«Accedi con Google» che apre Safari, riceve il token e lo tiene nel portachiavi, senza rifare
+l'accesso a ogni apertura.
+Decisione: Client ID e secret di quel client stanno nel provider Google di Supabase Auth del
+progetto PerX (`wqcqiaojdflbmqyamndt`), non nel sorgente dell'app. In Google l'unico redirect è
+`https://wqcqiaojdflbmqyamndt.supabase.co/auth/v1/callback`. L'app apre
+`ASWebAuthenticationSession` verso Supabase e riceve la sessione sul proprio scheme
+(`com.pernozzoli.perx://login-callback`). Nel portachiavi restano access token e refresh token:
+all'avvio, se l'access è scaduto, si rinnova in silenzio. Gli ambiti del consenso sono identità,
+`gmail.modify` (leggere, inviare, allegati), `gmail.settings.basic` (firma) e `calendar.events`.
+Il refresh token di Google della casella viene cifrato sul server e non resta nell'app.
+L'utente PerX con quella mail va creato prima: un login Google di una mail sconosciuta non apre
+un account.
+Motivazione: il client web ha un secret, e il secret può stare solo sul server. La sessione lunga
+è il refresh token, non la pagina di Google lasciata aperta.
+
+## 2026-11-26 — Tenant Chiari: un solo perito, niente funzioni verso l'esterno
+Contesto: parte l'implementazione del piano [[Regia-Agenti-e-Tenant-Chiari]]. L'utente precisa che
+l'uso è di un solo perito, non di tutto lo studio Chiari.
+Decisione: il profilo `workflow_profile = chiari` spegne, anche se qualcuno le riaccende nelle
+impostazioni, portale assicurati, Cat Dispatcher, videoperizia, inviti, rubrica colleghi, chat
+interna, WhatsApp, Telegram, chiamate PerX, link pubblici e programmazione di rete. Restano
+sinistri, stima, documenti, posta operativa, rubrica della pratica, consuntivo e Sala regia.
+Gli altri studi, senza quel profilo, tengono il prodotto completo.
+Motivazione: PerX non deve presentarsi a colleghi o assicurati di Chiari. Lo studio continua a
+lavorare su Salesforce e ReClaim.
+
+## 2026-11-26 — Intenzione: la Regia agenti come cuore di PerX, il perito come supervisore
+Contesto: completa la voce «Intenzione: tenant Chiari» dello stesso giorno. L'utente vuole che la
+«coda» di «sinistri chiari» (orchestratore locale con IA, oggi Ollama) diventi il cuore pulsante
+di PerX: orchestratore e gestore primario dei sinistri, in buona parte affidato ad Apple
+Intelligence con gli OS 27, con modelli più grandi (anche cloud) per i casi complessi e il perito
+per le decisioni apicali. Il perito diventa il supervisore del lavoro degli agenti, che mostrano
+cosa fanno, evidenziano i problemi e ricevono istruzioni su come gestirli.
+Intenzione: la **Regia** gira sul Mac del perito (app + helper `SMAppService`) con stato, job e
+lease sul backend; scala L0 regole/motore → L1 on-device → L2 Private Cloud Compute o Ollama →
+L3 cloud di frontiera → L4 perito; **Questioni** come unico canale verso il perito e
+**Regolario** per trasformare le sue istruzioni in regole; invarianti (approvazione solo del
+perito, importo già proposto, IBAN di terzi) imposte dal backend. Verificato sull'SDK macOS 27.2
+installato: `FoundationModels` espone `PrivateCloudComputeLanguageModel` (con quota) e un
+protocollo `LanguageModel` con executor pubblico. Piano completo in 10 fasi (F0–F9), rischi e
+decisioni aperte → [[Regia-Agenti-e-Tenant-Chiari]]. L'ordine qui sostituisce quello proposto
+nella voce «tenant Chiari».
+Motivazione: oggi il flusso funziona perché il perito tiene insieme a mano agenti, cruscotto,
+estensione e regole sparse; portarlo in PerX con un orchestratore unico rende il lavoro visibile,
+controllabile e ripetibile anche per altri studi.
 
 ---
 
@@ -45,6 +125,41 @@ Supabase punta; (2) restano da eliminare dal dashboard Supabase tre notebook tem
 due «Apply 041»), che il client MCP non può cancellare.
 Esito: dopo il push di `bc5d3c6` e il deploy Render, verifica in sola lettura (22:52): **96
 tabelle su 96 in `public` con RLS**, nessuna senza; `api.perx.it/health` risponde 200.
+
+## 2026-11-26 — Landing: home brand, storytelling in `/come-funziona`
+Contesto: lo storytelling a schermate come unica home risultava troppo grezzo (placeholder
+senza catture) e poco adatto all'ingresso su `perx.it`.
+Decisione: la home (`/`) è presentazione brand + CTA; il racconto della pratica inventata vive
+in `/come-funziona`. Resta ferma la scelta screenshot (non clone HTML) di cui sotto.
+Motivazione: l'ingresso non dipende dalle catture; il percorso dettagliato resta raggiungibile
+da nav e CTA. Vedi [[Altre-Web-App]].
+
+## 2026-11-26 — Landing PerX: storytelling con screenshot, non clone HTML
+Contesto: la pagina marketing in `apps/perx-insight-studio` andava riscritta (tono da brochure
+con gradienti/card) per mostrare le interfacce reali delle app lungo il ciclo di una pratica.
+Decisione: una pratica inventata unica (`src/content/pratica-demo.ts`); sequenza a capitoli
+(elenco → dettaglio → bignami → Studio/Team → dispatcher → portale → Lite → stima); ogni vista
+è uno **screenshot** dell'app vera (Mac, Lite, browser), non una ricostruzione HTML/Tailwind
+della UI nativa o dei portali (non sarebbe indistinguibile e divergerebbe subito). Finché i PNG
+non sono in `src/assets/story/`, i frame usano un placeholder silhouette (non un clone UI).
+Motivazione: fedeltà al prodotto e manutenzione; le schermate web (portale, Cat Dispatcher,
+Bignami) dipendono da auth/dati e non vanno duplicate nella landing.
+Vedi [[Altre-Web-App]].
+
+## 2026-11-26 — Domini principali PerX per CatDispatcher e Bignami
+Contesto: dopo l'attivazione degli alias sotto `pynkstudio.eu`, l'utente ha precisato quale
+gerarchia deve essere mostrata come canonica per i due prodotti.
+
+Decisione: `catdispatcher.perx.it` è il dominio principale di CatDispatcher e
+`bignami.perx.it` è il dominio principale di Bignami Online. Gli host
+`catdispatcher.pynkstudio.eu` e `bignamionline.pynkstudio.eu` restano attivi come alias
+secondari sullo stesso gateway; non sostituiscono i canonical principali. Studio Randa resta un
+tenant con dominio proprio `randapro.it`.
+
+Impatto: gateway, metadata/canonical, manifest dell'estensione CAT, configurazioni Vercel e smoke
+test devono accettare entrambi gli host, ma link pubblici e integrazioni nuove devono preferire i
+domini `*.perx.it` indicati sopra. Questa decisione supera, per CatDispatcher e Bignami, la
+precedente indicazione del 2026-11-25 che presentava gli host `pynkstudio.eu` come target primari.
 
 ## 2026-11-26 — Domini PerX piatti attivati su Vercel
 Contesto: il pannello DNS Register.it in uso non accetta le etichette annidate `app.perx` e
@@ -565,5 +680,17 @@ all'assicurato; è sempre una modalità alternativa esclusiva per quella pratica
 Motivazione: evitare ambiguità nel flusso assicurato su quale canale usare per quel sinistro.
 Vedi [[Videoperizia]].
 
+## 2026-11-26 — Niente `application-identifier` nei file entitlements (firma automatica)
+Contesto: Xcode segnalava «Entitlement com.apple.application-identifier not found and could not be
+included in profile» sul target `PerX`, perché la chiave era dichiarata a mano in
+`PerX.entitlements` e `PerX-Debug.entitlements`.
+Decisione: rimossa la chiave da entrambi i file; l'identificatore applicazione lo inietta Xcode in
+firma a partire da team e bundle ID. Non reintrodurre né `application-identifier` né
+`com.apple.developer.team-identifier` nei file entitlements gestiti con firma automatica.
+Motivazione: non sono capability del profilo di provisioning, quindi Xcode non può includerle.
+Da verificare (non toccato): `aps-environment` e `com.apple.developer.aps-environment` coesistono
+nello stesso file perché il target è multipiattaforma; se compaiono errori analoghi su macOS
+valutare di tenere solo la chiave `com.apple.developer.*`. Vedi [[PerX-App-Principale]].
+
 ---
-Ultimo aggiornamento: 2026-11-25
+Ultimo aggiornamento: 2026-11-26

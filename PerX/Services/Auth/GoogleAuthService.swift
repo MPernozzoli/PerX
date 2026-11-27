@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import CryptoKit
 
 @MainActor
 class GoogleAuthService: ObservableObject {
@@ -20,9 +21,9 @@ class GoogleAuthService: ObservableObject {
     
     private let service = "com.perx.googleauth"
     private let clientId = "150443834793-qcmmpkvm29tddfb9keirh3tevf78ansj.apps.googleusercontent.com"
-    private let clientSecret = "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"
     private let redirectUri = "http://127.0.0.1:3000"
     private let scope = "email https://www.googleapis.com/auth/userinfo.email openid"
+    private var codeVerifier: String?
     private let backendService = "com.perx.macos.auth"
     private let session = URLSession.shared
     private let decoder = JSONDecoder()
@@ -52,17 +53,30 @@ class GoogleAuthService: ObservableObject {
         checkInProgress = true
         defer { checkInProgress = false }
         
-        if let baseURL = normalizedBackendBaseURL(),
-           let accessToken = loadBackendValue(forKey: "access_token"),
-           let user = await fetchBackendUserInfo(accessToken: accessToken, baseURL: baseURL) {
-            hasCompletedInitialCheck = true
-            persistAuthenticatedUser(email: user.email, fullName: user.full_name)
-            return AuthCheckResult(
-                authenticated: true,
-                email: user.email,
-                userName: Self.resolveDisplayName(email: user.email, fullName: user.full_name),
-                needsReAuth: false
-            )
+        if let baseURL = normalizedBackendBaseURL() {
+            if let accessToken = loadBackendValue(forKey: "access_token"),
+               let user = await fetchBackendUserInfo(accessToken: accessToken, baseURL: baseURL) {
+                hasCompletedInitialCheck = true
+                persistAuthenticatedUser(email: user.email, fullName: user.full_name)
+                return AuthCheckResult(
+                    authenticated: true,
+                    email: user.email,
+                    userName: Self.resolveDisplayName(email: user.email, fullName: user.full_name),
+                    needsReAuth: false
+                )
+            }
+            if await refreshBackendSession(baseURL: baseURL),
+               let accessToken = loadBackendValue(forKey: "access_token"),
+               let user = await fetchBackendUserInfo(accessToken: accessToken, baseURL: baseURL) {
+                hasCompletedInitialCheck = true
+                persistAuthenticatedUser(email: user.email, fullName: user.full_name)
+                return AuthCheckResult(
+                    authenticated: true,
+                    email: user.email,
+                    userName: Self.resolveDisplayName(email: user.email, fullName: user.full_name),
+                    needsReAuth: false
+                )
+            }
         }
 
         // Se c'è una sessione salvata ma non più valida, puliscila e richiedi selezione esplicita account.
@@ -113,7 +127,6 @@ class GoogleAuthService: ObservableObject {
         let tokenEndpoint = "https://oauth2.googleapis.com/token"
         let parameters = [
             "client_id": clientId,
-            "client_secret": clientSecret,
             "refresh_token": refreshToken,
             "grant_type": "refresh_token"
         ]
@@ -307,28 +320,61 @@ class GoogleAuthService: ObservableObject {
             return
         }
 
-        let urlString = "https://accounts.google.com/o/oauth2/v2/auth?" +
-            "client_id=\(clientId)" +
-            "&redirect_uri=\(redirectUri.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")" +
-            "&response_type=code" +
-            "&scope=\(scope.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")" +
-            "&access_type=offline" +
-            "&prompt=consent"
-        
-        if let url = URL(string: urlString) {
-            print("🔐 Apertura URL di autenticazione: \(url.absoluteString)")
-            NSWorkspace.shared.open(url)
-            
-            // Avvia il server locale per gestire il callback
-            LocalServer.shared.onCodeReceived = { [weak self] code in
-                Task {
-                    await self?.handleAuthCode(code)
+        Task {
+            do {
+                try await signInWithGoogle()
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = error.localizedDescription
                 }
             }
-            LocalServer.shared.start()
         }
     }
-    
+
+    func signInWithGoogle() async throws {
+        let baseURL = try requiredBackendBaseURL()
+        let tokens = try await GoogleWorkspaceSignIn.shared.signIn(apiBaseURL: baseURL)
+        saveBackendValue(tokens.access_token, forKey: "access_token")
+        saveBackendValue(tokens.refresh_token, forKey: "refresh_token")
+        BackendAPIClient.shared.storeAccessToken(tokens.access_token)
+        guard let user = await fetchBackendUserInfo(accessToken: tokens.access_token, baseURL: baseURL) else {
+            clearBackendSession()
+            throw AuthError.userInfoFailed
+        }
+        saveBackendValue(user.email.lowercased(), forKey: "active_email")
+        HubConfigService.shared.cloudAPIEmail = user.email.lowercased()
+        let displayName = Self.resolveDisplayName(email: user.email, fullName: user.full_name)
+        persistAuthenticatedUser(email: user.email, fullName: user.full_name)
+        userEmail = user.email
+        userName = displayName
+        isAuthenticated = true
+        needsReAuthentication = false
+        NotificationCenter.default.post(name: .init("GoogleAuthStateChanged"), object: nil, userInfo: ["signedOut": false])
+    }
+
+    private func refreshBackendSession(baseURL: String) async -> Bool {
+        guard let refreshToken = loadBackendValue(forKey: "refresh_token"),
+              let url = URL(string: "\(baseURL)/api/v1/auth/refresh") else {
+            return false
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.httpBody = try? JSONEncoder().encode(["refresh_token": refreshToken])
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, 200...299 ~= http.statusCode else { return false }
+            let tokens = try decoder.decode(CloudAPITokenResponse.self, from: data)
+            saveBackendValue(tokens.access_token, forKey: "access_token")
+            saveBackendValue(tokens.refresh_token, forKey: "refresh_token")
+            BackendAPIClient.shared.storeAccessToken(tokens.access_token)
+            return true
+        } catch {
+            return false
+        }
+    }
+
     private func handleAuthCode(_ code: String) async {
         do {
             let tokenResponse = try await exchangeCodeForToken(code: code)
@@ -368,14 +414,34 @@ class GoogleAuthService: ObservableObject {
         }
     }
     
+    private static func makeCodeVerifier() -> String {
+        var bytes = [UInt8](repeating: 0, count: 32)
+        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        return Data(bytes).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+
+    private static func codeChallenge(for verifier: String) -> String {
+        let digest = SHA256.hash(data: Data(verifier.utf8))
+        return Data(digest).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+
     private func exchangeCodeForToken(code: String) async throws -> TokenResponse {
         let tokenEndpoint = "https://oauth2.googleapis.com/token"
+        guard let verifier = codeVerifier else {
+            throw NSError(domain: "GoogleAuth", code: 1, userInfo: [NSLocalizedDescriptionKey: "Manca la verifica PKCE. Ripeti l'accesso."])
+        }
         let parameters = [
             "client_id": clientId,
-            "client_secret": clientSecret,
             "code": code,
             "grant_type": "authorization_code",
-            "redirect_uri": redirectUri
+            "redirect_uri": redirectUri,
+            "code_verifier": verifier
         ]
         
         var request = URLRequest(url: URL(string: tokenEndpoint)!)

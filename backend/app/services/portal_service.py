@@ -43,6 +43,7 @@ from app.models.portal import (
 )
 from app.models.tenant import TenantPortalDomain
 from app.models.user import User
+from app.api.capability_deps import tenant_allows
 from app.schemas.portal import (
     PortalAccessInviteRequest,
     PortalAuthStartRequest,
@@ -743,6 +744,8 @@ class PortalService:
         claim: Claim,
         payload: PortalAccessInviteRequest,
     ) -> tuple[PortalClaimAccess, PortalAuthChallenge, str]:
+        if not await tenant_allows(db, tenant_id, "portal_assicurati"):
+            raise PermissionError("portal")
         access = await PortalService.create_or_update_access(db, tenant_id, claim.id, payload)
         challenge, raw_token = await PortalService.create_magic_link_challenge(
             db,
@@ -843,6 +846,8 @@ class PortalService:
         payload: PortalAuthStartRequest,
     ) -> tuple[PortalClaimAccess | None, PortalAuthChallenge | None, str | None]:
         tenant_id = await PortalService.resolve_tenant_id_for_portal_host(db, payload.portal_host)
+        if tenant_id and not await tenant_allows(db, tenant_id, "portal_assicurati"):
+            return None, None, None
         if not tenant_id and PortalService._requires_configured_tenant(payload.portal_host):
             return None, None, None
         if (
@@ -853,7 +858,7 @@ class PortalService:
             and not payload.phone_number
         ):
             claim = await PortalService._find_claim_by_reference(db, payload.claim_reference, tenant_id)
-            if not claim:
+            if not claim or not await tenant_allows(db, claim.tenant_id, "portal_assicurati"):
                 return None, None, None
 
             access = await PortalService._ensure_dev_access_for_claim(db, claim)
@@ -904,7 +909,7 @@ class PortalService:
             .limit(1)
         )
         access = result.scalar_one_or_none()
-        if not access:
+        if not access or not await tenant_allows(db, access.tenant_id, "portal_assicurati"):
             return None, None, None
 
         challenge, raw_token = await PortalService.create_magic_link_challenge(
@@ -968,6 +973,8 @@ class PortalService:
             raise ValueError("Invalid or expired portal token")
 
         challenge, access = row
+        if not await tenant_allows(db, access.tenant_id, "portal_assicurati"):
+            raise ValueError("Invalid or expired portal token")
         challenge.status = "consumed"
         challenge.consumed_at = now
         access.last_authenticated_at = now
@@ -1017,7 +1024,7 @@ class PortalService:
             return None, None, None
 
         claim = await PortalService._find_claim_by_reference(db, claim_reference, tenant_id)
-        if not claim:
+        if not claim or not await tenant_allows(db, claim.tenant_id, "portal_assicurati"):
             return None, None, None
 
         access = await PortalService._find_access_by_phone(db, claim, phone_number)

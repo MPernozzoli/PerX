@@ -1,7 +1,7 @@
 """
 General process job queue for work executed outside the API process.
 """
-from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, JSON, String, Text
+from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, JSON, Numeric, String, Text
 from sqlalchemy.sql import func
 
 from app.core.database import Base
@@ -30,6 +30,13 @@ class ProcessJob(Base):
     input_json = Column(JSON, nullable=False)
     result_json = Column(JSON, nullable=True)
     tags_json = Column(JSON, nullable=True)
+    phase = Column(String, nullable=True)
+    resource = Column(String, nullable=True)
+    model_level = Column(String, nullable=True)
+    duration_ms = Column(Integer, nullable=True)
+    cost_amount = Column(Numeric(12, 4), nullable=True)
+    outcome = Column(String, nullable=True)
+    activity_json = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 

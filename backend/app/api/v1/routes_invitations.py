@@ -17,6 +17,7 @@ from app.models.invitation import UserInvitation
 from app.models.role import Role, user_roles
 from app.models.tenant import Tenant
 from app.models.user import User
+from app.api.capability_deps import assert_tenant_capability
 from app.schemas.invitation import (
     InvitationAccept,
     InvitationAcceptResponse,
@@ -94,6 +95,7 @@ async def create_invitation(
     tenant = await db.get(Tenant, payload.tenant_id)
     if tenant is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+    await assert_tenant_capability(db, tenant.id, "inviti_utenti")
 
     personal_email = _normalize_email(str(payload.personal_email))
     result = await db.execute(

@@ -1,6 +1,6 @@
 ---
 tags: [perx, funzionalita, auth, sso, pianificato]
-updated: 2026-11-25
+updated: 2026-11-27
 ---
 
 # Login unificato / SSO
@@ -28,7 +28,18 @@ Flusso operativo previsto per gli utenti interni:
 - Tabella `users` con `email`, `personal_email`, `professional_email`, `idp_subject`,
   `tenant_id`, `is_platform_admin`.
 - Ruoli applicativi via `roles`/`user_roles`.
-- Supporto opzionale a Supabase Auth tramite `FF_CLOUD_AUTH_ENABLED`.
+- Supporto opzionale a Supabase Auth tramite `FF_CLOUD_AUTH_ENABLED` per il login con password.
+  Dal 2026-11-26 un Bearer viene prima verificato come JWT PerX; se non è un JWT nostro e sono
+  configurati URL e anon key di Supabase, si accetta anche quel token. Accendere Supabase non
+  spegne gli utenti esistenti. Il login unificato resta comunque da fare.
+- Accesso Google del tenant Chiari (2026-11-26): il client OAuth è un'applicazione web del
+  Workspace Chiari, uso interno, registrata sul provider Google di Supabase
+  (`https://wqcqiaojdflbmqyamndt.supabase.co/auth/v1/callback`). L'app non riceve il secret.
+  Mac, iPad e iPhone hanno «Accedi con Google»: Safari torna su
+  `com.pernozzoli.perx://login-callback`, la sessione Supabase resta nel portachiavi e si rinnova
+  da sola. Gli ambiti chiesti sono identità, `gmail.modify`, `gmail.settings.basic` e
+  `calendar.events`. Lo scambio avviene su `POST /api/v1/auth/google/session`: il token Google
+  della casella resta cifrato sul server e da lì parte la sincronizzazione della posta.
 - CatDispatcher e pannello admin usano ancora **form email/password locali** che chiamano
   direttamente `/auth/login`: funziona come ponte, ma non è ancora SSO — ogni app gestisce token e
   login screen per conto proprio.
@@ -136,4 +147,4 @@ verrà attivata. Evita di costruire un sistema password custom e mantiene una vi
 completo.
 
 ---
-Ultimo aggiornamento: 2026-11-25
+Ultimo aggiornamento: 2026-11-26 (accesso Google Chiari sul provider Supabase, secret fuori dall'app)

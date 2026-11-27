@@ -19,6 +19,8 @@ from app.core.security import get_current_active_user, get_current_platform_admi
 from app.models.role import Role, user_roles
 from app.models.tenant import Tenant, TenantPortalDomain
 from app.models.user import User
+from app.api.capability_deps import assert_tenant_capability
+from app.domain.tenant_capabilities import apply_profile_locks, capabilities_for, workflow_profile
 from app.schemas.tenant_settings import (
     TenantAISettingsPayload,
     TenantMailSettingsPayload,
@@ -202,6 +204,9 @@ def _normalized_settings(tenant: Tenant, include_provider_secrets: bool) -> dict
         "provider_settings": provider_settings if include_provider_secrets else None,
         "ai_settings": ai_settings if include_provider_secrets else None,
         "branding": branding,
+        "workflow_profile": workflow_profile(settings),
+        "single_operator": bool(settings.get("single_operator")),
+        "capabilities": capabilities_for(settings),
     }
 
 
@@ -456,6 +461,8 @@ async def update_my_tenant_settings(
             )
         updated_settings["branding"] = payload.branding.model_dump(exclude_none=True)
 
+    updated_settings = apply_profile_locks(updated_settings)
+    portal_domains = list(updated_settings.get("portal_domains") or [])
     tenant.settings_json = updated_settings
     await db.execute(delete(TenantPortalDomain).where(TenantPortalDomain.tenant_id == tenant.id))
     for index, domain in enumerate(portal_domains):
@@ -499,6 +506,7 @@ async def create_tenant_user(
     current_user: User = Depends(get_current_active_user),
 ):
     tenant = await _resolve_target_tenant(db, current_user, tenant_id)
+    await assert_tenant_capability(db, tenant.id, "inviti_utenti")
     personal_email = str(payload.personal_email).lower()
 
     existing = await db.execute(

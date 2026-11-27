@@ -22,8 +22,19 @@ from app.schemas.comms import (
 )
 from app.services.claim_service import ClaimService
 from app.services.email_routing_service import EmailRoutingService
+from app.services.gmail_sync_service import GmailSyncService
 
 router = APIRouter()
+
+
+@router.post("/gmail/sync")
+async def sync_gmail_mailbox(
+    current_user: User = Depends(get_current_active_user),
+):
+    """Scarica una pagina di posta Gmail della casella collegata all'utente."""
+    if not current_user.tenant_id:
+        return {"imported": 0}
+    return await GmailSyncService.sync_mailbox_for(current_user.tenant_id, current_user.email)
 
 
 @router.get("", response_model=EmailListResponse)

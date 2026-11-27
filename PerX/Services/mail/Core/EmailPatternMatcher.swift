@@ -18,7 +18,7 @@ class EmailPatternMatcher {
         /// Un pattern è valido solo se ha la lunghezza minima richiesta
         var hasAnyPattern: Bool {
             // Riferimento: deve essere esattamente 7 cifre
-            if let rif = riferimento, rif.count == 7, rif.allSatisfy({ $0.isNumber }) {
+            if let rif = riferimento, RiferimentoValidator.isValidFormat(rif) {
                 return true
             }
             // Numero agenzia: deve avere almeno 4 caratteri
@@ -74,9 +74,28 @@ class EmailPatternMatcher {
     
     // MARK: - Riferimento Interno
     
+    private func firstCapture(_ pattern: String, in text: String) -> String? {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { return nil }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard let match = regex.firstMatch(in: text, options: [], range: range),
+              match.numberOfRanges > 1,
+              let idRange = Range(match.range(at: 1), in: text) else { return nil }
+        return String(text[idRange])
+    }
+
     /// Estrae il riferimento interno
-    /// Priorità: 1) Pattern con contesto, 2) Pattern formato standard, 3) Riferimento sparso (7 cifre esatte)
+    /// Priorità: riferimento Chiari `26-602322`, poi i pattern a 7 cifre.
     private func extractRiferimento(from text: String) -> String? {
+        let chiariPatterns = [
+            #"\b(\d{2}-\d{6})\b"#,
+            #"ns\.?\s*rif\.?\s*(\d{2}-\d{6})\b"#,
+            #"(?:sinistro|pratica|riferimento|rif\.?)\s*[n°:.]?\s*(\d{2}-\d{6})\b"#,
+        ]
+        for pattern in chiariPatterns {
+            if let found = firstCapture(pattern, in: text), RiferimentoValidator.isValidFormat(found) {
+                return found
+            }
+        }
         // PRIORITÀ 1: Pattern specifici con contesto chiaro
         let contextualPatterns = [
             "per il sinistro \\[([0-9]{7})\\]",  // "per il sinistro [1234567]"

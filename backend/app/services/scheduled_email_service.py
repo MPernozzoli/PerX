@@ -14,6 +14,7 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.models.email import Email
+from app.services.gmail_sync_service import GmailSyncService
 from app.services.resend_email_service import ResendEmailMessage, ResendEmailService
 
 logger = logging.getLogger(__name__)
@@ -82,20 +83,49 @@ class ScheduledEmailService:
                     attachments=metadata.get("attachments") or [],
                 )
 
-                result = await ResendEmailService.send(message)
-                metadata["provider"] = "resend"
-                metadata["resendMessageId"] = result.message_id
-                metadata["error"] = result.error
-                metadata["sentAt"] = _now().isoformat() if result.success else None
+                mailbox = await GmailSyncService.mailbox_for_user(session, email.tenant_id, email.from_address)
+                if mailbox is not None:
+                    try:
+                        gmail_id = await GmailSyncService.send_message(
+                            session,
+                            mailbox,
+                            to=_json_list(email.to_addresses),
+                            cc=_json_list(email.cc_addresses),
+                            bcc=metadata.get("bcc") or [],
+                            subject=email.subject or "",
+                            body=body,
+                            is_html=is_html,
+                            thread_id=email.thread_id,
+                        )
+                        metadata["provider"] = "gmail"
+                        metadata["gmailId"] = gmail_id
+                        metadata["error"] = None
+                        email.message_id = f"gmail:{gmail_id}"
+                        email.provider_id = gmail_id
+                        email.status = "outbound_sent"
+                        success = True
+                    except Exception as exc:
+                        metadata["provider"] = "gmail"
+                        metadata["error"] = str(exc)
+                        email.status = "outbound_failed"
+                        success = False
+                        logger.warning("Scheduled email %s failed through Gmail: %s", email.id, exc)
+                else:
+                    result = await ResendEmailService.send(message)
+                    metadata["provider"] = "resend"
+                    metadata["resendMessageId"] = result.message_id
+                    metadata["error"] = result.error
+                    email.provider_id = result.message_id or "resend"
+                    email.status = "outbound_sent" if result.success else "outbound_failed"
+                    success = result.success
+                metadata["sentAt"] = _now().isoformat() if success else None
                 email.raw_headers = json.dumps(metadata)
-                email.status = "outbound_sent" if result.success else "outbound_failed"
-                email.provider_id = result.message_id or "resend"
                 await session.commit()
 
-                if result.success:
+                if success:
                     sent_count += 1
-                else:
-                    logger.warning("Scheduled email %s failed through Resend: %s", email.id, result.error)
+                elif mailbox is None:
+                    logger.warning("Scheduled email %s failed through Resend: %s", email.id, metadata.get("error"))
 
             return sent_count
 
