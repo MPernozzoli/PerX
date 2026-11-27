@@ -76,6 +76,7 @@ final class AccountClaimSync {
         stampLegacyClaims(ownerEmail: email, tenantId: tenantId)
         NotificationCenter.default.post(name: .accountClaimScopeChanged, object: nil)
         await mirrorClaims(ownerEmail: email, tenantId: tenantId)
+        await mirrorDiary(ownerEmail: email)
         NotificationCenter.default.post(name: .accountClaimScopeChanged, object: nil)
     }
 
@@ -161,6 +162,87 @@ final class AccountClaimSync {
         if let data = item.dataSinistro {
             sinistro.dataSinistro = data
         }
+        if let richiesta = item.richiesta {
+            sinistro.richiesta = NSDecimalNumber(value: richiesta)
+        }
+        if let liquidato = item.liquidato {
+            sinistro.liquidato = NSDecimalNumber(value: liquidato)
+        }
+        if let accertato = item.dannoAccertato {
+            sinistro.dannoAccertato = NSDecimalNumber(value: accertato)
+            sinistro.stimaDanno = NSDecimalNumber(value: accertato)
+        } else if let liquidato = item.liquidato {
+            sinistro.stimaDanno = NSDecimalNumber(value: liquidato)
+        }
+    }
+
+    private func mirrorDiary(ownerEmail: String) async {
+        let context = PersistenceController.shared.container.viewContext
+        var page = 1
+        var grouped: [String: [ImportedDiaryLine]] = [:]
+        while !Task.isCancelled {
+            let response: ImportedDiaryPage
+            do {
+                response = try await BackendAPIClient.shared.get(
+                    "claims/imported-diary",
+                    queryItems: [
+                        URLQueryItem(name: "page", value: String(page)),
+                        URLQueryItem(name: "page_size", value: "400"),
+                    ]
+                )
+            } catch {
+                return
+            }
+            for line in response.items {
+                grouped[line.externalRef, default: []].append(line)
+            }
+            if page * 400 >= response.total {
+                break
+            }
+            page += 1
+        }
+        for (riferimento, lines) in grouped {
+            let request = NSFetchRequest<Sinistro>(entityName: "Sinistro")
+            request.predicate = NSPredicate(format: "riferimento == %@", riferimento)
+            request.fetchLimit = 1
+            guard let sinistro = (try? context.fetch(request))?.first else { continue }
+            let owner = (sinistro.ownerEmail ?? "").lowercased()
+            let assignee = (sinistro.assignedToUserEmail ?? "").lowercased()
+            if owner != ownerEmail && assignee != ownerEmail {
+                continue
+            }
+            var kept = sinistro.diarioArray.filter { $0.createdByEmail != "import-chiari" }
+            kept.append(contentsOf: lines.compactMap { Self.diaryEntry(from: $0) })
+            kept.sort { $0.timestamp > $1.timestamp }
+            sinistro.diarioArray = kept
+        }
+        if context.hasChanges {
+            try? context.save()
+        }
+    }
+
+    private static func diaryEntry(from line: ImportedDiaryLine) -> DiarioEntry? {
+        guard let id = UUID(uuidString: line.id), !line.text.isEmpty else { return nil }
+        let tipo: DiarioEntry.TipoEntry
+        switch line.eventType {
+        case "nota":
+            tipo = .notaUtente
+        case "stato":
+            tipo = .cambioStato
+        case "stima":
+            tipo = .aggiornamento
+        default:
+            tipo = .sistema
+        }
+        return DiarioEntry(
+            id: id,
+            timestamp: line.eventTime,
+            tipo: tipo,
+            titolo: line.eventType,
+            riassunto: String(line.text.prefix(180)),
+            contenutoCompleto: line.text,
+            createdByEmail: "import-chiari"
+        )
     }
 }
 
@@ -178,6 +260,9 @@ private struct TenantClaimRow: Decodable {
     let nomeAssicurato: String?
     let numeroPolizza: String?
     let dataSinistro: Date?
+    let richiesta: Double?
+    let liquidato: Double?
+    let dannoAccertato: Double?
 
     enum CodingKeys: String, CodingKey {
         case externalRef = "external_ref"
@@ -188,6 +273,9 @@ private struct TenantClaimRow: Decodable {
         case nomeAssicurato = "nome_assicurato"
         case numeroPolizza = "numero_polizza"
         case dataSinistro = "data_sinistro"
+        case richiesta
+        case liquidato
+        case dannoAccertato = "danno_accertato"
     }
 
     init(from decoder: Decoder) throws {
@@ -199,11 +287,24 @@ private struct TenantClaimRow: Decodable {
         agenzia = try container.decodeIfPresent(String.self, forKey: .agenzia)
         nomeAssicurato = try container.decodeIfPresent(String.self, forKey: .nomeAssicurato)
         numeroPolizza = try container.decodeIfPresent(String.self, forKey: .numeroPolizza)
+        richiesta = Self.amount(container, .richiesta)
+        liquidato = Self.amount(container, .liquidato)
+        dannoAccertato = Self.amount(container, .dannoAccertato)
         if let raw = try? container.decodeIfPresent(String.self, forKey: .dataSinistro) {
             dataSinistro = Self.parseDate(raw)
         } else {
             dataSinistro = nil
         }
+    }
+
+    private static func amount(_ container: KeyedDecodingContainer<CodingKeys>, _ key: CodingKeys) -> Double? {
+        if let value = try? container.decodeIfPresent(Double.self, forKey: key) {
+            return value
+        }
+        if let raw = try? container.decodeIfPresent(String.self, forKey: key) {
+            return Double(raw)
+        }
+        return nil
     }
 
     private static func parseDate(_ raw: String) -> Date? {
@@ -217,5 +318,26 @@ private struct TenantClaimRow: Decodable {
         day.locale = Locale(identifier: "en_US_POSIX")
         day.dateFormat = "yyyy-MM-dd"
         return day.date(from: raw)
+    }
+}
+
+private struct ImportedDiaryPage: Decodable {
+    let items: [ImportedDiaryLine]
+    let total: Int
+}
+
+private struct ImportedDiaryLine: Decodable {
+    let id: String
+    let externalRef: String
+    let eventTime: Date
+    let eventType: String
+    let text: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case externalRef = "external_ref"
+        case eventTime = "event_time"
+        case eventType = "event_type"
+        case text
     }
 }

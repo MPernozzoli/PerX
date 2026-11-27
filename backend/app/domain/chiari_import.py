@@ -51,9 +51,9 @@ def map_claim(tenant_id: str, raw: dict) -> dict[str, Any]:
         "numero_polizza": _text(raw.get("polizza")) or _text(raw.get("numero_polizza")) or _text(raw.get("polizza_n")),
         "agenzia": _text(raw.get("agenzia")),
         "garanzia": "Fenomeno Elettrico",
-        "richiesta": _decimal(raw.get("importo_richiesto") or raw.get("richiesta")),
-        "liquidato": _decimal(raw.get("danno_liquidato")),
-        "danno_accertato": _decimal(raw.get("danno_accertato") or raw.get("importo_danno_accertato")),
+        "richiesta": _importo(raw, ("importo_richiesto", "richiesta"), ("richiesta", "richiesta_sinistro")),
+        "liquidato": _importo(raw, ("danno_liquidato", "importo_atto"), ("liquidabile",)),
+        "danno_accertato": _importo(raw, ("danno_accertato", "importo_danno_accertato"), ("danno_accertato",)),
         "data_sinistro": _text(raw.get("data_evento") or raw.get("data_sinistro")),
         "data_incarico": _text(raw.get("data_incarico")),
         "closed_at": _text(raw.get("data_chiusura")) if stato == "CHIUSO" else None,
@@ -77,6 +77,30 @@ def map_claim(tenant_id: str, raw: dict) -> dict[str, Any]:
     }
 
 
+def _totali(raw: dict) -> dict:
+    stima = raw.get("stima_deterministica")
+    calcolo = stima.get("calcolo") if isinstance(stima, dict) else None
+    totali = calcolo.get("totali") if isinstance(calcolo, dict) else None
+    return totali if isinstance(totali, dict) else {}
+
+
+def _importo(raw: dict, fields: tuple[str, ...], totali_keys: tuple[str, ...]) -> Decimal | None:
+    for field in fields:
+        amount = _decimal(raw.get(field))
+        if amount is not None:
+            return amount
+    totali = _totali(raw)
+    for key in totali_keys:
+        amount = _decimal(totali.get(key))
+        if amount is not None:
+            return amount
+    calcolo = raw.get("stima_deterministica")
+    calcolo = calcolo.get("calcolo") if isinstance(calcolo, dict) else None
+    if isinstance(calcolo, dict) and "richiesta_sinistro" in totali_keys:
+        return _decimal(calcolo.get("richiesta_sinistro"))
+    return None
+
+
 def _events(raw: dict) -> list[dict[str, Any]]:
     events: list[dict[str, Any]] = []
     for item in raw.get("eventi") or []:
@@ -87,6 +111,24 @@ def _events(raw: dict) -> list[dict[str, Any]]:
                 "event_type": _text(item.get("tipo")) or "nota",
                 "event_time": _text(item.get("data")),
                 "description": _text(item.get("descrizione")),
+            }
+        )
+    when = _text(raw.get("data_chiusura")) or _text(raw.get("stato_da"))
+    for key in ("note", "note_sf"):
+        text = _text(raw.get(key))
+        if text:
+            events.append({"event_type": "nota", "event_time": when, "description": text})
+    for revision in _revisions(raw):
+        if revision["liquidabile"] is None:
+            continue
+        events.append(
+            {
+                "event_type": "stima",
+                "event_time": revision["updated_at"] or revision["approved_at"] or when,
+                "description": (
+                    f"Revisione {revision['revision_number']}: "
+                    f"liquidabile {revision['liquidabile']}"
+                ),
             }
         )
     return events

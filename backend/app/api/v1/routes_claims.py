@@ -1,6 +1,7 @@
 """
 Claims routes
 """
+from datetime import datetime
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, status, Query, UploadFile
@@ -81,6 +82,82 @@ async def list_claims(
         page=page,
         page_size=page_size
     )
+
+
+class ImportedDiaryItem(BaseModel):
+    id: str
+    external_ref: str
+    event_time: datetime
+    event_type: str
+    text: str
+
+
+class ImportedDiaryPage(BaseModel):
+    items: list[ImportedDiaryItem]
+    total: int
+    page: int
+    page_size: int
+
+
+@router.get("/imported-diary", response_model=ImportedDiaryPage)
+async def imported_diary(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(400, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Note, eventi e stime del tenant, per il diario dell'app."""
+    from sqlalchemy import func, select
+
+    from app.models.claim import Claim
+    from app.models.claim_event import ClaimEvent
+
+    if not current_user.tenant_id:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    filters = (
+        ClaimEvent.tenant_id == current_user.tenant_id,
+        Claim.external_ref.is_not(None),
+    )
+    total = (
+        await db.execute(
+            select(func.count())
+            .select_from(ClaimEvent)
+            .join(Claim, Claim.id == ClaimEvent.claim_id)
+            .where(*filters)
+        )
+    ).scalar() or 0
+    rows = (
+        await db.execute(
+            select(
+                ClaimEvent.id,
+                Claim.external_ref,
+                ClaimEvent.event_time,
+                ClaimEvent.event_type,
+                ClaimEvent.data_json,
+            )
+            .join(Claim, Claim.id == ClaimEvent.claim_id)
+            .where(*filters)
+            .order_by(ClaimEvent.event_time.asc(), ClaimEvent.id.asc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+    ).all()
+    items = []
+    for event_id, external_ref, event_time, event_type, data_json in rows:
+        payload = data_json if isinstance(data_json, dict) else {}
+        text = str(payload.get("descrizione") or "").strip()
+        if not text or not external_ref:
+            continue
+        items.append(
+            ImportedDiaryItem(
+                id=event_id,
+                external_ref=external_ref,
+                event_time=event_time,
+                event_type=event_type,
+                text=text,
+            )
+        )
+    return ImportedDiaryPage(items=items, total=total, page=page, page_size=page_size)
 
 
 @router.get("/{claim_id}", response_model=ClaimResponse)

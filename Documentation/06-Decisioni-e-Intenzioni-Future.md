@@ -22,6 +22,13 @@ Motivazione: ...
 
 ---
 
+## 2026-11-27 — Note, importi e stime Chiari nel diario della pratica
+Contesto: le 273 pratiche erano sul server senza le note libere, e l'app non copiava
+né il diario né gli importi.
+Decisione: note e note Salesforce entrano nel diario insieme agli eventi e a una riga
+per ogni stima. Richiesta, danno accertato e liquidato stanno sulla pratica.
+Motivazione: aprendo il sinistro si deve trovare la stessa storia e le stesse cifre.
+
 ## 2026-11-27 — Il cambio archivio non deve chiudere l'app
 Contesto: staccare il database mentre la lista sinistri lo sta leggendo fa crashare l'app
 (`A fetch request must have an entity`).

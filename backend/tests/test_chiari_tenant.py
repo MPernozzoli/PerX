@@ -114,6 +114,7 @@ def test_dated_rules_and_claim_mapping_keep_counts_without_names():
                 "approvazione": {"revisione": 1, "data": "2026-11-01T00:00:00+00:00", "hash_calcolo": "abc"},
             },
             "atti_inviati": [{"importo": 10, "ora": "2026-11-02T00:00:00+00:00"}],
+            "note": "promemoria interno",
             "collegati": {"gruppo": "g1", "motivo": "stesso fabbricato", "sinistri": ["26-1", "26-2"]},
         },
     )
@@ -122,6 +123,9 @@ def test_dated_rules_and_claim_mapping_keep_counts_without_names():
     assert summary["per_stato"]["CHIUSO"] == 1
     assert summary["revisioni"] == 1
     assert mapped["revisions"][0]["approved"] is True
+    assert mapped["liquidato"] == Decimal("10")
+    assert any(event["event_type"] == "nota" for event in mapped["events"])
+    assert any(event["event_type"] == "stima" for event in mapped["events"])
     assert "Mario Rossi" not in json_summary(summary)
 
 

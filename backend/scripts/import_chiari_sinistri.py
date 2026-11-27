@@ -136,6 +136,7 @@ async def apply(mapped: list[dict], tenant_id: str) -> None:
                     numero_sinistro = EXCLUDED.numero_sinistro,
                     numero_polizza = EXCLUDED.numero_polizza,
                     liquidato = EXCLUDED.liquidato,
+                    richiesta = EXCLUDED.richiesta,
                     danno_accertato = EXCLUDED.danno_accertato,
                     closed_at = EXCLUDED.closed_at,
                     updated_at = EXCLUDED.updated_at
