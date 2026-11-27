@@ -14,7 +14,9 @@ enum AccountVault {
         guard !normalized.isEmpty else { return }
         let previous = UserDefaults.standard.string(forKey: activeEmailKey)?
             .trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if previous == normalized, FileManager.default.fileExists(atPath: storeURL(for: normalized).path) {
+        let destination = storeURL(for: normalized)
+        if previous == normalized,
+           PersistenceController.shared.storeURL?.standardizedFileURL == destination.standardizedFileURL {
             return
         }
         if let previous, previous != normalized {
@@ -22,11 +24,16 @@ enum AccountVault {
         } else if previous == nil {
             savePreferences(for: legacyOwner(activating: normalized))
         }
-        PersistenceController.shared.releaseStore()
         claimLegacyStoreIfNeeded(activating: normalized)
         restorePreferences(for: normalized)
         UserDefaults.standard.set(normalized, forKey: activeEmailKey)
-        PersistenceController.shared.useStore(at: storeURL(for: normalized))
+        if PersistenceController.shared.storeURL?.standardizedFileURL != destination.standardizedFileURL {
+            do {
+                try PersistenceController.shared.replaceStore(with: destination)
+            } catch {
+                print("[AccountVault] Apertura archivio non riuscita: \(error.localizedDescription)")
+            }
+        }
         reloadMemory()
     }
 
@@ -57,20 +64,7 @@ enum AccountVault {
             return
         }
         do {
-            try FileManager.default.createDirectory(
-                at: destination.deletingLastPathComponent(),
-                withIntermediateDirectories: true
-            )
-            if !FileManager.default.fileExists(atPath: destination.path) {
-                try FileManager.default.moveItem(at: source, to: destination)
-                for suffix in ["-wal", "-shm"] {
-                    let from = URL(fileURLWithPath: source.path + suffix)
-                    let to = URL(fileURLWithPath: destination.path + suffix)
-                    if FileManager.default.fileExists(atPath: from.path) {
-                        try? FileManager.default.moveItem(at: from, to: to)
-                    }
-                }
-            }
+            try PersistenceController.shared.relocateOpenStore(to: destination)
             UserDefaults.standard.set(owner, forKey: legacyOwnerKey)
         } catch {
             print("[AccountVault] Archivio precedente non spostato: \(error.localizedDescription)")

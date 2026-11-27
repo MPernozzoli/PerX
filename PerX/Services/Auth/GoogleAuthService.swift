@@ -98,6 +98,9 @@ class GoogleAuthService: ObservableObject {
         let needsReAuth = result.needsReAuth
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
             guard let self else { return }
+            if authenticated, let email, !email.isEmpty {
+                AccountVault.activate(email: email)
+            }
             self.userEmail = email
             self.userName = userName
             self.isAuthenticated = authenticated
@@ -354,6 +357,7 @@ class GoogleAuthService: ObservableObject {
         let displayName = Self.resolveDisplayName(email: user.email, fullName: user.full_name)
         persistAuthenticatedUser(email: user.email, fullName: user.full_name)
         AccountClaimScope.remember(tenantId: user.tenant_id)
+        AccountVault.activate(email: user.email)
         userEmail = user.email
         userName = displayName
         isAuthenticated = true
@@ -587,6 +591,7 @@ class GoogleAuthService: ObservableObject {
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
             guard let self else { return }
+            AccountVault.activate(email: user.email)
             self.userEmail = user.email
             self.userName = displayName
             self.isAuthenticated = true

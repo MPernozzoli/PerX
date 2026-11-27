@@ -22,6 +22,13 @@ Motivazione: ...
 
 ---
 
+## 2026-11-27 — Il cambio archivio non deve chiudere l'app
+Contesto: staccare il database mentre la lista sinistri lo sta leggendo fa crashare l'app
+(`A fetch request must have an entity`).
+Decisione: l'archivio dell'account si apre prima della finestra, sullo stesso contesto.
+Non si crea un secondo database in memoria e non si lascia la lista senza entità.
+Motivazione: il cambio account non può uccidere il processo.
+
 ## 2026-11-27 — Ogni account ha calendario, impostazioni e archivio propri
 Contesto: separare solo i sinistri lasciava calendario, orari, impostazioni e preferenze
 nello stesso archivio del Mac.
