@@ -24,5 +24,11 @@ services:
         sync: false
       - key: GOOGLE_OAUTH_CLIENT_SECRET
         sync: false
+      - key: GMAIL_PUBSUB_TOPIC
+        sync: false
+      - key: GMAIL_PUSH_AUDIENCE
+        value: https://api.perx.it/api/v1/emails/gmail/push
+      - key: GMAIL_PUSH_SERVICE_ACCOUNT
+        sync: false
       - key: SINGLE_TENANT_MODE
         value: "False"

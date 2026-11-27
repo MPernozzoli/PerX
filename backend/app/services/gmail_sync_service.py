@@ -1,4 +1,4 @@
-"""Sincronizzazione Gmail sul backend: storico a pagine e mail nuove via history."""
+"""Sincronizzazione Gmail sul backend: storico a pagine, watch Pub/Sub e history."""
 from __future__ import annotations
 
 import asyncio
@@ -8,13 +8,14 @@ import logging
 import os
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from email.utils import parseaddr
 from typing import Any
 
 import httpx
-from sqlalchemy import select
+from jose import jwt
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -27,7 +28,7 @@ from app.domain.claim_mail_match import (
 )
 from app.models.attachment import Attachment
 from app.models.claim import Claim
-from app.models.email import Email, EmailClaimLink, Mailbox
+from app.models.email import Email, EmailClaimLink, EmailProcessingJob, InboundEmailEvent, Mailbox
 from app.services.google_workspace_auth import open_google_tokens, seal_google_tokens
 from app.services.supabase_storage_service import SupabaseStorageService
 
@@ -36,6 +37,77 @@ logger = logging.getLogger(__name__)
 
 class GmailHistoryExpired(RuntimeError):
     """Lo historyId è troppo vecchio: si riparte dall'elenco."""
+
+
+_GOOGLE_CERTS = "https://www.googleapis.com/oauth2/v3/certs"
+_certs_cache: dict[str, Any] = {"at": None, "keys": None}
+
+
+def watch_needs_renewal(expiration: datetime | None, now: datetime) -> bool:
+    if expiration is None:
+        return True
+    if expiration.tzinfo is None:
+        expiration = expiration.replace(tzinfo=timezone.utc)
+    return expiration - now <= timedelta(hours=24)
+
+
+def decode_pubsub_push(body: dict) -> dict[str, str]:
+    message = body.get("message") if isinstance(body, dict) else None
+    if not isinstance(message, dict):
+        raise ValueError("message")
+    payload = json.loads(_b64(message.get("data")) or "{}")
+    if not isinstance(payload, dict):
+        raise ValueError("payload")
+    return {
+        "email": str(payload.get("emailAddress") or "").strip().lower(),
+        "history_id": str(payload.get("historyId") or ""),
+        "message_id": str(message.get("messageId") or ""),
+    }
+
+
+def verify_pubsub_token(token: str, keys: list, audience: str, service_account: str) -> None:
+    if not audience:
+        raise ValueError("audience")
+    claims = jwt.decode(
+        token,
+        {"keys": keys},
+        algorithms=["RS256"],
+        audience=audience,
+        issuer="https://accounts.google.com",
+    )
+    if claims.get("email_verified") is not True:
+        raise ValueError("email_verified")
+    if service_account and claims.get("email") != service_account:
+        raise ValueError("service_account")
+
+
+def append_gmail_signature(body: str, signature_html: str, is_html: bool) -> str:
+    signature = signature_html.strip()
+    if not signature:
+        return body
+    if is_html:
+        return body if signature in body else f"{body}<br><br>{signature}"
+    plain = re.sub(r"<[^>]+>", " ", signature)
+    plain = re.sub(r"\s+", " ", plain).strip()
+    if not plain or plain in body:
+        return body
+    return f"{body}\n\n{plain}"
+
+
+async def fetch_google_certs() -> list:
+    now = datetime.now(timezone.utc)
+    cached_at = _certs_cache.get("at")
+    cached_keys = _certs_cache.get("keys")
+    if cached_keys and isinstance(cached_at, datetime) and now - cached_at < timedelta(hours=6):
+        return cached_keys
+    async with httpx.AsyncClient(timeout=15) as client:
+        response = await client.get(_GOOGLE_CERTS)
+    if response.status_code >= 400:
+        raise RuntimeError(f"Certificati Google non disponibili: {response.status_code}")
+    keys = response.json().get("keys") or []
+    _certs_cache["at"] = now
+    _certs_cache["keys"] = keys
+    return keys
 
 
 GMAIL = "https://gmail.googleapis.com/gmail/v1/users/me"
@@ -190,6 +262,10 @@ class GmailSyncService:
                 mailbox.gmail_history_id = None
                 settings_json["backfill_done"] = False
                 settings_json["backfill"] = {}
+            try:
+                await _ensure_watch(client, access, mailbox)
+            except Exception:
+                logger.exception("Watch Gmail non rinnovato per %s", mailbox.email_address)
         settings_json["last_sync_at"] = datetime.now(timezone.utc).isoformat()
         settings_json.pop("last_error", None)
         mailbox.settings_json = settings_json
@@ -221,29 +297,101 @@ class GmailSyncService:
         thread_id: str | None = None,
     ) -> str:
         access = await _access_token(db, mailbox)
-        message = EmailMessage()
-        message["From"] = mailbox.email_address
-        message["To"] = ", ".join(to)
-        if cc:
-            message["Cc"] = ", ".join(cc)
-        if bcc:
-            message["Bcc"] = ", ".join(bcc)
-        message["Subject"] = subject
-        if is_html:
-            message.set_content(" ")
-            message.add_alternative(body, subtype="html")
-        else:
-            message.set_content(body)
-        raw = base64.urlsafe_b64encode(message.as_bytes()).decode("ascii").rstrip("=")
-        payload: dict[str, Any] = {"raw": raw}
-        if thread_id and re.fullmatch(r"[0-9a-fA-F]{10,32}", thread_id):
-            payload["threadId"] = thread_id
+        signature = ""
         async with httpx.AsyncClient(timeout=60) as client:
+            try:
+                signature = await _send_as_signature(client, access, mailbox)
+            except Exception:
+                logger.exception("Firma Gmail non letta per %s", mailbox.email_address)
+            signed = append_gmail_signature(body, signature, is_html)
+            message = EmailMessage()
+            message["From"] = mailbox.email_address
+            message["To"] = ", ".join(to)
+            if cc:
+                message["Cc"] = ", ".join(cc)
+            if bcc:
+                message["Bcc"] = ", ".join(bcc)
+            message["Subject"] = subject
+            if is_html:
+                message.set_content(" ")
+                message.add_alternative(signed, subtype="html")
+            else:
+                message.set_content(signed)
+            raw = base64.urlsafe_b64encode(message.as_bytes()).decode("ascii").rstrip("=")
+            payload: dict[str, Any] = {"raw": raw}
+            if thread_id and re.fullmatch(r"[0-9a-fA-F]{10,32}", thread_id):
+                payload["threadId"] = thread_id
             sent = await _gmail(client, access, "POST", "/messages/send", json=payload)
         gmail_id = sent.get("id") or ""
         if not gmail_id:
             raise RuntimeError("Gmail non ha confermato l'invio")
         return gmail_id
+
+    @staticmethod
+    async def accept_push(db: AsyncSession, note: dict[str, str]) -> str:
+        message_id = note["message_id"] or f"gmail-history:{note['email']}:{note['history_id']}"
+        existing = await db.execute(
+            select(InboundEmailEvent).where(InboundEmailEvent.provider_event_id == message_id)
+        )
+        event = existing.scalar_one_or_none()
+        if event is not None and event.status == "processed":
+            return "duplicate"
+        result = await db.execute(
+            select(Mailbox).where(
+                Mailbox.provider == "gmail",
+                func.lower(Mailbox.email_address) == note["email"],
+                Mailbox.active == "true",
+            )
+        )
+        mailboxes = list(result.scalars().all())
+        if not mailboxes:
+            return "ignored"
+        mailbox = mailboxes[0]
+        if event is None:
+            event = InboundEmailEvent(
+                id=str(uuid.uuid4()),
+                tenant_id=mailbox.tenant_id,
+                mailbox_id=mailbox.id,
+                provider="gmail",
+                provider_event_id=message_id,
+                from_address=note["email"],
+                to_addresses=[],
+                subject="gmail-push",
+                received_at=datetime.now(timezone.utc),
+                status="queued",
+                raw_payload={"emailAddress": note["email"], "historyId": note["history_id"]},
+            )
+            db.add(event)
+            db.add(
+                EmailProcessingJob(
+                    id=str(uuid.uuid4()),
+                    tenant_id=mailbox.tenant_id,
+                    inbound_event_id=event.id,
+                    status="pending",
+                    input_json={"emailAddress": note["email"], "historyId": note["history_id"]},
+                )
+            )
+            await db.flush()
+        imported = 0
+        for item in mailboxes:
+            imported += await GmailSyncService.sync_mailbox(db, item)
+        event.status = "processed"
+        job_row = await db.execute(
+            select(EmailProcessingJob).where(EmailProcessingJob.inbound_event_id == event.id)
+        )
+        job = job_row.scalar_one_or_none()
+        if job is not None:
+            job.status = "completed"
+            job.completed_at = datetime.now(timezone.utc)
+            job.result_json = {"imported": imported}
+        await db.commit()
+        try:
+            from app.api.v1.routes_realtime import sse_manager
+
+            await sse_manager.broadcast(mailbox.tenant_id, "mail_updated", {"imported": imported})
+        except Exception:
+            logger.exception("Segnale posta non inviato")
+        return "ok"
 
 
 async def _access_token(db: AsyncSession, mailbox: Mailbox) -> str:
@@ -291,6 +439,59 @@ async def _gmail(client: httpx.AsyncClient, access: str, method: str, path: str,
     if response.status_code >= 400:
         raise RuntimeError(f"Gmail {path} ha risposto {response.status_code}")
     return response.json() if response.content else {}
+
+
+async def _ensure_watch(client: httpx.AsyncClient, access: str, mailbox: Mailbox) -> None:
+    topic = settings.GMAIL_PUBSUB_TOPIC.strip()
+    if not topic or not watch_needs_renewal(mailbox.gmail_watch_expiration, datetime.now(timezone.utc)):
+        return
+    payload = await _gmail(
+        client,
+        access,
+        "POST",
+        "/watch",
+        json={
+            "topicName": topic,
+            "labelIds": ["INBOX", "SENT"],
+            "labelFilterBehavior": "include",
+        },
+    )
+    if payload.get("historyId") and not mailbox.gmail_history_id:
+        mailbox.gmail_history_id = str(payload["historyId"])
+    expiration = payload.get("expiration")
+    if expiration:
+        mailbox.gmail_watch_expiration = datetime.fromtimestamp(int(expiration) / 1000, tz=timezone.utc)
+
+
+async def _send_as_signature(client: httpx.AsyncClient, access: str, mailbox: Mailbox) -> str:
+    settings_json = dict(mailbox.settings_json or {})
+    cached = settings_json.get("send_as_signature")
+    fetched = settings_json.get("send_as_signature_at")
+    if isinstance(cached, str) and isinstance(fetched, str):
+        try:
+            when = datetime.fromisoformat(fetched)
+        except ValueError:
+            when = None
+        if when is not None:
+            if when.tzinfo is None:
+                when = when.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) - when < timedelta(hours=12):
+                return cached
+    listing = await _gmail(client, access, "GET", "/settings/sendAs")
+    signature = ""
+    address = mailbox.email_address.lower()
+    for item in listing.get("sendAs") or []:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("sendAsEmail") or "").lower() == address:
+            signature = str(item.get("signature") or "")
+            break
+        if item.get("isPrimary") and not signature:
+            signature = str(item.get("signature") or "")
+    settings_json["send_as_signature"] = signature
+    settings_json["send_as_signature_at"] = datetime.now(timezone.utc).isoformat()
+    mailbox.settings_json = settings_json
+    return signature
 
 
 async def _import_page(
