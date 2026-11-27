@@ -362,6 +362,9 @@ class GmailSyncService:
                 raw_payload={"emailAddress": note["email"], "historyId": note["history_id"]},
             )
             db.add(event)
+            # No ORM relationship links these rows, so SQLAlchemy cannot infer
+            # that the parent must be inserted before the job's foreign key.
+            await db.flush()
             db.add(
                 EmailProcessingJob(
                     id=str(uuid.uuid4()),
