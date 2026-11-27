@@ -85,6 +85,7 @@ class ClaimUpdate(ClaimBase):
 
 
 class ClaimResponse(ClaimBase):
+    stato_corrente: str
     id: str
     tenant_id: str
     created_at: datetime

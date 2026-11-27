@@ -125,5 +125,23 @@ def test_dated_rules_and_claim_mapping_keep_counts_without_names():
     assert "Mario Rossi" not in json_summary(summary)
 
 
+def test_claim_response_keeps_chiari_state():
+    from datetime import datetime, timezone
+    from app.schemas.claim import ClaimResponse
+
+    claim = ClaimResponse.model_validate({
+        "id": "claim-1",
+        "tenant_id": "tenant-1",
+        "external_ref": "26-602322",
+        "stato_corrente": "CHIUSO",
+        "created_at": datetime.now(timezone.utc),
+        "updated_at": datetime.now(timezone.utc),
+        "priority": 0,
+        "version": 1,
+    })
+    assert claim.stato_corrente == "CHIUSO"
+    assert claim.external_ref == "26-602322"
+
+
 def json_summary(summary: dict) -> str:
     return str(summary)

@@ -30,6 +30,12 @@ orari, impostazioni dello studio, filtri e notizie locali non passano all'accoun
 L'archivio che c'era già sul Mac resta all'account precedente, non a chi entra dopo.
 Motivazione: ogni account si porta le proprie cose.
 
+## 2026-11-27 — Le pratiche Chiari non passavano dalla lista API
+Contesto: gli stati Chiari (`CHIUSO`, `ATTO_INVIATO`, …) non sono gli stati dello studio.
+La lista sinistri li rifiutava, quindi l'app restava vuota.
+Decisione: la risposta della lista accetta lo stato del tenant così com'è.
+Motivazione: il tenant Chiari ha un suo elenco di stati.
+
 ## 2026-11-27 — Utente e tenant sempre separati
 Contesto: la prima chiusura mostrava i sinistri dell'altro account solo quando si entrava con
 Chiari. La divisione non è una regola di quel tenant.
