@@ -42,14 +42,13 @@ Provider **Resend**: invio via `RESEND_API_KEY`/`RESEND_DEFAULT_FROM_EMAIL`, sch
 `backend/docs/resend_supabase_inbound_pipeline.md` (non ancora incorporata in questo vault — da
 fare se questa pipeline viene toccata).
 
-Lato app, `GmailService.swift` resta uno stub: i client non parlano con Gmail. Dal 2026-11-27
-la casella Workspace del tenant Chiari la sincronizza il backend (`gmail_sync_service.py`):
-all'accesso Google parte il recupero di posta in arrivo e inviata, poi le mail nuove; gli
-allegati fino a 15 MB finiscono su Supabase Storage. L'abbinamento alla pratica è in cascata:
-prima il riferimento `26-602322`, poi il numero sinistro compagnia, poi il nome dell'assicurato. L'elenco che l'app già legge da `GET /api/v1/hub/emails` mostra quelle righe.
-L'invio dall'app usa Gmail se la casella è collegata, altrimenti Resend. Il rinnovo del token
-sta sul server (`GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET`). La push Pub/Sub
-descritta sotto resta il passo successivo, non il flusso attuale.
+Lato app c’è un solo polling, `HubEmailService`, verso `GET /api/v1/hub/emails`, con il token dell’accesso.
+Gmail sul Mac e `MailManager` non scaricano più la posta. Il server, all’accesso Google, recupera
+la posta in arrivo e inviata e poi le mail nuove; gli allegati fino a 15 MB finiscono su Supabase
+Storage. L’abbinamento alla pratica è in cascata: prima il riferimento `26-602322`, poi il numero
+sinistro compagnia, poi il nome dell’assicurato. L’invio dall’app usa Gmail se la casella è
+collegata, altrimenti Resend. Il rinnovo del token sta sul server (`GOOGLE_OAUTH_CLIENT_ID` /
+`GOOGLE_OAUTH_CLIENT_SECRET`). La push Pub/Sub descritta sotto resta il passo successivo.
 
 ## Chat assicurato → team interno
 

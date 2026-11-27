@@ -61,6 +61,7 @@ class MailViewModel: ObservableObject {
     
     // Observer per sincronizzare emailsByMailbox con EmailRepository
     private var repositoryObserver: AnyCancellable?
+    private var serverMailObserver: AnyCancellable?
 
     private init() {
         // Carica subito le personalizzazioni (non modifica @Published)
@@ -72,6 +73,11 @@ class MailViewModel: ObservableObject {
         // Setup delle osservazioni in modo asincrono per evitare crash all'avvio
         Task { @MainActor in
             setupRepositoryObservation()
+            serverMailObserver = NotificationCenter.default.publisher(for: .serverMailUpdated)
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] _ in
+                    self?.applyServerMail()
+                }
         }
         
         // Ritarda syncEmailsFromRepository e updateDisplayableMailboxes per evitare modifiche @Published durante init
@@ -132,53 +138,13 @@ class MailViewModel: ObservableObject {
         ensureCustomizationsExist()
     }
 
-    /// Avvia il monitoring persistente delle email
+    /// Un solo polling verso il server. Gmail e MailManager non scaricano più nulla.
     func startMonitoring() {
-        guard !isMonitoringActive else {
-            print("[ViewModel] ⚠️ Monitoring già attivo, ignoro la richiesta")
-            return
-        }
-        
+        guard !isMonitoringActive else { return }
+        guard let userEmail = authService.userEmail else { return }
         isMonitoringActive = true
-        print("[ViewModel] 🚀 Avvio monitoring email via Hub")
-        
-        // Task.detached con delay per evitare modifiche @Published durante il rendering delle view
-        Task.detached { [weak self] in
-            guard let self = self else { return }
-            
-            // Delay iniziale per evitare loop di pubblicazione durante l'avvio
-            try? await Task.sleep(nanoseconds: 500_000_000) // 500ms
-            
-            // Verifica connessione Hub
-            await HubModeService.shared.checkHubConnection()
-            
-            let hubConnected = await MainActor.run { HubModeService.shared.hubConnected }
-            guard hubConnected else {
-                await MainActor.run {
-                    self.errorMessage = "Hub non connesso - email non disponibili"
-                }
-                print("[ViewModel] ❌ Hub non connesso, monitoring non avviato")
-                return
-            }
-            
-            // Recupera email utente
-            guard let userEmail = await MainActor.run(body: { self.authService.userEmail }) else {
-                print("[ViewModel] ⚠️ Utente non autenticato")
-                return
-            }
-            
-            // Sync iniziale da Hub
-            print("[ViewModel] 📥 Sincronizzazione iniziale email da Hub...")
-            await self.fetchEmailsFromHub(prioritize: nil)
-            
-            // Avvia polling Hub (ogni 60 secondi)
-            print("[ViewModel] 🔄 Avvio polling Hub (ogni 60s)...")
-            await MainActor.run {
-                self.emailAdapter.startPolling(userEmail: userEmail, interval: 60)
-            }
-            
-            print("[ViewModel] ✅ Monitoring Hub completamente avviato")
-        }
+        print("[MailViewModel] Polling della posta dal server")
+        emailAdapter.startPolling(userEmail: userEmail, interval: 60)
     }
     
     /// Ferma il monitoring (usato al logout)
@@ -628,6 +594,34 @@ class MailViewModel: ObservableObject {
     
     // MARK: - Hub Mode
     
+    private func applyServerMail() {
+        let items = HubEmailService.shared.emails.map { EmailListItem(from: $0) }
+        var grouped: [String: [Email]] = [:]
+        for item in items {
+            let sender = Contact(name: item.senderName, email: item.senderEmail)
+            let email = Email(
+                id: item.id,
+                isRead: item.isRead,
+                isDownloaded: true,
+                sender: sender,
+                recipients: [],
+                cc: nil,
+                subject: item.subject,
+                date: item.date,
+                body: nil,
+                attachments: nil,
+                claimNumber: item.sinistroRef,
+                insuredName: nil,
+                associationStatus: nil
+            )
+            let mailboxKey = item.mailbox ?? (item.direction == "OUT" ? "SENT" : "INBOX")
+            grouped[mailboxKey, default: []].append(email)
+        }
+        emailsByMailbox = grouped
+        updateDisplayableMailboxesFromHub(HubEmailService.shared.mailboxes)
+        lastSyncDate = Date()
+    }
+
     /// Recupera email dall'Hub centrale
     private func fetchEmailsFromHub(prioritize mailboxId: String?) async {
         isLoading = true

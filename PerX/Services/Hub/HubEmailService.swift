@@ -60,20 +60,23 @@ class HubEmailService: ObservableObject {
     
     /// Recupera email per l'utente corrente (con limit e opzionale mailbox filter)
     func fetchEmails(forUser userEmail: String, mailbox: String? = nil, limit: Int = 100) async throws -> [EmailDTO] {
-        var path = "emails?user=\(userEmail.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? userEmail)&limit=\(limit)"
-        if let mailbox = mailbox {
-            path += "&mailbox=\(mailbox)"
-        }
-
-        let emails: [EmailDTO] = try await cloudClient.cloudGet(compatPath(path))
+        let emails: [EmailDTO] = try await BackendAPIClient.shared.get(
+            "hub/emails",
+            queryItems: [
+                URLQueryItem(name: "user", value: userEmail),
+                URLQueryItem(name: "limit", value: String(limit)),
+            ] + (mailbox.map { [URLQueryItem(name: "mailbox", value: $0)] } ?? [])
+        )
         print("[HubEmailService] 📥 Scaricate \(emails.count) email per utente \(userEmail)")
         return emails
     }
     
     /// Recupera le caselle disponibili per l'utente
     func fetchMailboxes(forUser userEmail: String) async throws -> [MailboxDTO] {
-        let path = compatPath("emails/mailboxes?user=\(userEmail.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? userEmail)")
-        let mailboxes: [MailboxDTO] = try await cloudClient.cloudGet(path)
+        let mailboxes: [MailboxDTO] = try await BackendAPIClient.shared.get(
+            "hub/emails/mailboxes",
+            queryItems: [URLQueryItem(name: "user", value: userEmail)]
+        )
         print("[HubEmailService] 📬 Trovate \(mailboxes.count) caselle per \(userEmail)")
         return mailboxes
     }
@@ -296,6 +299,7 @@ class HubEmailService: ObservableObject {
             self.emails = fetchedEmails
             self.mailboxes = fetchedMailboxes
             self.lastSyncDate = Date()
+            NotificationCenter.default.post(name: .serverMailUpdated, object: nil)
             
             print("[HubEmailService] ✅ Sync completato: \(fetchedEmails.count) email, \(fetchedMailboxes.count) caselle")
         } catch {
@@ -397,4 +401,8 @@ extension EmailDetailDTO {
             body: bodyHtml ?? bodyText
         )
     }
+}
+
+extension Notification.Name {
+    static let serverMailUpdated = Notification.Name("serverMailUpdated")
 }
