@@ -42,8 +42,15 @@
         <string>0.0.0.0</string>
         <key>PERX_HUB_PORT</key>
         <string>8080</string>
+        <!-- Segreti: NON versionare valori reali. Impostarli da Hub Monitor
+             (data/monitor-secrets.json, priorità sull'env) o nel plist installato
+             in /Library/LaunchDaemons. I placeholder REPLACE-WITH-* sono ignorati. -->
         <key>PERX_STORAGE_SHARED_SECRET</key>
-        <string>10e8b2435923623026cb1ad24ff1b13e</string>
+        <string>REPLACE-WITH-STORAGE-SHARED-SECRET</string>
+        <!-- Token per l'accesso da LAN/VPN/tunnel; senza token l'Hub accetta solo
+             richieste locali dirette (vedi HubAccessMiddleware). -->
+        <key>PERX_HUB_API_TOKEN</key>
+        <string>REPLACE-WITH-HUB-API-TOKEN</string>
         <!-- Service URLs -->
         <key>PERX_WA_BRIDGE_URL</key>
         <string>http://localhost:5002</string>

@@ -41,7 +41,7 @@ Dettagli → [[PerXHub]].
 | ORM | SQLAlchemy async |
 | Database | PostgreSQL (gestito su Supabase), migrazioni Alembic (41+ revisioni in `backend/migrations/versions/`) |
 | Auth | JWT Bearer, hashing password in `app/core/security.py`; supporto opzionale a Supabase Auth (`FF_CLOUD_AUTH_ENABLED`) |
-| Storage file | Supabase Storage (bucket `perx-portal-uploads`) |
+| Storage file | Supabase Storage (bucket `perx-portal-uploads`) per il portale; vault documentale su Mac mini, con provider **S3-compatibile** (`boto3`, AWS S3 `eu-south-1`) predisposto ma non attivo; `moto` sia nei test sia come server S3 locale in Docker per la simulazione |
 | Email | Resend (invio/ricezione, pipeline webhook) |
 | Deploy | Docker, hosting su Render (`render.yaml`, servizio `perx-api`) |
 | Feature flag | `FF_TASKS_ENABLED`, `FF_LOCAL_AI_PROCESS_JOBS_ENABLED`, `SINGLE_TENANT_MODE`, `PORTAL_DEV_CLAIM_REFERENCE_ONLY_AUTH`, ecc. |
@@ -73,4 +73,4 @@ Dettagli → [[Portal-Web-Assicurati]], [[CatDispatcher]], [[Altre-Web-App]], [[
 | Schemi dedicati per app satellite | es. `bignami` (Postgres schema separato da `public`) |
 
 ---
-Ultimo aggiornamento: 2026-11-26
+Ultimo aggiornamento: 2026-11-26 (boto3 / storage S3-compatibile)

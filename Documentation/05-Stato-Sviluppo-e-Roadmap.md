@@ -24,6 +24,7 @@ comunicazioni e CAT dispatcher). La struttura della repo può ancora essere rior
 | [[Varianti-iOS]] | Attive, subset di funzionalità rispetto all'app principale |
 | [[PerXHub]] | Operativo su Mac mini, direzione verso Supabase come source of truth dei dati (Hub resta nodo vault/AI locale) |
 | [[Backend-Cloud-API]] | Cuore attivo dello sviluppo: ~40 tabelle/modelli, 41+ migrazioni Alembic, aree recenti: videoperizia, comunicazioni, device token/push, AI prompt versioning, route planning CAT, GDPR, bridge platform-admin + error-tracking backend-only per PynkStudio (2026-09-06) |
+| Storage vault su S3 (in [[Backend-Cloud-API]]) | **Predisposto, non attivo** (2026-11-26): provider `s3`, download presigned opt-in, script di migrazione e test con moto pronti; produzione resta su `mac_mini` finché `VAULT_STORAGE_PROVIDER` non viene cambiato. Simulazione end-to-end verificata in Docker con moto server; non ancora provato contro AWS reale |
 | [[Portal-Web-Assicurati]] | Architettura iniziale implementata (vedi sezione dedicata sotto) |
 | [[CatDispatcher]] | Sviluppo attivo, migrato a Next.js App Router, dispatch engine deterministico come primo passo |
 | [[Altre-Web-App]] (Bignami, Insight Studio, Randa) | Migrate a Next.js App Router; grado di integrazione nel gateway variabile |
@@ -132,10 +133,16 @@ Vedi [[Login-Unificato-SSO]] per il piano completo (5 fasi). Ad oggi:
 - **Fondazioni CI implementate il 2026-11-07**: tre workflow GitHub Actions separati per backend,
   web e Apple con path filtering, cache e concorrenza cancellabile. Dettagli e distinzione tra
   gate bloccanti/osservativi in [[04-Infrastruttura-e-Deploy]].
-- **Backend**: 28 test pytest verdi nella baseline locale, coverage misurata (38% risultante dalle
-  importazioni dell'intera app, ancora poco rappresentativa delle route), smoke contract per
-  `/` e `/health`, migrazioni verificate in CI su Postgres vuoto. Mancano ancora fixture DB e test
-  API/auth/tenant reali.
+- **Backend**: 30 test pytest verdi in locale (verifica 2026-11-26), coverage 39% risultante
+  quasi solo dalle importazioni dell'intera app, smoke contract per `/` e `/health`. **Correzione
+  2026-11-26**: le migrazioni *non* sono verificate su Postgres vuoto — il job Backend CI è fallito
+  in tutti i 6 run su GitHub perché la catena Alembic non crea 22 tabelle core usate dai modelli
+  (`documents`, `emails`, `attachments`, `audit_log`, `case_tasks`, `internal_chat_*`, ecc.).
+  Un ambiente nuovo (staging, preview, disaster recovery) non era quindi ricostruibile dalle sole
+  migration. **Risolto lo stesso giorno** con la revisione `002b_legacy_core_tables`: `upgrade
+  head` su Postgres vuoto è verificato fino a `040` (dettagli in [[Backend-Cloud-API]]). Mancano
+  ancora fixture DB e test API/auth/tenant reali. Ruff segnala anche un
+  `NameError` reale in `app/services/push_notifier.py` (`settings` non importato).
 - **Web**: Vitest configurato in tutti i workspace; 7 test iniziali verdi su routing tenant del
   portale e utility province CAT. Typecheck, test, lint e build production sono bloccanti su tutti
   i workspace; Bignami usa ora tipi Supabase coerenti con lo schema `bignami`. Tre app accettano
@@ -145,6 +152,12 @@ Vedi [[Login-Unificato-SSO]] per il piano completo (5 fasi). Ad oggi:
   `PerXHub` e il target Xcode `PerX` compilano come gate CI. I duplicati videoperizia sono esclusi
   dal target in favore di `Shared/Videoperizia/`. I target XCTest dell'app/varianti restano
   boilerplate.
+- **Hardening sicurezza 2026-11-26 (P0 dell'audit)**: guardia di produzione su segreti e flag di
+  debug, rate limiting sugli endpoint di autenticazione, webhook comunicazioni disattivato senza
+  secret, dipendenze con CVE aggiornate (backend, vedi [[Backend-Cloud-API]]); controllo accessi
+  globale su [[PerXHub]] e segreti rimossi dal plist versionato. Restano a carico dell'utente
+  (fuori dal codice) la rotazione dei segreti già pubblicati, la verifica delle variabili su
+  Render e la decisione sulla visibilità del repository GitHub.
 - **CD non ancora protetta dai check**: Render e Vercel continuano a partire dai propri hook. Il
   passo successivo è far eseguire i workflow su GitHub, stabilizzare i nomi dei check, impostare
   branch protection su `main` e subordinare i deploy di produzione ai gate verdi.
@@ -190,5 +203,14 @@ Vedi [[06-Decisioni-e-Intenzioni-Future]] (2026-09-06) per contesto e motivazion
 - Integrazione completa di CatDispatcher, Bignami e Insight Studio nel gateway unico
   `apps/portal-web`.
 
+## Audit di maturità 2026-11-26 — sintesi
+
+Audit completo della repo in vista della candidatura a Vercel X: risultati, rischi e piano di
+rientro in [[06-Decisioni-e-Intenzioni-Future]] (2026-11-26). Punti bloccanti emersi: criticità
+di sicurezza (gestione dei segreti, default di configurazione dell'autenticazione, esposizione di
+rete di [[PerXHub]]) — dettaglio tecnico volutamente tenuto fuori da questo vault finché il
+repository GitHub resta pubblico —, catena di migration non ricostruibile da zero, nessuna
+inferenza AI cloud server-side (l'AI funziona solo su Mac locale).
+
 ---
-Ultimo aggiornamento: 2026-11-27 (bucket Storage degli allegati Gmail)
+Ultimo aggiornamento: 2026-11-27 (bucket Storage degli allegati Gmail; migrazione 043 e utente Chiari sul database; storage S3 predisposto; migrazioni ricostruibili da zero)

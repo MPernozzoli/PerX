@@ -348,6 +348,128 @@ controllabile e ripetibile anche per altri studi.
 
 ---
 
+## 2026-11-26 — Migrazioni Alembic ricostruibili da zero con una revisione intermedia idempotente
+Contesto: il job Backend CI non era mai passato perché 22 tabelle core e 72 colonne di
+`claims`/`users` erano state create fuori da Alembic (`create_all`) e `003` le referenziava già.
+
+Decisione: inserire la revisione `002b_legacy_core_tables` tra `002` e `003` invece di una baseline
+nuova in coda alla catena, perché il problema si presenta già a `003`. La revisione crea tabelle,
+indici e colonne solo se mancano e ha un `downgrade` volutamente vuoto, per non distruggere dati
+negli ambienti dove quelle tabelle esistono da prima di Alembic. I database già oltre `003`
+(production, a `040`) non la eseguono, perché Alembic considera applicati gli antenati della head.
+Le colonne `NOT NULL` hanno un default lato server ricavato dai modelli, necessario perché `002`
+inserisce già una riga in `users`. Anche `024` è stata resa condizionale sulla publication
+`supabase_realtime`, che esiste solo su Supabase. Alternativa scartata: `alembic stamp` o uno
+schema dump, che avrebbero nascosto il problema invece di rendere ricostruibile un ambiente.
+
+## 2026-11-26 — Intenzione: dismettere il Mac mini, storage file su AWS S3
+Contesto: l'utente ritiene il Mac mini una soluzione nata per risparmiare e, anche in vista di
+Vercel X, vuole spostare lo storage dei file su AWS. Per ora basta predisporre e simulare la
+migrazione: il passaggio reale non serve ancora. Inventario dei ruoli attuali → [[PerXHub]].
+
+Intenzione (proposta, non ancora approvata per l'implementazione):
+
+1. **Storage del vault**, il passo più semplice perché lo tocca un solo servizio backend
+   (`VaultStorageService`) e le app passano già dal cloud. Aggiungere un provider compatibile
+   S3, configurabile per bucket, regione ed endpoint: lo stesso codice funziona con AWS S3
+   (produzione, regione `eu-south-1` Milano per la residenza dei dati), con MinIO in locale e
+   con moto nei test, e in alternativa con l'endpoint S3 di Supabase Storage, già usato per il
+   portale. Download tramite URL firmati invece del proxy dei byte attraverso il backend. Poi
+   uno script di migrazione idempotente (copia dal Mac mini, verifica dell'hash, report) e il
+   cambio di `VAULT_STORAGE_PROVIDER` quando servirà, lasciando il Mac mini in sola lettura per
+   un periodo di sicurezza.
+2. **WhatsApp**: passare dal bridge non ufficiale alla WhatsApp Business Cloud API di Meta, con
+   webhook verso il backend. Richiede la verifica business e i template per i messaggi in uscita
+   oltre la finestra di 24 ore.
+3. **AI locale**: sostituirla con inferenza cloud server-side (AI SDK + AI Gateway, zero data
+   retention), coerente con la storia AI-native per Vercel X; Ollama/MLX resta un'opzione
+   on-premise.
+4. **Pulizia**: rimuovere il codice morto dell'Hub e gli strumenti di sviluppo (AutoUpdater).
+
+Da verificare subito, prima di tutto il resto: il valore di `VAULT_STORAGE_PROVIDER` su Render.
+Con il default `local` i file del documentale sarebbero scritti sul disco effimero di Render e
+persi a ogni deploy.
+
+**Stato di attuazione (2026-11-26):** punto 1 predisposto, **non attivato**. Nel backend ci sono il
+provider `s3` di `VaultStorageService` (SSE-S3, prefisso e endpoint configurabili), i download
+presigned opt-in (`VAULT_S3_PRESIGNED_DOWNLOADS`, default spento), `scripts/migrate_vault_to_s3.py`
+(elenco file dal DB, dry-run di default, idempotente, verifica SHA-256, report JSON), i test con
+moto e un compose Docker con moto server per la simulazione locale, verificato end-to-end
+(upload, download, copia, spostamento, cancellazione, URL firmato, cifratura AES256). MinIO, previsto
+inizialmente, è stato scartato perché le sue immagini community non sono più distribuite
+pubblicamente. Le nuove dipendenze sono `boto3` (runtime) e `moto[s3]` (sviluppo).
+`VAULT_STORAGE_PROVIDER` non è stato toccato:
+produzione si comporta come prima. Restano da decidere: nome bucket, retention/Object Lock,
+policy IAM, quando eseguire la migrazione reale. Punti 2-4 non iniziati. Dettagli →
+[[Backend-Cloud-API]], [[04-Infrastruttura-e-Deploy]].
+
+## 2026-11-26 — Hardening di sicurezza P0 (backend e PerXHub)
+Contesto: l'utente ha approvato l'avvio delle correzioni P0 emerse dall'audit (voce sotto).
+
+Decisioni implementate nel codice:
+
+- **Fail-fast sui segreti, fail-safe sui flag**: in `ENV` production-like il backend rifiuta
+  l'avvio con `SECRET_KEY` placeholder/corto (meglio un deploy fallito, che su Render lascia attivo
+  il precedente, che token firmati con una chiave pubblica); i flag di debug dell'autenticazione
+  invece vengono forzati a `False` con log critico, così la correzione entra in vigore anche se la
+  dashboard li avesse impostati a `True`. Il controllo sul segreto è fuori dal validatore pydantic
+  perché quel tipo di errore ripete nei log una porzione dei valori di configurazione.
+- **Rate limiting in memoria**, non su Redis: oggi c'è una sola istanza Render; la scelta va rivista
+  prima di scalare orizzontalmente.
+- **Webhook comunicazioni chiuso per default** finché non esiste la verifica della firma del
+  provider (nessun provider telecom è oggi integrato, quindi nessun flusso reale si interrompe).
+- **PerXHub: fiducia al loopback diretto, token per tutto il resto**. Scelta per non rompere WA
+  Bridge, AutoUpdater e Monitor che girano sullo stesso Mac, escludendo però i tunnel/reverse proxy
+  locali tramite gli header di forwarding. Alternativa scartata: token obbligatorio anche in locale,
+  che avrebbe richiesto di riconfigurare tutti i servizi locali prima del deploy.
+- **Segreti fuori dal repository**: il plist versionato contiene solo placeholder, che l'Hub ignora.
+
+Azioni operative restanti, da eseguire dall'utente: ruotare il segreto storage pubblicato (va
+aggiornato sia sull'Hub sia come `MAC_MINI_STORAGE_TOKEN` su Render), verificare `SECRET_KEY` e i
+flag su Render prima del deploy, decidere sulla visibilità del repository GitHub (oggi pubblico).
+Vedi [[Backend-Cloud-API]], [[PerXHub]], [[Portal-Web-Assicurati]].
+
+## 2026-11-26 — Audit di maturità della repo e candidatura a Vercel X
+Contesto: l'utente ha chiesto un audit completo (cosa funziona, cosa no, cosa sistemare) per
+portare PerX a **Vercel X**, l'acceleratore di Vercel per founder AI in fase idea/pre-seed (sei
+settimane in presenza a San Francisco, 19 gennaio – 2 marzo 2027; candidature entro il
+29 novembre 2026 alle 23:59 PT; team fino a 3 persone, nessun seed istituzionale, nessun
+acceleratore VC precedente; nessuna equity, crediti partner, eventuale funding Vercel Ventures).
+
+Esito sintetico: prodotto ampio e reale (≈340k righe tra Swift, Python e TypeScript; ~280
+endpoint FastAPI; 92 modelli dati; 5 web app Next.js in produzione su Vercel; app macOS/iPad/
+iPhone in uso interno), ma maturità ingegneristica da prototipo avanzato. Funziona: deploy
+Vercel production (gateway + tre origin, host `*.pynkstudio.eu` raggiungibili), backend in
+produzione (`/health` 200), Web CI e Apple CI verdi, rimozione delle chiavi AI dai client.
+Non funziona o è a rischio: Backend CI mai verde e migration non ricostruibili da zero (vedi
+[[05-Stato-Sviluppo-e-Roadmap]]); criticità di sicurezza su segreti, default di autenticazione
+e esposizione di rete dell'Hub (dettagli comunicati all'utente fuori dal repo, che è pubblico);
+nessun rate limiting sulle API; test quasi assenti su auth/tenant/flussi critici; nessuna
+inferenza AI cloud server-side (client cloud AI disabilitati, AI solo via Ollama/MLX sul Mac
+mini); CatDispatcher e Bignami leggono/scrivono Supabase direttamente dal browser, in deroga al
+principio "backend unica autorità" di [[02-Architettura]]; React 18 su Next.js 16.
+
+Intenzione (piano di rientro raccomandato, non ancora approvato in dettaglio):
+
+1. **Subito (prima di qualunque demo o candidatura)**: rotazione dei segreti esposti e
+   valutazione di rendere privato il repository; default di configurazione sicuri con guardia
+   all'avvio in `ENV=prod`; autenticazione e bind solo locale/VPN per [[PerXHub]].
+2. **Fondamenta (1–2 settimane)**: migration baseline che ricrei l'intero schema da zero e
+   Backend CI verde; branch protection su `main` con deploy subordinati ai check; rate limiting
+   su login/OTP/portale; test API su auth, isolamento tenant e portale; aggiornamento di
+   `python-jose`/`python-multipart`; React 19.
+3. **Storia AI-native per Vercel X**: pipeline AI cloud server-side (Vercel AI SDK + AI Gateway,
+   con zero data retention per i dati dei sinistri) affiancata al percorso locale esistente;
+   un flusso verticale dimostrabile end-to-end (es. e-mail/documenti in ingresso → estrazione →
+   task e bozza di perizia) esposto come web app su Vercel invece che solo nell'app macOS.
+4. **Narrativa di candidatura**: PerX come "AI operating system per i periti assicurativi",
+   con Studio Randa come design partner in produzione.
+
+Motivazione: Vercel X valuta founder tecnici con idee ambiziose e potenziale d'impatto; il
+prodotto ha profondità di dominio rara, ma la demo deve girare sul web, mostrare AI cloud
+reale e non esporre dati sensibili di assicurati. Vedi [[05-Stato-Sviluppo-e-Roadmap]],
+[[04-Infrastruttura-e-Deploy]], [[AI-Locale-e-Cloud]].
+
 ## 2026-11-26 — RLS: la 041 era già in effetto con l'allowlist, la 042 chiude `tenants` e `user_roles` (corregge la voce «RLS sulle tabelle `public`»)
 Contesto: ho letto lo stato reale del progetto Supabase `PerX` con notebook SQL in sola lettura.
 Prima: **93 tabelle in `public`, nessuna con RLS, zero policy, `anon` e `authenticated` con
@@ -939,4 +1061,4 @@ nello stesso file perché il target è multipiattaforma; se compaiono errori ana
 valutare di tenere solo la chiave `com.apple.developer.*`. Vedi [[PerX-App-Principale]].
 
 ---
-Ultimo aggiornamento: 2026-11-27
+Ultimo aggiornamento: 2026-11-27 (tenant Chiari e Gmail; audit di maturità e candidatura Vercel X)

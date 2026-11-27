@@ -1,0 +1,47 @@
+# Simulazione locale dello storage S3 del vault. Solo sviluppo.
+#
+# Usa moto in modalità server (API S3 compatibile, dati in memoria: si azzerano a ogni
+# riavvio). Le immagini community di MinIO non sono più distribuite pubblicamente, per
+# questo non vengono usate qui.
+#
+#   docker compose -f docker-compose.storage.yml up -d
+#   docker compose -f docker-compose.storage.yml down
+#
+# Variabili per il backend (credenziali fittizie, valide solo per questa simulazione):
+#   VAULT_STORAGE_PROVIDER=s3
+#   VAULT_S3_BUCKET=perx-vault-dev
+#   VAULT_S3_REGION=eu-south-1
+#   VAULT_S3_ENDPOINT_URL=http://127.0.0.1:9000
+#   VAULT_S3_FORCE_PATH_STYLE=true
+#   AWS_ACCESS_KEY_ID=test
+#   AWS_SECRET_ACCESS_KEY=test
+services:
+  s3:
+    image: motoserver/moto:5.0.28
+    ports:
+      - "127.0.0.1:9000:5000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/moto-api/')"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  s3-init:
+    image: motoserver/moto:5.0.28
+    depends_on:
+      s3:
+        condition: service_healthy
+    environment:
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+    entrypoint:
+      - python
+      - -c
+      - |
+        import boto3
+        s3 = boto3.client("s3", endpoint_url="http://s3:5000", region_name="eu-south-1")
+        s3.create_bucket(
+            Bucket="perx-vault-dev",
+            CreateBucketConfiguration={"LocationConstraint": "eu-south-1"},
+        )
+        print("bucket perx-vault-dev pronto")

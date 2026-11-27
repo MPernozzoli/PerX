@@ -1,7 +1,7 @@
 """Add insured portal architecture
 
 Revision ID: 003_portal_architecture
-Revises: 002_platform_admin
+Revises: 002b_legacy_core_tables
 Create Date: 2026-04-05 00:00:00.000000
 """
 from alembic import op
@@ -9,7 +9,7 @@ import sqlalchemy as sa
 
 
 revision = "003_portal_architecture"
-down_revision = "002_platform_admin"
+down_revision = "002b_legacy_core_tables"
 branch_labels = None
 depends_on = None
 

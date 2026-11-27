@@ -13,6 +13,7 @@ from typing import Iterable
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.models.communication import Call, CallParticipant, CommunicationSession
 from app.models.device_token import DeviceToken
 from app.services.apns_service import apns_service

@@ -29,6 +29,64 @@ pytest-cov e Ruff; `pyproject.toml` contiene configurazione, marker e coverage. 
 `backend-ci.yml` usa Python 3.11 e Postgres 16, applica tutte le migrazioni su database vuoto e
 pubblica `coverage.xml`. La coverage globale osservata (38%) deriva anche dall'import di tutte le
 route e non va interpretata come copertura funzionale: test API/DB/auth restano il prossimo passo.
+Al 2026-11-26 i test sono 67 (inclusi `test_security_hardening.py` e i test dello storage S3).
+Fino a quella data il job CI non era mai passato perché le migration non ricostruivano lo schema da
+zero. La revisione `002b_legacy_core_tables` (tra `002` e `003`) ora crea le 22 tabelle e le 72
+colonne di `claims`/`users` nate fuori da Alembic, in modo idempotente; non viene mai eseguita sui
+database già oltre `003` (production), perché Alembic considera applicati gli antenati della head.
+Il DDL è congelato nel file, generato dai modelli a partire dallo stato di `002`. Restano
+differenze minori tra migration e modelli (nomi di indici/FK, `JSON` vs `JSONB`), da non correggere
+alla cieca perché il DB production le ha a sua volta.
+
+## Sicurezza applicativa (dal 2026-11-26)
+
+- **Guardia di produzione** (`app/core/config.py`): con `ENV` = `prod`/`production`/`staging`
+  l'avvio fallisce se `SECRET_KEY` è un placeholder o ha meno di 32 caratteri (errore senza eco
+  dei valori, per non esporre segreti nei log); `DEBUG`, `PORTAL_DEBUG_PREVIEW_LINKS` e
+  `PORTAL_DEV_CLAIM_REFERENCE_ONLY_AUTH` vengono forzati a `False` con log critico. I default
+  di tutti e tre sono ora `False` anche in sviluppo.
+- **Documentazione API** (`/docs`, `/redoc`, `/openapi.json`) disattivata in produzione;
+  riattivabile con `API_DOCS_ENABLED=True`.
+- **Rate limiting** in memoria a finestra scorrevole (`app/core/rate_limit.py`) su login,
+  refresh, inviti e auth pubblica del portale: limiti per IP (da `CF-Connecting-IP`, poi
+  ultimo hop di `X-Forwarded-For`) e per identificativo (email o riferimento sinistro, salvato
+  solo come hash). È per-istanza: sufficiente con l'unica istanza Render attuale, da spostare su
+  uno store condiviso (es. Redis) prima di scalare orizzontalmente.
+- **Webhook provider comunicazioni** (`POST /communications/provider-webhook`): disattivato
+  (404) finché non è impostato `COMMUNICATIONS_WEBHOOK_SECRET`, poi richiede l'header
+  `X-PerX-Webhook-Secret`. Resta da implementare la verifica della firma nativa del provider
+  (`TelnyxAdapter.validate_webhook_signature` è ancora uno stub).
+- Gli script `scripts/bootstrap_single_tenant.py` e `scripts/seed_data.py` si rifiutano di usare
+  la password admin di default (pubblica nel repo) o di girare in ambienti production-like.
+- Dipendenze aggiornate per CVE note: `python-jose` 3.5.0, `python-multipart` 0.0.20. Resta da
+  aggiornare FastAPI/Starlette (0.115.6/0.41.3) e sostituire `passlib`, non più mantenuto.
+
+## Storage del vault: provider S3 (predisposto, non attivo — 2026-11-26)
+`VaultStorageService` (`app/services/vault_storage_service.py`) ha un terzo provider `s3`,
+selezionato solo da `VAULT_STORAGE_PROVIDER=s3`; il default resta `local` e in produzione `mac_mini`,
+quindi **il comportamento attuale non cambia**. Il contratto delle rotte `/api/v1/hub/vault/...` è
+invariato (le app non parlano mai direttamente con lo storage).
+- Implementazione: `S3ObjectStore` (boto3, chiamate bloccanti eseguite con `asyncio.to_thread`,
+  client lazy e in cache). Stesse semantiche degli altri provider: `overwrite`, `missing_ok`,
+  `FileNotFoundError`/`FileExistsError`, copy/move = CopyObject (+ DeleteObject). Scritture con
+  SSE-S3 (`AES256`) e SHA-256 nei metadata dell'oggetto. `ensure_claim_folder` è un no-op (S3 non
+  ha cartelle). Con `s3` senza bucket l'errore è esplicito.
+- Settings (tutte opzionali): `VAULT_S3_BUCKET`, `VAULT_S3_REGION` (default `eu-south-1`),
+  `VAULT_S3_ENDPOINT_URL` (vuoto = AWS; moto server locale o endpoint S3 di Supabase), `VAULT_S3_PREFIX`,
+  `VAULT_S3_FORCE_PATH_STYLE` (endpoint locali), `VAULT_S3_PRESIGNED_URL_TTL_SECONDS` (300). Credenziali
+  solo dalla catena AWS standard (variabili `AWS_*`, profili, IAM role): mai nel repo.
+- Download presigned **opt-in**: `generate_download_url()` + flag `VAULT_S3_PRESIGNED_DOWNLOADS`
+  (default `False`). Spento, la rotta di download continua a restituire i byte; acceso (e solo con
+  provider `s3`) risponde con redirect 307 all'URL firmato.
+- Migrazione: `backend/scripts/migrate_vault_to_s3.py`. Il Mac mini non ha un endpoint di listing,
+  quindi l'elenco file viene dal DB (`documents.storage_path` + `document_versions.storage_path`,
+  esclusi i documenti `deleted`, filtrati per `storage_provider`). Dry-run di default, `--execute`
+  richiede sorgente e destinazione esplicite; idempotente (salta se size + SHA-256 coincidono),
+  verifica SHA-256 post-upload, riprendibile (`--state-file`), concorrenza limitata, report JSON
+  (copied / skipped / missing at source / failed); non cancella mai nulla alla sorgente.
+- Test: `tests/test_vault_storage_s3.py` e `tests/test_migrate_vault_to_s3.py` (moto, niente
+  Docker). Simulazione locale con moto server in Docker (`backend/docker-compose.storage.yml`), verificata end-to-end il 2026-11-26; MinIO è stato scartato perché le sue immagini community non sono più distribuite pubblicamente.
+Contesto e decisione → [[06-Decisioni-e-Intenzioni-Future]]; variabili → [[04-Infrastruttura-e-Deploy]].
 
 ## Aree funzionali principali (da `api/v1/`)
 
@@ -47,7 +105,7 @@ route e non va interpretata come copertura funzionale: test API/DB/auth restano 
 | Process jobs (Mac mini) | `routes_process_jobs.py` | Vedi [[04-Infrastruttura-e-Deploy]]. I job della Regia aggiungono fase, risorsa e livello |
 | Pianificazione | `routes_planning.py`, `routes_reporting.py`, `routes_routing.py`, `routes_rubrica.py` | Agenda, reportistica, instradamento, rubrica contatti |
 | Bignami | `routes_bignami.py` | Ponte verso lo schema Postgres `bignami` — vedi [[Altre-Web-App]] |
-| Hub | `routes_hub_compat.py` | Compatibilità verso [[PerXHub]]. La posta Gmail del tenant arriva qui dopo `history.list`, avviata dal polling o da `POST /api/v1/emails/gmail/push`. Elenco e dettaglio mail espongono `attachmentsOnGmail` quando un allegato è rimasto su Gmail. `GET /vault/sinistri/{ref}/files` risponde `[]` se la pratica non è nel tenant: il Mac chiede anche i riferimenti locali a 7 cifre (`2508006`) che non sono in `claims` |
+| Hub | `routes_hub_compat.py` | Compatibilità verso [[PerXHub]]. Il vault passa da `VaultStorageService` (provider `local`, `mac_mini`, `s3`). La posta Gmail del tenant arriva qui dopo `history.list`, avviata dal polling o da `POST /api/v1/emails/gmail/push`. Elenco e dettaglio mail espongono `attachmentsOnGmail` quando un allegato è rimasto su Gmail. `GET /vault/sinistri/{ref}/files` risponde `[]` se la pratica non è nel tenant: il Mac chiede anche i riferimenti locali a 7 cifre (`2508006`) che non sono in `claims` |
 
 Per l'elenco esaustivo degli endpoint con verbo HTTP, vedi `backend/README.md` (mantenuto
 aggiornato per l'uso pratico/setup; i concetti architetturali restano qui).
@@ -113,4 +171,4 @@ estensioni), **device token/push**, **AI prompt versioning & routing runs**, **r
 [[05-Stato-Sviluppo-e-Roadmap]].
 
 ---
-Ultimo aggiornamento: 2026-11-27 (elenco file vault vuoto se la pratica non c’è)
+Ultimo aggiornamento: 2026-11-27 (elenco file vault vuoto se la pratica non c’è; API Regia e profilo tenant Chiari; provider S3 predisposto; migrazioni ricostruibili da zero)

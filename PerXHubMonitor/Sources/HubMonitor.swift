@@ -89,13 +89,21 @@ class HubMonitor: ObservableObject {
         let role = serviceRoleKey.trimmingCharacters(in: .whitespacesAndNewlines)
         let tok = storageToken.trimmingCharacters(in: .whitespacesAndNewlines)
         
+        // Il token di accesso Hub non è ancora modificabile da UI: va preservato,
+        // altrimenti ogni salvataggio dal Monitor lo cancellerebbe dal file.
+        let existingHubToken = (try? Data(contentsOf: URL(fileURLWithPath: path)))
+            .flatMap { try? JSONDecoder().decode(HubMonitorRuntimeSecrets.self, from: $0) }?
+            .hubAPIToken
+
         let payload = HubMonitorRuntimeSecrets(
             supabaseURL: url.isEmpty ? nil : url,
             supabaseServiceRoleKey: role.isEmpty ? nil : role,
-            storageSharedSecret: tok.isEmpty ? nil : tok
+            storageSharedSecret: tok.isEmpty ? nil : tok,
+            hubAPIToken: existingHubToken
         )
         
-        if payload.supabaseURL == nil, payload.supabaseServiceRoleKey == nil, payload.storageSharedSecret == nil {
+        if payload.supabaseURL == nil, payload.supabaseServiceRoleKey == nil, payload.storageSharedSecret == nil,
+           payload.hubAPIToken == nil {
             if FileManager.default.fileExists(atPath: path) {
                 try FileManager.default.removeItem(atPath: path)
             }
@@ -703,4 +711,5 @@ private struct HubMonitorRuntimeSecrets: Codable {
     var supabaseURL: String?
     var supabaseServiceRoleKey: String?
     var storageSharedSecret: String?
+    var hubAPIToken: String?
 }

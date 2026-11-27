@@ -148,6 +148,22 @@ Le automazioni restano sul backend e persistono lo stato su Supabase. Quando ser
 
 Il worker locale usa `X-PerX-Worker-Secret` con il valore di `LOCAL_AI_WORKER_SHARED_SECRET`, chiama `GET /api/v1/process-jobs/jobs/claim?worker_id=<id>&limit=3`, processa i job con stato `processing`, invia heartbeat se il lavoro dura a lungo, poi chiude con `complete` o `fail`. Le automazioni accodano gia `local_ai.diary_entry_analysis` per comunicazioni e allegati collegati a un sinistro.
 
+## Vault su S3 (predisposto, non attivo)
+
+Architettura e decisioni nel vault `Documentation/` (`Documentation/Piattaforme/Backend-Cloud-API.md`). Comandi pratici:
+
+```bash
+# Simulazione locale S3 con moto server, dati in memoria (poi impostare le variabili
+# commentate in .env.example). Le immagini community di MinIO non sono più pubbliche.
+docker compose -f docker-compose.storage.yml up -d
+docker compose -f docker-compose.storage.yml down
+
+# Migrazione: dry-run (default), poi esecuzione
+python scripts/migrate_vault_to_s3.py --source mac_mini --bucket perx-vault
+python scripts/migrate_vault_to_s3.py --source local --source-root /path/vault --bucket perx-vault \
+  --execute --concurrency 8 --state-file migrate.state --report report.json
+```
+
 ## Deployment
 
 Build Docker image:

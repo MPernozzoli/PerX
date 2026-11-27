@@ -3,13 +3,14 @@ Insured portal routes.
 """
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.portal_security import PortalSessionContext, get_current_portal_session
+from app.core.rate_limit import RateLimitRule, enforce_rate_limit
 from app.core.security import get_current_active_user
 from app.models.user import User
 from app.schemas.portal import (
@@ -74,6 +75,17 @@ from app.api.capability_deps import tenant_allows
 
 router = APIRouter()
 
+# Public, unauthenticated auth endpoints: limits are per client IP and per
+# claim reference, so that neither a single client nor a distributed attempt
+# can enumerate claims or brute-force OTP codes.
+_AUTH_START_IP = RateLimitRule(limit=10, window_seconds=60)
+_AUTH_START_CLAIM = RateLimitRule(limit=5, window_seconds=15 * 60)
+_AUTH_EXCHANGE_IP = RateLimitRule(limit=20, window_seconds=60)
+_OTP_REQUEST_IP = RateLimitRule(limit=5, window_seconds=60)
+_OTP_REQUEST_CLAIM = RateLimitRule(limit=3, window_seconds=15 * 60)
+_OTP_VERIFY_IP = RateLimitRule(limit=10, window_seconds=60)
+_OTP_VERIFY_CLAIM = RateLimitRule(limit=10, window_seconds=15 * 60)
+
 
 def _portal_host(payload_host: str | None, forwarded_host: str | None, host: str | None) -> str | None:
     return payload_host or forwarded_host or host
@@ -117,10 +129,18 @@ async def create_claim_access_link(
 @router.post("/auth/start", response_model=PortalAuthStartResponse)
 async def start_auth(
     payload: PortalAuthStartRequest,
+    request: Request,
     host: str | None = Header(default=None),
     x_forwarded_host: str | None = Header(default=None, alias="x-forwarded-host"),
     db: AsyncSession = Depends(get_db),
 ):
+    enforce_rate_limit(
+        request,
+        "portal-auth-start",
+        per_ip=_AUTH_START_IP,
+        identifier=payload.claim_reference,
+        per_identifier=_AUTH_START_CLAIM,
+    )
     payload.portal_host = _portal_host(payload.portal_host, x_forwarded_host, host)
     access, challenge, raw_token = await PortalService.start_public_auth(db, payload)
     if access and not await tenant_allows(db, access.tenant_id, "portal_assicurati"):
@@ -155,10 +175,12 @@ async def start_auth(
 @router.post("/auth/exchange", response_model=PortalAuthExchangeResponse)
 async def exchange_auth_token(
     payload: PortalAuthExchangeRequest,
+    request: Request,
     host: str | None = Header(default=None),
     x_forwarded_host: str | None = Header(default=None, alias="x-forwarded-host"),
     db: AsyncSession = Depends(get_db),
 ):
+    enforce_rate_limit(request, "portal-auth-exchange", per_ip=_AUTH_EXCHANGE_IP)
     try:
         portal_host = _portal_host(payload.portal_host, x_forwarded_host, host)
         access, session_token, expires_in = await PortalService.exchange_magic_token(
@@ -181,10 +203,18 @@ async def exchange_auth_token(
 @router.post("/auth/request-otp", response_model=PortalAuthRequestOtpResponse)
 async def request_auth_otp(
     payload: PortalAuthRequestOtpRequest,
+    request: Request,
     host: str | None = Header(default=None),
     x_forwarded_host: str | None = Header(default=None, alias="x-forwarded-host"),
     db: AsyncSession = Depends(get_db),
 ):
+    enforce_rate_limit(
+        request,
+        "portal-otp-request",
+        per_ip=_OTP_REQUEST_IP,
+        identifier=payload.claim_reference,
+        per_identifier=_OTP_REQUEST_CLAIM,
+    )
     portal_host = _portal_host(payload.portal_host, x_forwarded_host, host)
     access, challenge, otp_code = await PortalService.request_otp_for_claim(
         db,
@@ -216,10 +246,18 @@ async def request_auth_otp(
 @router.post("/auth/verify-otp", response_model=PortalAuthExchangeResponse)
 async def verify_auth_otp(
     payload: PortalAuthVerifyOtpRequest,
+    request: Request,
     host: str | None = Header(default=None),
     x_forwarded_host: str | None = Header(default=None, alias="x-forwarded-host"),
     db: AsyncSession = Depends(get_db),
 ):
+    enforce_rate_limit(
+        request,
+        "portal-otp-verify",
+        per_ip=_OTP_VERIFY_IP,
+        identifier=payload.claim_reference,
+        per_identifier=_OTP_VERIFY_CLAIM,
+    )
     try:
         portal_host = _portal_host(payload.portal_host, x_forwarded_host, host)
         access, session_token, expires_in = await PortalService.verify_otp_and_create_session(

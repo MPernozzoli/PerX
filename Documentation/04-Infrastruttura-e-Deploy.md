@@ -12,7 +12,15 @@ superseded:
 
 - `backend-ci.yml`: Python 3.11, Postgres 16 isolato, installazione da `requirements-dev.txt`,
   applicazione completa delle migration Alembic su DB vuoto, pytest con coverage XML; Ruff misura
-  ancora una baseline non bloccante;
+  ancora una baseline non bloccante. **Verifica 2026-11-26: il workflow non è mai passato (6 run
+  su 6 falliti su GitHub)** — `alembic upgrade head` su DB vuoto si interrompe perché la catena di
+  migration non crea 22 tabelle core (es. `documents`, `emails`, `attachments`, `audit_log`,
+  `case_tasks`, `internal_chat_*`) che i modelli usano e che il DB production ha ottenuto fuori da
+  Alembic. Vedi [[06-Decisioni-e-Intenzioni-Future]] (2026-11-26, audit). **Corretto lo stesso
+  giorno (PR #5)**: la revisione `002b_legacy_core_tables`, inserita tra `002` e `003`, ricrea in
+  modo idempotente le 22 tabelle e 72 colonne legacy di `claims`/`users`, e `024` aggiunge
+  `wa_messages` alla publication `supabase_realtime` solo se esiste. `upgrade head` su Postgres 16
+  vuoto è verificato fino a `040`;
 - `web-ci.yml`: Node 22/npm cache; typecheck, test Vitest, lint e build production sono gate
   bloccanti per tutti e cinque i workspace. Le app prive di test accettano ancora temporaneamente
   una suite vuota, mentre `portal-web` e `catdispatcher` contengono i primi 7 test reali;
@@ -55,6 +63,29 @@ non tracciata in `render.yaml`) e, con lo stesso valore, come `PERX_ADMIN_API_KE
 (non `NEXT_PUBLIC_`) sul progetto Vercel di BePork. Se assente/vuota il bridge è disabilitato e
 `/api/v1/admin/*` resta accessibile solo via JWT platform-admin umano. Dettagli →
 [[06-Decisioni-e-Intenzioni-Future]] e, lato BePork, `docs/perx-integration.md`.
+
+Vincoli di configurazione introdotti il 2026-11-26 (dettagli → [[Backend-Cloud-API]], sezione
+"Sicurezza applicativa"): con `ENV=prod` il servizio **non si avvia** se `SECRET_KEY` su Render è
+un placeholder o ha meno di 32 caratteri (Render mantiene in esercizio il deploy precedente); i flag
+`DEBUG`, `PORTAL_DEBUG_PREVIEW_LINKS` e `PORTAL_DEV_CLAIM_REFERENCE_ONLY_AUTH` vengono forzati a
+`False` anche se impostati in dashboard; `/docs` e `/openapi.json` sono spenti salvo
+`API_DOCS_ENABLED=True`; il webhook comunicazioni richiede `COMMUNICATIONS_WEBHOOK_SECRET`.
+Il backend Render raggiunge l'Hub del Mac mini per lo storage del vault
+(`VAULT_STORAGE_PROVIDER=mac_mini`, `MAC_MINI_STORAGE_URL`, `MAC_MINI_STORAGE_TOKEN`): il token
+deve coincidere con `PERX_STORAGE_SHARED_SECRET` configurato sull'Hub (vedi [[PerXHub]]).
+
+**Storage S3 del vault: predisposto, NON attivo.** Variabili opzionali (nessuna da impostare oggi
+su Render): `VAULT_S3_BUCKET`, `VAULT_S3_REGION` (`eu-south-1`), `VAULT_S3_ENDPOINT_URL`,
+`VAULT_S3_PREFIX`, `VAULT_S3_FORCE_PATH_STYLE`, `VAULT_S3_PRESIGNED_URL_TTL_SECONDS`,
+`VAULT_S3_PRESIGNED_DOWNLOADS` (default `False`); credenziali via `AWS_ACCESS_KEY_ID` /
+`AWS_SECRET_ACCESS_KEY` (o IAM role) come secret Render, mai nel repo. Passaggio futuro, in
+ordine: creare bucket e utente IAM a privilegi minimi → eseguire
+`scripts/migrate_vault_to_s3.py` in dry-run, poi `--execute`, e rieseguirlo subito prima dello
+switch → impostare le variabili `VAULT_S3_*` e portare `VAULT_STORAGE_PROVIDER=s3` → verificare
+upload/download dalle app → lasciare il Mac mini in sola lettura per un periodo di sicurezza.
+Nota: i `Document` esistenti conservano `storage_provider=mac_mini`; l'adattatore legge per
+`storage_path`, non per provider, quindi dopo la migrazione dei file i download funzionano senza
+riscrivere il DB. Simulazione locale: `backend/docker-compose.storage.yml` (moto server, API S3 in memoria).
 
 In locale: `alembic upgrade head` → `python scripts/bootstrap_single_tenant.py` →
 `uvicorn app.main:app --reload`. Dettagli → [[Backend-Cloud-API]].
@@ -214,4 +245,4 @@ tabella `process_jobs`; un worker sul Mac mini fa polling/lease con header
 `GET /api/v1/process-jobs/jobs/claim`. Vedi [[Backend-Cloud-API]] e [[AI-Locale-e-Cloud]].
 
 ---
-Ultimo aggiornamento: 2026-11-27 (bucket `perx-portal-uploads` creato: gli upload Gmail prendevano 400)
+Ultimo aggiornamento: 2026-11-27 (bucket `perx-portal-uploads` creato: gli upload Gmail prendevano 400; provider S3 predisposto; migrazioni ricostruibili da zero)

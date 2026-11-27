@@ -27,6 +27,54 @@ Daemon Swift/Vapor 4.x che gira su un **Mac mini** (macOS 14.0+), storicamente p
   completed/failed.
 - **Health**: `/health` per uptime/monitoring; `/stats` include `connectedUsers`.
 
+## Ruoli effettivi (inventario del 2026-11-26)
+
+Le app non chiamano più l'Hub direttamente: passano dal backend cloud (`/api/v1/hub/*`). Sul Mac
+mini restano attivi:
+
+1. **Storage dei file del vault**: il backend, con `VAULT_STORAGE_PROVIDER=mac_mini`, legge e
+   scrive i byte tramite `/internal/storage/*`; i metadati sono su Postgres. È l'unico uso
+   dell'Hub da parte del backend (`VaultStorageService`, chiamato solo da
+   `routes_hub_compat.py`). Con il default `local` i file finirebbero invece in
+   `/tmp/perx-hub-compat` sul disco effimero di Render.
+2. **WhatsApp**: `workers/wa_bridge` (client non ufficiale basato su WhatsApp Web) più
+   `WAOutboxPoller`, che invia i `wa_messages` in stato `pending` letti da Supabase.
+3. **AI locale**: Ollama e `workers/mlx_vision_bridge.py` (solo Apple Silicon). Il worker che
+   consuma la coda backend `process_jobs` non è presente in questo repository.
+4. **Strumenti di contorno**: job di import/export da cartelle legacy, planner assegnazioni,
+   heartbeat/statistiche, `perx_autoupdater` (strumento di sviluppo che osserva il repo locale).
+
+Codice non referenziato da nessun'altra parte dell'Hub (candidato alla rimozione):
+`HubAutoCheckService`, `ClosureOrchestrator`, `StatoManager`, `EmailReconciliationService`,
+`AICategorizationService`, `WhatsAppService` (circa 2.200 righe). Piano di dismissione del Mac
+mini → [[06-Decisioni-e-Intenzioni-Future]] (2026-11-26).
+
+## Controllo accessi (dal 2026-11-26)
+
+Introdotto con l'hardening seguito all'audit del 2026-11-26 (vedi
+[[06-Decisioni-e-Intenzioni-Future]]): `Server/HubAccessMiddleware.swift` applica una regola
+globale a tutte le route:
+
+- `GET /health` resta pubblico (health check di Monitor, AutoUpdater, launchd);
+- `/internal/storage/*` mantiene il controllo `X-PerX-Storage-Token` (usato dal backend cloud
+  con `MAC_MINI_STORAGE_TOKEN`), ora con confronto a tempo costante;
+- le richieste **dirette da loopback** (`127.0.0.1`/`::1`) senza header di proxy sono ammesse,
+  così WA Bridge, AutoUpdater e Monitor sullo stesso Mac continuano a funzionare senza
+  configurazione;
+- ogni altra richiesta (LAN, VPN, tunnel o reverse proxy, riconosciuti dagli header di
+  forwarding) deve presentare `PERX_HUB_API_TOKEN` in `X-PerX-Hub-Token` o
+  `Authorization: Bearer`, oppure il token del bridge (`WA_BRIDGE_INTERNAL_TOKEN`) in
+  `X-PerX-WA-Bridge-Token`; altrimenti HTTP 401.
+
+Segreti: i valori reali non sono più nel plist versionato (`Resources/com.perx.hub.plist`
+contiene solo placeholder `REPLACE-WITH-*`, che l'Hub ignora). Si impostano dal Monitor in
+`data/monitor-secrets.json` (priorità sull'env; il Monitor preserva `hubAPIToken` quando salva)
+o nel plist installato in `/Library/LaunchDaemons`. Attenzione: `scripts/deploy.sh` copia il plist
+del repo sopra quello installato, quindi i segreti vanno tenuti in `monitor-secrets.json`.
+L'host di bind predefinito in assenza di `PERX_HUB_HOST` è ora `127.0.0.1`; il plist di deploy
+continua a impostare `0.0.0.0`, protetto dal middleware. Il daemon gira ancora come `root`:
+ridurne i privilegi resta un passo successivo.
+
 ## Convenzione ID utente
 
 `user_id = local-part dell'email` (es. `massimo.pernozzoli@dominio.it` → `massimo.pernozzoli`),
@@ -59,4 +107,4 @@ passaggio del package alla language mode Swift 6. Un test target Hub dedicato re
   Dettaglio → [[AI-Locale-e-Cloud]].
 
 ---
-Ultimo aggiornamento: 2026-11-27
+Ultimo aggiornamento: 2026-11-27 (controllo accessi Hub, segreti fuori dal plist)

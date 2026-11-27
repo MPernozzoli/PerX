@@ -4,7 +4,7 @@ Authentication routes
 from datetime import datetime
 import asyncio
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -12,6 +12,7 @@ from app.core.database import get_db
 from jose import JWTError, jwt
 
 from app.core.config import settings
+from app.core.rate_limit import RateLimitRule, enforce_rate_limit
 from app.core.security import (
     verify_password,
     create_access_token,
@@ -33,6 +34,11 @@ from app.services.google_workspace_auth import store_google_mailbox_tokens
 from app.services.user_email_service import ensure_personal_email, ensure_professional_email, get_user_aliases
 
 router = APIRouter()
+
+# Credential stuffing / brute force protection on the public auth endpoints.
+_LOGIN_IP = RateLimitRule(limit=20, window_seconds=60)
+_LOGIN_ACCOUNT = RateLimitRule(limit=10, window_seconds=15 * 60)
+_REFRESH_IP = RateLimitRule(limit=60, window_seconds=60)
 
 
 async def _fetch_user_role_names(db: AsyncSession, user_id: str) -> list[str]:
@@ -58,9 +64,17 @@ async def _fetch_user_role_names(db: AsyncSession, user_id: str) -> list[str]:
 @router.post("/login", response_model=Token)
 async def login(
     login_data: LoginRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db)
 ):
     """Login with username/password, returns JWT tokens"""
+    enforce_rate_limit(
+        request,
+        "auth-login",
+        per_ip=_LOGIN_IP,
+        identifier=login_data.username,
+        per_identifier=_LOGIN_ACCOUNT,
+    )
     if is_supabase_auth_enabled():
         login_email = login_data.username.strip().lower()
         token_response = await supabase_password_login(login_email, login_data.password)
@@ -131,9 +145,11 @@ async def login(
 @router.post("/google/session", response_model=Token)
 async def google_session(
     payload: GoogleSessionRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Scambia il codice PKCE di Supabase e tiene il token Google della casella sul server."""
+    enforce_rate_limit(request, "auth-google-session", per_ip=_LOGIN_IP)
     token_response = await supabase_pkce_exchange(payload.code, payload.code_verifier)
     access_token = token_response.get("access_token") or ""
     refresh_token = token_response.get("refresh_token") or ""
@@ -188,9 +204,11 @@ async def google_session(
 @router.post("/refresh", response_model=Token)
 async def refresh(
     payload: RefreshRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Scambia un refresh_token con una nuova coppia di token."""
+    enforce_rate_limit(request, "auth-refresh", per_ip=_REFRESH_IP)
     perx_claims = None
     try:
         perx_claims = jwt.decode(

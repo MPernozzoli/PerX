@@ -28,7 +28,9 @@ struct HubConfiguration {
     
     // Server
     static var hostname: String {
-        ProcessInfo.processInfo.environment["PERX_HUB_HOST"] ?? "0.0.0.0"
+        // Default sicuro: solo locale. Per esporre l'Hub in LAN/VPN impostare
+        // PERX_HUB_HOST=0.0.0.0 insieme a PERX_HUB_API_TOKEN (vedi HubAccessMiddleware).
+        ProcessInfo.processInfo.environment["PERX_HUB_HOST"] ?? "127.0.0.1"
     }
     
     static var port: Int {
@@ -131,6 +133,10 @@ defer {
 // Server configuration
 app.http.server.configuration.hostname = HubConfiguration.hostname
 app.http.server.configuration.port = HubConfiguration.port
+
+// Controllo accessi globale: /health pubblico, loopback diretto ammesso, resto con token.
+app.middleware.use(HubAccessMiddleware())
+print("[Hub] Access control: \(HubConfiguration.hubAPIToken == nil ? "solo richieste locali (PERX_HUB_API_TOKEN non impostato)" : "token richiesto per richieste non locali")")
 
 // Configure routes
 try configureRoutes(app, startTime: startTime)
