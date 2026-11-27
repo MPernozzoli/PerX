@@ -24,6 +24,8 @@ class AIManager: ObservableObject {
     
     private let resourceMonitor = ResourceMonitor.shared
     private var cancellables = Set<AnyCancellable>()
+    private var queuePump: Task<Void, Never>?
+    private var holdsResourceMonitor = false
     private let historyKey = "ai_completed_tasks_history"
     
     private var maxConcurrentTasks: Int {
@@ -42,11 +44,22 @@ class AIManager: ObservableObject {
     }
     
     private init() {
-        // Ritarda l'avvio per evitare modifiche @Published durante la costruzione della view
-        Task.detached { [weak self] in
-            try? await Task.sleep(nanoseconds: 300_000_000) // 300ms delay
-            await self?.startProcessing()
-            await self?.loadHistory()
+        resourceMonitor.$isLowOnResources
+            .dropFirst()
+            .sink { [weak self] isLow in
+                Task { @MainActor in
+                    if isLow {
+                        self?.suspendSecondaryTasks()
+                    } else {
+                        self?.resumeSecondaryTasks()
+                    }
+                }
+            }
+            .store(in: &cancellables)
+
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            self?.loadHistory()
         }
     }
     
@@ -106,7 +119,7 @@ class AIManager: ObservableObject {
         taskQueue.sort { $0.priority.rawValue > $1.priority.rawValue }
         
         updateQueueSize()
-        processQueue()
+        ensureQueuePump()
         
         return task.id
     }
@@ -191,35 +204,49 @@ class AIManager: ObservableObject {
                 processTask(taskInfo.task)
             }
         }
+        ensureQueuePump()
     }
     
     // MARK: - Queue Processing
     
-    private func startProcessing() {
-        // Monitora risorse e adatta il processing
-        resourceMonitor.$isLowOnResources
-            .sink { [weak self] isLow in
-                Task { @MainActor in
-                    if isLow {
-                        self?.suspendSecondaryTasks()
-                    } else {
-                        self?.resumeSecondaryTasks()
-                    }
+    /// Campiona CPU/RAM e svuota la coda solo finché c'è lavoro. A riposo il timer è fermo.
+    private func ensureQueuePump() {
+        let hasWork = !taskQueue.isEmpty || !runningTasks.isEmpty
+        if hasWork && !holdsResourceMonitor {
+            holdsResourceMonitor = true
+            resourceMonitor.retainMonitoring()
+        }
+        guard queuePump == nil else { return }
+        guard hasWork else {
+            releaseResourceMonitorIfIdle()
+            return
+        }
+
+        queuePump = Task { @MainActor [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled {
+                self.processQueue()
+                if self.taskQueue.isEmpty && self.runningTasks.isEmpty {
+                    break
                 }
+                try? await Task.sleep(nanoseconds: 500_000_000)
             }
-            .store(in: &cancellables)
-        
-        // Processa la queue periodicamente
-        Timer.publish(every: 0.5, on: .main, in: .common)
-            .autoconnect()
-            .sink { [weak self] _ in
-                Task { @MainActor in
-                    self?.processQueue()
-                }
+            self.queuePump = nil
+            if !self.taskQueue.isEmpty || !self.runningTasks.isEmpty {
+                self.ensureQueuePump()
+            } else {
+                self.releaseResourceMonitorIfIdle()
             }
-            .store(in: &cancellables)
+        }
     }
-    
+
+    private func releaseResourceMonitorIfIdle() {
+        guard holdsResourceMonitor else { return }
+        guard taskQueue.isEmpty && runningTasks.isEmpty else { return }
+        holdsResourceMonitor = false
+        resourceMonitor.releaseMonitoring()
+    }
+
     private func processQueue() {
         // Conta i task effettivamente in esecuzione
         let runningCloudTasks = activeTasks.filter {
@@ -392,9 +419,9 @@ class AIManager: ObservableObject {
             }
         }
         
-        isProcessing = false
+        isProcessing = !runningTasks.isEmpty || !taskQueue.isEmpty
         updateQueueSize()
-        processQueue()
+        ensureQueuePump()
     }
     
     /// Ottiene il task originale per un risultato (per feedback)

@@ -1,6 +1,6 @@
 ---
 tags: [perx, funzionalita, ai, ollama]
-updated: 2026-11-26
+updated: 2026-11-27
 ---
 
 # AI locale e cloud
@@ -85,7 +85,9 @@ hardened runtime attivo sull'XPC service, con lo stesso workflow Developer ID.
 
 ## AI lato app (`PerX/Services/AI/`)
 
-- `AIManager` — orchestratore.
+- `AIManager` — orchestratore. Dal 2026-11-27 la coda e il campionamento di
+  `ResourceMonitor` partono solo mentre c’è un task in corso o in attesa. La schermata
+  impostazioni AI tiene il monitor acceso finché è visibile, poi lo rilascia.
 - `CloudAIService` / `ClaudeAIService` — AI cloud.
 - `LocalModelService` — AI locale (si appoggia al Local Agent per Ollama).
 
@@ -109,4 +111,4 @@ un sinistro). Feature flag: `FF_LOCAL_AI_PROCESS_JOBS_ENABLED`. Vedi anche
 [[04-Infrastruttura-e-Deploy]].
 
 ---
-Ultimo aggiornamento: 2026-11-26 (rimando al piano Regia agenti)
+Ultimo aggiornamento: 2026-11-27

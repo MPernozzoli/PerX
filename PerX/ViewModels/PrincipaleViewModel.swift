@@ -28,6 +28,24 @@ class PrincipaleViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private(set) var isPreloaded = false // Esposto per verificare se è già stato precaricato
     private var allThreads: [SinistroEmailThread] = []
+    private var loadGeneration = 0
+
+    func clearThreads() {
+        loadGeneration += 1
+        allThreads = []
+        emailThreads = []
+        displayedThreads = []
+        subjectThreads = []
+        selectedThread = nil
+        hasMoreThreads = false
+        isPreloaded = true
+    }
+
+    func reloadThreads() {
+        clearThreads()
+        isPreloaded = false
+        Task { await loadExistingThreadsAsync() }
+    }
     
     init(mailViewModel: MailViewModel, context: NSManagedObjectContext = PersistenceController.shared.container.viewContext) {
         self.mailViewModel = mailViewModel
@@ -43,22 +61,9 @@ class PrincipaleViewModel: ObservableObject {
     }
     
     private func setupSubscriptions() {
-        // OTTIMIZZAZIONE: Debounce aumentato a 1s per ridurre carico CPU
-        // Osserva i cambiamenti in Core Data per i thread
-        NotificationCenter.default.publisher(
-            for: .NSManagedObjectContextDidSave,
-            object: context
-        )
-        .debounce(for: .seconds(1), scheduler: DispatchQueue.main) // Aumentato da 300ms a 1s
-        .sink { [weak self] _ in
-            // Ricarica i thread quando vengono salvati nuovi thread
-            Task { @MainActor in
-                await self?.loadExistingThreadsAsync()
-            }
-        }
-        .store(in: &cancellables)
-        
-        // OTTIMIZZAZIONE: Debounce aumentato a 1s per ridurre aggiornamenti UI
+        // Il salvataggio Core Data non ricarica i thread: un save qualunque
+        // (sinistro, diario, fatturato) rifarebbe il fetch completo sul main thread.
+        // Il reload resta esplicito, da reloadThreads(), quando cambia la posta.
         // Evita ricaricamenti continui quando cambiano le email
         // dropFirst() evita il trigger iniziale che causa loop di pubblicazione
         mailViewModel.$emailsByMailbox
@@ -75,10 +80,8 @@ class PrincipaleViewModel: ObservableObject {
     
     /// Carica i thread esistenti da Core Data in modo streaming (non blocca la UI, non occupa tutta la memoria)
     func loadExistingThreadsAsync() async {
-        // Se ci sono già thread caricati (dal batch iniziale), continua da lì
-        let existingCount = await MainActor.run {
-            return allThreads.count
-        }
+        let generation = loadGeneration
+        let existingCount = allThreads.count
         
         // Carica i thread in batch per non occupare tutta la memoria
         let batchSize = 50 // Processa 50 thread alla volta
@@ -97,7 +100,9 @@ class PrincipaleViewModel: ObservableObject {
             // Se abbiamo già caricato tutto, esci
             if existingCount >= totalCount {
                 await MainActor.run {
+                    guard self.loadGeneration == generation else { return }
                     self.hasMoreThreads = false
+                    self.isPreloaded = true
                 }
                 return
             }
@@ -169,6 +174,7 @@ class PrincipaleViewModel: ObservableObject {
                 
                 // Aggiorna la UI in streaming (ogni batch) - aggiunge invece di sostituire
                 await MainActor.run {
+                    guard self.loadGeneration == generation else { return }
                     self.allThreads = uniqueThreads
                     self.emailThreads = uniqueThreads
                     self.hasMoreThreads = uniqueThreads.count < totalCount
@@ -198,6 +204,7 @@ class PrincipaleViewModel: ObservableObject {
             
             // Caricamento completato
             await MainActor.run {
+                guard self.loadGeneration == generation else { return }
                 self.allThreads = uniqueFinal
                 self.emailThreads = uniqueFinal
                 self.isLoading = false

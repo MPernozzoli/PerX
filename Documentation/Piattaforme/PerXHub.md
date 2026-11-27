@@ -1,6 +1,6 @@
 ---
 tags: [perx, piattaforma, hub, mac-mini]
-updated: 2026-11-26
+updated: 2026-11-27
 ---
 
 # PerXHub
@@ -78,8 +78,11 @@ ridurne i privilegi resta un passo successivo.
 ## Convenzione ID utente
 
 `user_id = local-part dell'email` (es. `massimo.pernozzoli@dominio.it` → `massimo.pernozzoli`),
-usato in modo coerente da client PerX, Email Worker e heartbeat (`POST /heartbeat` ogni 60s per
-tracciare gli utenti connessi).
+usato in modo coerente da client PerX ed Email Worker. Il daemon storico contava gli utenti
+connessi tramite `POST /heartbeat` ogni 60s. Dal 2026-11-27 l’app Mac non invia più quel
+heartbeat: l’endpoint compat sul backend (`POST /api/v1/hub/heartbeat`) risponde senza
+salvare la presenza. Lo stato online dell’Hub per l’app è il solo `GET /health` di
+`HubConfigService`, ogni 5 minuti.
 
 ## Deploy
 
@@ -104,4 +107,4 @@ passaggio del package alla language mode Swift 6. Un test target Hub dedicato re
   Dettaglio → [[AI-Locale-e-Cloud]].
 
 ---
-Ultimo aggiornamento: 2026-11-26 (controllo accessi Hub, segreti fuori dal plist)
+Ultimo aggiornamento: 2026-11-27 (controllo accessi Hub, segreti fuori dal plist)

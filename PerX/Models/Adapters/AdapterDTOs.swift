@@ -12,7 +12,7 @@ typealias StatoSinistro = StatoManager.StatoSinistro
 
 // MARK: - Email DTOs
 
-struct EmailDTO: Codable, Identifiable {
+struct EmailDTO: Decodable, Identifiable {
     let id: String
     let subject: String
     let senderEmail: String
@@ -23,6 +23,31 @@ struct EmailDTO: Codable, Identifiable {
     let direction: String?
     let mailbox: String?
     let isRead: Bool?
+    let attachmentsNotice: String?
+    let attachmentsOnGmail: Bool?
+    let gmailWebUrl: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, subject, senderEmail, senderName, date, category, sinistroRef, direction, mailbox, isRead
+        case attachmentsNotice, attachmentsOnGmail, gmailWebUrl
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        subject = try container.decodeIfPresent(String.self, forKey: .subject) ?? "(Senza oggetto)"
+        senderEmail = try container.decodeIfPresent(String.self, forKey: .senderEmail) ?? ""
+        senderName = try container.decodeIfPresent(String.self, forKey: .senderName)
+        date = try container.decode(Date.self, forKey: .date)
+        category = try container.decodeIfPresent(String.self, forKey: .category) ?? ""
+        sinistroRef = try container.decodeIfPresent(String.self, forKey: .sinistroRef)
+        direction = try container.decodeIfPresent(String.self, forKey: .direction)
+        mailbox = try container.decodeIfPresent(String.self, forKey: .mailbox)
+        isRead = try container.decodeIfPresent(Bool.self, forKey: .isRead)
+        attachmentsNotice = try container.decodeIfPresent(String.self, forKey: .attachmentsNotice)
+        attachmentsOnGmail = try container.decodeIfPresent(Bool.self, forKey: .attachmentsOnGmail)
+        gmailWebUrl = try container.decodeIfPresent(String.self, forKey: .gmailWebUrl)
+    }
 }
 
 struct MailboxDTO: Codable, Identifiable {
@@ -32,7 +57,7 @@ struct MailboxDTO: Codable, Identifiable {
     let totalCount: Int
 }
 
-struct EmailDetailDTO: Codable, Identifiable {
+struct EmailDetailDTO: Decodable, Identifiable {
     let id: String
     let subject: String
     let senderEmail: String
@@ -44,6 +69,32 @@ struct EmailDetailDTO: Codable, Identifiable {
     let category: String
     let sinistroRef: String?
     let direction: String?
+    let attachmentsNotice: String?
+    let attachmentsOnGmail: Bool?
+    let gmailWebUrl: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, subject, senderEmail, senderName, recipients, date, bodyText, bodyHtml, category, sinistroRef, direction
+        case attachmentsNotice, attachmentsOnGmail, gmailWebUrl
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        subject = try container.decodeIfPresent(String.self, forKey: .subject) ?? "(Senza oggetto)"
+        senderEmail = try container.decodeIfPresent(String.self, forKey: .senderEmail) ?? ""
+        senderName = try container.decodeIfPresent(String.self, forKey: .senderName)
+        recipients = try container.decodeIfPresent([String].self, forKey: .recipients) ?? []
+        date = try container.decode(Date.self, forKey: .date)
+        bodyText = try container.decodeIfPresent(String.self, forKey: .bodyText)
+        bodyHtml = try container.decodeIfPresent(String.self, forKey: .bodyHtml)
+        category = try container.decodeIfPresent(String.self, forKey: .category) ?? ""
+        sinistroRef = try container.decodeIfPresent(String.self, forKey: .sinistroRef)
+        direction = try container.decodeIfPresent(String.self, forKey: .direction)
+        attachmentsNotice = try container.decodeIfPresent(String.self, forKey: .attachmentsNotice)
+        attachmentsOnGmail = try container.decodeIfPresent(Bool.self, forKey: .attachmentsOnGmail)
+        gmailWebUrl = try container.decodeIfPresent(String.self, forKey: .gmailWebUrl)
+    }
 }
 
 struct ScheduledEmailDTO: Codable, Identifiable {

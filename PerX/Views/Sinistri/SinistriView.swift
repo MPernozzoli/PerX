@@ -40,9 +40,16 @@ struct SinistriView: View {
         }
         .onAppear {
             performFolderScanIfNeeded()
+            applyClaimScope()
         }
         .onChange(of: sinistri.count) { _ in
             viewModel.invalidateCache()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .accountClaimScopeChanged)) { _ in
+            applyClaimScope()
+        }
+        .onChange(of: appState.googleAuthService.userEmail) { _ in
+            applyClaimScope()
         }
         .background(
             Group {
@@ -745,6 +752,10 @@ struct SinistriView: View {
     private func performFolderScanIfNeeded() {
         // I file sono ora gestiti internamente in Application Support
         // Non è più necessaria la scansione delle cartelle esterne
+    }
+
+    private func applyClaimScope() {
+        sinistri.nsPredicate = AccountClaimScope.predicate(for: GoogleAuthService.shared.userEmail)
     }
     
     private func formatCurrency(_ value: Double) -> String {

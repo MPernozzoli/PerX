@@ -28,6 +28,12 @@ struct MailDetailView: View {
                 emailHeaderView
                 
                 Divider()
+
+                if let notice = currentEmail.attachmentsNotice, !notice.isEmpty {
+                    AttachmentsOnGmailBanner(notice: notice, gmailWebUrl: currentEmail.gmailWebUrl)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 12)
+                }
                 
                 // --- CORPO EMAIL ---
                 emailBodyView
@@ -423,7 +429,7 @@ struct MailDetailView: View {
     private func checkForCachedEmail() {
         // Legge dal repository (in memoria) senza toccare cache legacy direttamente
         if let cachedEmail = EmailRepository.shared.getEmail(byId: currentEmail.id) {
-            currentEmail = cachedEmail
+            currentEmail = cachedEmail.keepingAttachmentNotice(from: currentEmail)
         }
     }
     
@@ -473,7 +479,7 @@ struct MailDetailView: View {
             if let updatedEmail = EmailRepository.shared.getEmail(byId: currentEmail.id),
                let body = updatedEmail.body, !body.isEmpty {
                 await MainActor.run {
-                    currentEmail = updatedEmail
+                    currentEmail = updatedEmail.keepingAttachmentNotice(from: currentEmail)
                 }
                 return
             }

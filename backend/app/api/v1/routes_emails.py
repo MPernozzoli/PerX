@@ -2,14 +2,16 @@
 Email routes
 """
 import json
+import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import get_current_active_user
+from app.core.config import settings
 from app.models.claim import Claim
 from app.models.claim_event import ClaimEvent
 from app.models.email import Email, EmailClaimLink
@@ -22,9 +24,56 @@ from app.schemas.comms import (
 )
 from app.services.claim_service import ClaimService
 from app.services.email_routing_service import EmailRoutingService
-from app.services.gmail_sync_service import GmailSyncService
+from app.services.gmail_sync_service import (
+    GmailSyncService,
+    decode_pubsub_push,
+    fetch_google_certs,
+    verify_pubsub_token,
+)
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+
+@router.post("/gmail/push")
+async def gmail_push(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Notifica Pub/Sub di Gmail. Il token è quello della subscription, non dell'utente."""
+    if not settings.GMAIL_PUBSUB_TOPIC.strip():
+        raise HTTPException(status_code=404, detail="Watch Gmail non configurato")
+    authorization = request.headers.get("authorization") or ""
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        raise HTTPException(status_code=401, detail="Token mancante")
+    try:
+        keys = await fetch_google_certs()
+        verify_pubsub_token(
+            token.strip(),
+            keys,
+            settings.GMAIL_PUSH_AUDIENCE,
+            settings.GMAIL_PUSH_SERVICE_ACCOUNT.strip(),
+        )
+    except Exception:
+        logger.exception("Token push Gmail rifiutato")
+        raise HTTPException(status_code=401, detail="Token non valido") from None
+    try:
+        note = decode_pubsub_push(await request.json())
+    except Exception:
+        return {"status": "ignored"}
+    if not note["email"]:
+        return {"status": "ignored"}
+    try:
+        outcome = await GmailSyncService.accept_push(db, note)
+    except Exception:
+        await db.rollback()
+        # A non-2xx response makes Pub/Sub redeliver immediately and can turn a
+        # transient Gmail/DB failure into a retry storm. The normal mailbox poll
+        # remains the recovery path, so acknowledge the authenticated push.
+        logger.exception("Push Gmail rinviato al polling")
+        return {"status": "deferred"}
+    return {"status": outcome}
 
 
 @router.post("/gmail/sync")

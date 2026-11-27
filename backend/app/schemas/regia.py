@@ -111,8 +111,42 @@ class JobResponse(BaseModel):
     model_level: str | None
     status: str
     outcome: str | None
+    retry_count: int = 0
+    last_error: str | None = None
+    input_json: dict[str, Any] = Field(default_factory=dict)
 
     model_config = {"from_attributes": True}
+
+
+class LeaseRequest(BaseModel):
+    worker_id: str
+    mac_idle: bool = False
+
+
+class LeaseResponse(BaseModel):
+    job: JobResponse | None = None
+
+
+class HeartbeatRequest(BaseModel):
+    worker_id: str
+
+
+class EsitoRequest(BaseModel):
+    worker_id: str
+    ok: bool = False
+    output: dict[str, Any] = Field(default_factory=dict)
+    model_level: str | None = None
+    duration_ms: int | None = None
+    cost_amount: Decimal | None = None
+    error: str | None = None
+    rinviato: bool = False
+
+
+class CompitoResponse(BaseModel):
+    task: str
+    level: str
+    resource: str
+    instructions: str
 
 
 class SignedIbanRequest(BaseModel):

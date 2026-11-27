@@ -39,13 +39,6 @@ class PassiveTriggerService: ObservableObject {
     
     private init() {
         self.context = PersistenceController.shared.container.viewContext
-        // Ritarda startMonitoring per evitare (a) modifiche @Published durante build view,
-        // (b) sovrapposizione con TaskManager init (validateAndCleanup, generateBaseTasks)
-        Task.detached { [weak self] in
-            try? await Task.sleep(nanoseconds: 1_500_000_000) // 1.5s delay
-            await self?.startMonitoring()
-        }
-        
         setupStateChangeObserver()
     }
     
@@ -114,6 +107,7 @@ class PassiveTriggerService: ObservableObject {
     }
     
     func stopMonitoring() {
+        guard isMonitoring else { return }
         monitoringTimer?.invalidate()
         monitoringTimer = nil
         isMonitoring = false

@@ -22,6 +22,186 @@ Motivazione: ...
 
 ---
 
+## 2026-11-27 — Elenco file vault senza pratica: lista vuota
+Contesto: il Mac, a ogni sync, chiede `GET /api/v1/hub/vault/sinistri/{ref}/files` per ogni
+pratica locale ancora aperta. I riferimenti `2508006` sono l’anno 2025 a 7 cifre. Nel database
+ci sono solo i riferimenti `26-577242` … `26-611917` (e i demo `GEN-…`). La route rispondeva 404.
+Decisione: se la pratica non c’è, l’elenco file è `[]`. Upload, stato cartella e creazione
+restano 404: non si inventa una pratica.
+Motivazione: l’Hub storico elencava i file del riferimento e, se non ce n’erano, restituiva
+una lista vuota. Il 404 riempiva i log di Render a ogni ciclo.
+
+## 2026-11-27 — Allegato Gmail non scaricato: retry breve, mail visibile, avviso
+Contesto: se il download di un allegato falliva durante l’import Gmail (push Pub/Sub o polling,
+stesso `_import_message`), il file veniva solo loggato. La mail restava senza indicare che
+l’allegato non era in PerX.
+Decisione: tre tentativi, con attese di 0,4 e 0,8 secondi, senza una coda infinita. Se il file non
+arriva, la mail viene comunque salvata. Lo stato sta nel JSON già usato in `emails.raw_headers`
+(`attachmentsOnGmail`, `attachmentsNotice`, `failedAttachments`, `gmailWebUrl`), non in una
+tabella nuova. L’hub lo espone in elenco e dettaglio. L’app Mac mostra «Allegati non scaricati,
+apribili su Gmail.» Le sync successive riprendono le mail senza `attachmentsChecked`, a gruppi
+di 20, con lo stesso download. Dopo tre passaggi falliti il flag viene chiuso e l’avviso resta.
+Motivazione: un allegato mancante non deve far sparire la mail, e chi legge deve sapere che il
+file è ancora su Gmail.
+
+## 2026-11-27 — Bucket `perx-portal-uploads` privato, senza filtro MIME
+Contesto: gli upload degli allegati Gmail su Render fallivano con HTTP 400. In
+`storage.buckets` non c’era nessuna riga: il bucket era solo nel codice e nella doc.
+Decisione: bucket privato, `allowed_mime_types` vuoto, creato dalla migrazione
+`044_portal_uploads_bucket`. Stesso bucket per portale, videoperizia e posta
+(`gmail/{tenant}/{message}/…`).
+Motivazione: un allowlist MIME avrebbe rifiutato PDF e altri allegati di casella.
+Il 400 di Storage, quando il bucket manca, non dice “bucket not found” nello status HTTP.
+Le mail già importate senza file non vengono rilette dalla history: il sync le riprende
+a gruppi di 20 finché `attachmentsChecked` non è vero.
+
+## 2026-11-27 — Regia e scala dei modelli per ogni tenant
+Contesto: F4 e F5 non sono un flusso solo Chiari.
+Decisione: il backend assegna i lavori con lease, un Chrome alla volta e il modello locale solo
+a Mac libero. Tre tentativi falliti aprono una Questione e portano la pratica in
+`da_revisionare`, con l’esito della coda (`DAL_PERITO`, `STIMA_DA_RIVEDERE`,
+`CHIUSURA_DA_RIVEDERE`). La scala dei compiti sta in `regia_scala`; le regole attive entrano nel
+prompt. `RegiaWorker` sul Mac esegue L0 e rimette in coda i livelli superiori se il modello non
+c’è, senza consumare i tre tentativi. Apple Intelligence, Ollama e Claude non sono ancora
+chiamati dal worker.
+Motivazione: la coda e i livelli sono il modo di lavorare di PerX.
+
+## 2026-11-27 — Meno lavoro in background sull’app Mac
+Contesto: l’app risultava lenta. Più timer facevano la stessa cosa e alcuni ricalcoli
+giravano sul main thread a ogni salvataggio Core Data o a ogni cambio finestra.
+Decisione: un solo health check Hub, ogni 5 minuti, in `HubConfigService`. Il POST
+`/heartbeat` del backend compat non registra la presenza, quindi il client non lo invia
+più ogni 60 secondi. `HubModeService` legge quello stato e non chiama più `/health`.
+I thread mail non si ricaricano a ogni save Core Data: solo quando cambia la posta.
+`AIManager` e `ResourceMonitor` campionano solo con task in coda, oppure mentre è aperta
+la schermata impostazioni AI. Perdere il focus della finestra non ferma e non riavvia
+posta, WhatsApp e sync: quello resta legato a sleep e wake del Mac. `CPUThrottler` misura
+il delta di CPU fra due campioni e rilascia il buffer di `host_processor_info`.
+Motivazione: togliere lavoro duplicato e le pause finte, senza spegnere posta, chiamate
+in arrivo e sync delle cartelle.
+
+## 2026-11-27 — La posta in app segue l’account connesso
+Contesto: in Comunicazioni/Mail restavano i thread e la cache dell’account precedente.
+Decisione: al cambio account si svuota la lista, i thread e il polling ripartono sull’email
+connessa. La cache locale non sovrascrive più l’elenco arrivato dal server.
+Motivazione: ogni account porta la propria posta, come i sinistri.
+
+## 2026-11-27 — F4 e F5 sono il modo di lavorare di PerX, non solo di Chiari
+Contesto: il piano Regia nasce dal tenant Chiari. L’utente li indica come prioritari dopo la posta.
+Decisione: la Regia (coda, worker, lease) e i livelli di modello (F4 e F5) valgono per ogni tenant.
+Chiari è il primo caso, non un prodotto a parte. Si parte dopo F2.
+Motivazione: è così che PerX deve operare in generale.
+
+## 2026-11-27 — Stima Chiari già nel motore v2, polizze ancora fuori da Bignami
+Contesto: F3 chiedeva di portare `stima.py` e le polizze.
+Decisione: il motore deterministico è già in PerX (`ac30147`, profilo Chiari in
+`ChiariStimaWorkflow.swift`, commit `17fe7bb`). Le polizze Chiari non sono ancora nello schema
+`bignami`. Restano da fare i file dei dossier nel vault e i test golden sulle revisioni approvate.
+
+## 2026-11-27 — La push Gmail arriva sull’API, non su una Edge Function
+Contesto: il piano F2 copiava `resend-inbound` (Pub/Sub → Edge Function → tabelle inbound).
+Il token della casella e `history.list` stanno sul backend.
+Decisione: `users.watch` pubblica su un topic Pub/Sub; la subscription push chiama
+`POST /api/v1/emails/gmail/push` con un token OIDC. L’API verifica il token, registra
+`inbound_email_events` e `email_processing_jobs`, scarica la history e avvisa i client sullo
+stream `mail_updated`. Il polling ogni 90 secondi resta il recupero se la push manca o lo
+historyId è scaduto. Il watch si rinnova quando manca meno di un giorno alla scadenza.
+L’invio accoda la firma letta da `sendAs`. Dopo la push il server scarica subito la history; il
+Mac vede la mail al giro successivo verso il backend, entro 60 secondi. Senza
+`GMAIL_PUBSUB_TOPIC` il watch non parte e resta solo il polling.
+Motivazione: l’Edge Function non può leggere il token cifrato della casella.
+
+## 2026-11-27 — Tre stati Chiari corretti sul mapping PerX
+Contesto: la voce precedente mappava da lavorare su istruzione, da contattare su primo contatto
+e attesa sopralluogo sul solo slug sopralluogo.
+Decisione: attesa sopralluogo → `sopralluogo` con substato `da_eseguire` (in app «Sopralluogo fissato»:
+PerX non ha l’etichetta «sopralluogo da eseguire»; «fissato» è il rappresentante dello slug).
+Da lavorare → `da_gestire_tradizionale` con substato `da_eseguire` (in app «Perizia da eseguire»).
+In lavorazione → `in_gestione` con substato dinamico `da {agente}` (agente del lavoro in corso,
+altrimenti l’assegnato, altrimenti l’ultimo evento). Da contattare → `in_attesa_terzi` con substato
+`ricontatto`. Le altre corrispondenze della voce precedente restano.
+Motivazione: sono gli stati che automazioni e filtri già conoscono, e il substato tiene il dettaglio Chiari.
+
+## 2026-11-27 — Stati Chiari rimappati sugli stati PerX
+Contesto: le automazioni, i filtri e i contatori leggono gli stati PerX
+(`atto_inviato`, `chiusa`, `in_attesa_documentale`, …). Le pratiche Chiari avevano codici propri.
+Decisione: `stato_corrente` diventa lo slug PerX. Il codice Chiari resta in
+`claim_workflows.manual_state_code`. In app lo stato si vede con l’etichetta PerX
+(Atto inviato, Chiusa, Revocata, …).
+Corrispondenza: attesa sopralluogo → sopralluogo; da lavorare → istruzione;
+in lavorazione → in gestione; da contattare → primo contatto; attesa documenti →
+in attesa documentale; decide il perito, stima da rivedere e chiusura da rivedere →
+da revisionare; atto pronto → atto da inviare; atto inviato → atto inviato;
+da chiudere e in chiusura → da chiudere a sistema; chiuso → chiusa; revocato → revocata.
+Motivazione: senza questa traduzione i sistemi esistenti non riconoscono la pratica.
+
+## 2026-11-27 — I servizi partono solo se l'account li ha
+Contesto: nei log, Chiari avviava i trigger dello studio (follow-up atto e documenti),
+il polling WhatsApp di un account staccato e la sync mail con un token non suo (`unauthorized`).
+Decisione: posta, WhatsApp e trigger passivi si accendono dal profilo dell'account.
+Chiari tiene la posta, con il token dell'accesso Google. WhatsApp e i follow-up automatici restano spenti.
+La mail non riprova all'infinito se il server rifiuta l'accesso.
+Motivazione: ogni servizio deve appartenere all'account connesso.
+
+## 2026-11-27 — Note, importi e stime Chiari nel diario della pratica
+Contesto: le 273 pratiche erano sul server senza le note libere, e l'app non copiava
+né il diario né gli importi.
+Decisione: note e note Salesforce entrano nel diario insieme agli eventi e a una riga
+per ogni stima. Richiesta, danno accertato e liquidato stanno sulla pratica.
+Motivazione: aprendo il sinistro si deve trovare la stessa storia e le stesse cifre.
+
+## 2026-11-27 — Il cambio archivio non deve chiudere l'app
+Contesto: staccare il database mentre la lista sinistri lo sta leggendo fa crashare l'app
+(`A fetch request must have an entity`).
+Decisione: l'archivio dell'account si apre prima della finestra, sullo stesso contesto.
+Non si crea un secondo database in memoria e non si lascia la lista senza entità.
+Motivazione: il cambio account non può uccidere il processo.
+
+## 2026-11-27 — Ogni account ha calendario, impostazioni e archivio propri
+Contesto: separare solo i sinistri lasciava calendario, orari, impostazioni e preferenze
+nello stesso archivio del Mac.
+Decisione: all'accesso l'app apre l'archivio e le preferenze di quell'account. Calendario,
+orari, impostazioni dello studio, filtri e notizie locali non passano all'account successivo.
+L'archivio che c'era già sul Mac resta all'account precedente, non a chi entra dopo.
+Motivazione: ogni account si porta le proprie cose.
+
+## 2026-11-27 — Le pratiche Chiari non passavano dalla lista API
+Contesto: gli stati Chiari (`CHIUSO`, `ATTO_INVIATO`, …) non sono gli stati dello studio.
+La lista sinistri li rifiutava, quindi l'app restava vuota.
+Decisione: la risposta della lista accetta lo stato del tenant così com'è.
+Motivazione: il tenant Chiari ha un suo elenco di stati.
+
+## 2026-11-27 — Utente e tenant sempre separati
+Contesto: la prima chiusura mostrava i sinistri dell'altro account solo quando si entrava con
+Chiari. La divisione non è una regola di quel tenant.
+Decisione: vale per ogni accesso. La lista Sinistri e la dashboard mostrano solo le pratiche
+dell'utente connesso e del suo tenant. All'ingresso si scaricano le pratiche di quel tenant e si
+segna `tenantId` sulla copia locale. Senza accesso non si mostra l'archivio di un altro utente.
+Sul server, se non si indica un tenant, anche l'amministratore di piattaforma resta nel proprio.
+Motivazione: due studi sulla stessa macchina non possono mescolare le pratiche.
+
+## 2026-11-27 — La sessione Chiari non mostra i sinistri dell'altro account
+Contesto: sul Mac la lista Sinistri legge l'archivio locale, condiviso fra gli account aperti
+su quella macchina. Entrando con `massimo.pernozzoli@chiarisrl.it` comparivano le pratiche
+dell'altro tenant.
+Decisione: con l'account Chiari la lista mostra solo le pratiche di quella mail. Le pratiche
+Chiari arrivano dal server e restano segnate con quella mail. L'altro account non le vede.
+Il perito può leggere le impostazioni del proprio tenant: prima l'endpoint le riservava
+all'amministratore, quindi l'app restava sul profilo dello studio precedente.
+Motivazione: un tenant con un solo perito non deve vedere i sinistri di un altro studio.
+
+## 2026-11-27 — Abbinamento mail al sinistro: riferimento, numero compagnia, nome
+Contesto: la sincronizzazione Gmail collegava la mail solo se nel testo c'era il riferimento
+`YY-NNNNNN`.
+Decisione: l'abbinamento è in cascata e si ferma al primo livello che trova una pratica.
+1. Riferimento interno `YY-NNNNNN` (`claims.external_ref`).
+2. Numero sinistro compagnia (`claims.numero_sinistro`, anche nella forma senza l'`1.` iniziale,
+   per esempio `825.26.00637` oltre a `1.825.26.00637`).
+3. Nome assicurato, solo se nel testo c'è un solo nominativo di quella lunghezza. Se due pratiche
+   hanno lo stesso nome, la mail si collega a entrambe.
+Motivazione: è l'ordine con cui lo studio riconosce la pratica. Il riferimento vince sul numero
+e sul nome anche se nella stessa mail compaiono gli altri.
+
 ## 2026-11-27 — Posta Gmail operativa sul backend, login Google da pubblicare
 Contesto: l'app Mac chiama `https://api.perx.it`. Il bottone «Accedi con Google» riceveva
 `Not Found` perché `POST /api/v1/auth/google/session` esisteva solo nel codice locale.
@@ -31,8 +211,9 @@ nuove tramite `history.list`. Il riferimento `26-602322` nel testo collega la ma
 Gli allegati fino a 15 MB vanno su Supabase Storage. L'invio dall'app, se la casella Gmail è
 collegata, parte da Gmail e non da Resend. Il rinnovo del token richiede sul server le variabili
 `GOOGLE_OAUTH_CLIENT_ID` e `GOOGLE_OAUTH_CLIENT_SECRET`, gli stessi valori già messi nel
-provider Google di Supabase: non stanno nel sorgente. La push Pub/Sub del piano F2 resta
-successiva: per ora il server interroga Gmail circa ogni 90 secondi.
+provider Google di Supabase: non stanno nel sorgente. Stato aggiornato nello stesso giorno: la
+push Pub/Sub di F2 è ora nel codice; finché non viene creato il topic sul progetto Google di
+Chiari, il server continua a interrogare Gmail circa ogni 90 secondi.
 Motivazione: senza la rotta pubblicata l'accesso non può funzionare, e senza sync sul server
 la posta vecchia e nuova non arriva in PerX.
 

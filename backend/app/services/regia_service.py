@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import func, select
@@ -17,6 +17,15 @@ from app.domain.regia_invariants import (
     iban_richiede_questione,
     liquidabile_consentito,
     same_economy,
+)
+from app.domain.regia_scala import (
+    COMPITI,
+    LEASE_SECONDS,
+    controllo_l0,
+    esito_fase,
+    istruzioni,
+    livello,
+    risorsa_libera,
 )
 from app.models.claim import Claim
 from app.models.process_job import ProcessJob
@@ -347,6 +356,9 @@ class RegiaService:
             raise RegiaError("C'è già un lavoro aperto su questa pratica")
         if phase in EXECUTION_PHASES:
             await _assert_group_approved(db, tenant_id, claim.id)
+        spec = COMPITI.get(job_type)
+        if spec and not model_level:
+            model_level = spec["start"]
         job = ProcessJob(
             id=str(uuid.uuid4()),
             tenant_id=tenant_id,
@@ -369,36 +381,169 @@ class RegiaService:
         *,
         tenant_id: str,
         worker_id: str,
-        resource: str | None = None,
+        mac_idle: bool = False,
     ) -> ProcessJob | None:
-        if resource == "chrome":
-            busy = (
-                await db.execute(
-                    select(ProcessJob.id).where(
-                        ProcessJob.tenant_id == tenant_id,
-                        ProcessJob.resource == "chrome",
-                        ProcessJob.status == "processing",
-                    )
+        now = _now()
+        expired = (
+            await db.execute(
+                select(ProcessJob).where(
+                    ProcessJob.tenant_id == tenant_id,
+                    ProcessJob.status == "processing",
+                    ProcessJob.phase.is_not(None),
+                    ProcessJob.lease_expires_at.is_not(None),
+                    ProcessJob.lease_expires_at < now,
                 )
-            ).first()
-            if busy is not None:
-                return None
-        query = select(ProcessJob).where(
-            ProcessJob.tenant_id == tenant_id,
-            ProcessJob.status == "pending",
-            ProcessJob.phase.is_not(None),
+            )
+        ).scalars().all()
+        for stale in expired:
+            stale.status = "pending"
+            stale.lease_owner = None
+            stale.lease_expires_at = None
+        busy_rows = (
+            await db.execute(
+                select(ProcessJob.resource).where(
+                    ProcessJob.tenant_id == tenant_id,
+                    ProcessJob.status == "processing",
+                    ProcessJob.phase.is_not(None),
+                )
+            )
+        ).all()
+        busy: dict[str, int] = {}
+        for (resource,) in busy_rows:
+            key = resource or ""
+            busy[key] = busy.get(key, 0) + 1
+        pending = (
+            await db.execute(
+                select(ProcessJob)
+                .where(
+                    ProcessJob.tenant_id == tenant_id,
+                    ProcessJob.status == "pending",
+                    ProcessJob.phase.is_not(None),
+                    ProcessJob.available_at <= now,
+                )
+                .order_by(ProcessJob.priority.desc(), ProcessJob.created_at.asc())
+            )
+        ).scalars().all()
+        job = next(
+            (
+                item
+                for item in pending
+                if risorsa_libera(item.resource, busy.get(item.resource or "", 0), mac_libero=mac_idle)
+            ),
+            None,
         )
-        if resource:
-            query = query.where(ProcessJob.resource == resource)
-        job = (await db.execute(query.order_by(ProcessJob.created_at.asc()).limit(1))).scalar_one_or_none()
         if job is None:
             return None
+        if not job.model_level and job.job_type in COMPITI:
+            job.model_level = livello(job.job_type, job.retry_count, sale=job.retry_count > 0)
         job.status = "processing"
         job.lease_owner = worker_id
-        job.started_at = job.started_at or _now()
-        job.last_heartbeat_at = _now()
+        job.started_at = job.started_at or now
+        job.last_heartbeat_at = now
+        job.lease_expires_at = now + timedelta(seconds=LEASE_SECONDS)
         await db.flush()
         return job
+
+    @staticmethod
+    async def heartbeat(db: AsyncSession, *, tenant_id: str, job_id: str, worker_id: str) -> ProcessJob:
+        job = await _owned_job(db, tenant_id, job_id, worker_id)
+        now = _now()
+        job.last_heartbeat_at = now
+        job.lease_expires_at = now + timedelta(seconds=LEASE_SECONDS)
+        await db.flush()
+        return job
+
+    @staticmethod
+    async def report_esito(
+        db: AsyncSession,
+        *,
+        tenant_id: str,
+        job_id: str,
+        worker_id: str,
+        ok: bool,
+        output: dict | None,
+        model_level: str | None,
+        duration_ms: int | None,
+        cost_amount: Decimal | None,
+        error: str | None,
+        rinviato: bool,
+    ) -> ProcessJob:
+        job = await _owned_job(db, tenant_id, job_id, worker_id)
+        now = _now()
+        if model_level:
+            job.model_level = model_level
+        if duration_ms is not None:
+            job.duration_ms = duration_ms
+        if cost_amount is not None:
+            job.cost_amount = cost_amount
+        payload = output or {}
+        if rinviato:
+            job.status = "pending"
+            job.lease_owner = None
+            job.lease_expires_at = None
+            job.available_at = now + timedelta(minutes=5)
+            job.last_error = error or "modello non disponibile"
+            await db.flush()
+            return job
+        compito = job.job_type if job.job_type in COMPITI else ""
+        if ok and (not compito or controllo_l0(compito, payload)):
+            job.status = "completed"
+            job.outcome = "ok"
+            job.result_json = payload
+            job.completed_at = now
+            job.last_error = None
+            await db.flush()
+            return job
+        job.retry_count += 1
+        job.last_error = error or "controllo non superato"
+        successivo = livello(compito, job.retry_count, sale=True) if compito else None
+        if successivo is None:
+            job.status = "failed"
+            job.outcome = esito_fase(job.phase)
+            job.completed_at = now
+            job.lease_owner = None
+            await RegiaService.open_question(
+                db,
+                tenant_id=tenant_id,
+                claim_id=job.claim_id,
+                job_id=job.id,
+                question_type="tentativi_esauriti",
+                description=job.last_error,
+                raised_level=job.model_level,
+                evidence=payload or None,
+                recommendation="Il lavoro non è riuscito da solo. Decide il perito.",
+            )
+            await _apply_review_state(db, job)
+            await db.flush()
+            return job
+        job.status = "pending"
+        job.model_level = successivo
+        job.lease_owner = None
+        job.lease_expires_at = None
+        job.available_at = now
+        await db.flush()
+        return job
+
+    @staticmethod
+    async def istruzioni_compito(db: AsyncSession, tenant_id: str, compito: str) -> dict:
+        if compito not in COMPITI:
+            raise RegiaError("Compito sconosciuto")
+        rules = (
+            await db.execute(
+                select(TenantRule.body).where(
+                    TenantRule.tenant_id == tenant_id,
+                    TenantRule.status == "attiva",
+                    TenantRule.rule_type == "istruzione",
+                )
+            )
+        ).scalars().all()
+        spec = COMPITI[compito]
+        return {
+            "task": compito,
+            "level": spec["start"],
+            "resource": spec["resource"],
+            "instructions": istruzioni(list(rules)),
+        }
 
     @staticmethod
     async def list_questions(db: AsyncSession, tenant_id: str, status: str | None = None) -> list[ClaimQuestion]:
@@ -496,6 +641,30 @@ async def _open_job(db: AsyncSession, tenant_id: str, claim_id: str, job_id: str
             )
         )
     ).scalar_one_or_none()
+
+
+async def _owned_job(db: AsyncSession, tenant_id: str, job_id: str, worker_id: str) -> ProcessJob:
+    job = await db.get(ProcessJob, job_id)
+    if job is None or job.tenant_id != tenant_id or job.status != "processing" or job.lease_owner != worker_id:
+        raise RegiaError("Lavoro non in carico a questo worker")
+    return job
+
+
+async def _apply_review_state(db: AsyncSession, job: ProcessJob) -> None:
+    if not job.claim_id:
+        return
+    claim = await db.get(Claim, job.claim_id)
+    if claim is None:
+        return
+    workflow = await db.get(ClaimWorkflow, claim.id)
+    if (
+        workflow
+        and workflow.manual_state_at
+        and job.started_at
+        and workflow.manual_state_at >= job.started_at
+    ):
+        return
+    claim.stato_corrente = "da_revisionare"
 
 
 async def _max_proposed_amount(db: AsyncSession, claim_id: str) -> Decimal | None:

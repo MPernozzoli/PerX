@@ -1,6 +1,6 @@
 ---
 tags: [perx, piattaforma, ios, macos]
-updated: 2026-11-26
+updated: 2026-11-27
 ---
 
 # PerX — App principale (macOS / iPad)
@@ -39,8 +39,11 @@ logica di base con `PerXCore/` (~17 file, moduli riutilizzabili).
   `Settings/`, `Team/`, `Triggers/`, `Windows/`, `Atti/`, `Consuntivo/`, `API/`, `Dashboard/`,
   `excel/` | Servizi di supporto per le rispettive aree funzionali |
 
-`HubConfigService` gestisce URL base e tenant slug (switch locale/cloud); `CurrentUserService`
-espone email/username correnti.
+`HubConfigService` gestisce URL base e tenant slug (switch locale/cloud) e l’unico health
+check verso `/health`, ogni 5 minuti. `HubModeService` non fa un secondo polling: legge
+`isHubReachable`. `CurrentUserService` espone email/username correnti. Perdere il focus
+della finestra non ferma posta, WhatsApp e sync cartelle: quella pausa scatta solo a sleep
+e wake del Mac. Dettaglio della decisione → [[06-Decisioni-e-Intenzioni-Future]].
 
 ## Local Agent (XPC)
 
@@ -89,4 +92,4 @@ Nomi delle versioni: `PerX v2`, `PerX v3`… e non quelli proposti da Xcode («P
 Se lo store non si apre, `Persistence.swift` lo sposta in un file di backup invece di cancellarlo.
 
 ---
-Ultimo aggiornamento: 2026-11-26
+Ultimo aggiornamento: 2026-11-27

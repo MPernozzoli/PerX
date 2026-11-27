@@ -12,7 +12,7 @@
 		<key>PerX Local Agent.xcscheme_^#shared#^_</key>
 		<dict>
 			<key>orderHint</key>
-			<integer>3</integer>
+			<integer>2</integer>
 		</dict>
 		<key>PerX Mobile.xcscheme_^#shared#^_</key>
 		<dict>
@@ -22,7 +22,7 @@
 		<key>PerX per iPad.xcscheme_^#shared#^_</key>
 		<dict>
 			<key>orderHint</key>
-			<integer>2</integer>
+			<integer>3</integer>
 		</dict>
 		<key>PerX.xcscheme_^#shared#^_</key>
 		<dict>
@@ -43,6 +43,36 @@
 			<true/>
 		</dict>
 		<key>780395742CE509550093FAB4</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>78DB5B842F20BBDE006E08CB</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>78DB5B972F20BBDF006E08CB</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>78DB5BA12F20BBDF006E08CB</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>78EFBA232F318CE800720EFF</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>78EFBA362F318CEA00720EFF</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>78EFBA402F318CEA00720EFF</key>
 		<dict>
 			<key>primary</key>
 			<true/>

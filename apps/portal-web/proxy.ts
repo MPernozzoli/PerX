@@ -32,6 +32,7 @@ export function localFallback(hostname: string): RouteResolution {
   if (
     hostname === "perx.it" ||
     hostname === "www.perx.it" ||
+    hostname === "app.perx.it" ||
     hostname === "perx.pynkstudio.eu" ||
     hostname === "app-perx.pynkstudio.eu" ||
     hostname === "login-perx.pynkstudio.eu"
@@ -47,6 +48,7 @@ export function localFallback(hostname: string): RouteResolution {
   if (
     hostname === "catdispatcher.it" ||
     hostname === "www.catdispatcher.it" ||
+    hostname === "catdispatcher.perx.it" ||
     hostname === "catdispatcher.pynkstudio.eu"
   ) {
     return { found: true, hostname, app: "catdispatcher", destination_url: CATDISPATCHER_ORIGIN ?? null };
@@ -67,8 +69,15 @@ export function localFallback(hostname: string): RouteResolution {
 }
 
 async function resolveRoute(hostname: string): Promise<RouteResolution> {
+  // Product domains are infrastructure-owned and must not be reclassified as
+  // tenant portals by stale or incomplete records in the dynamic resolver.
+  const fixedRoute = localFallback(hostname);
+  if (fixedRoute.found && fixedRoute.app !== "insured_portal") {
+    return fixedRoute;
+  }
+
   if (!ROUTING_API_URL) {
-    return localFallback(hostname);
+    return fixedRoute;
   }
 
   try {
@@ -76,11 +85,11 @@ async function resolveRoute(hostname: string): Promise<RouteResolution> {
       headers: ROUTING_RESOLVE_SECRET ? { "X-PerX-Routing-Secret": ROUTING_RESOLVE_SECRET } : undefined,
       next: { revalidate: 60 }
     });
-    if (!response.ok) return localFallback(hostname);
+    if (!response.ok) return fixedRoute;
     const route = (await response.json()) as RouteResolution;
-    return route.found ? route : localFallback(hostname);
+    return route.found ? route : fixedRoute;
   } catch {
-    return localFallback(hostname);
+    return fixedRoute;
   }
 }
 

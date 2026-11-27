@@ -15,7 +15,7 @@ struct PerXApp: App {
     @StateObject private var authService = GoogleAuthService.shared
     @StateObject private var whatsNewService = WhatsNewService.shared
     @StateObject private var onboardingService = OnboardingService.shared
-    let persistenceController = PersistenceController.shared
+    @ObservedObject private var persistenceController = PersistenceController.shared
     @State private var showWhatsNew = false
     @State private var showOnboarding = false
 
@@ -34,7 +34,8 @@ struct PerXApp: App {
                 // ContentView solo quando autenticato (così non è in memoria sulla splash)
                 if authService.isAuthenticated {
                     ContentView()
-                        .environment(\.managedObjectContext, persistenceController.container.viewContext)
+                        .id("\(authService.userEmail ?? "")-\(ObjectIdentifier(persistenceController.viewContext).hashValue)")
+                        .environment(\.managedObjectContext, persistenceController.viewContext)
                         .onAppear {
                             setupFolderScanning()
                             _ = FatturatoCacheInvalidator.shared
@@ -48,8 +49,8 @@ struct PerXApp: App {
                 }
                 
                 // Splash SEMPRE in albero così non viene mai distrutta e .task parte una sola volta
-                SplashScreenView()
-                    .environment(\.managedObjectContext, persistenceController.container.viewContext)
+                    SplashScreenView()
+                        .environment(\.managedObjectContext, persistenceController.viewContext)
                     .opacity(authService.isAuthenticated ? 0 : 1)
                     .allowsHitTesting(!authService.isAuthenticated)
                     .zIndex(authService.isAuthenticated ? 0 : 1)
@@ -115,8 +116,8 @@ struct PerXApp: App {
             // Ferma sync claims
             ClaimSyncService.shared.stopBackgroundSync()
             
-            // Ferma trigger passivi
-            PassiveTriggerService.shared.stopMonitoring()
+            // Ferma trigger passivi e canali non più dell'account
+            AccountRuntime.stopAll()
             
             // Chiudi tutte le tab aperte
             AppState.shared.closeAllTabs()
@@ -129,7 +130,7 @@ struct PerXApp: App {
     
     private func setupFolderScanning() {
         // Inizializza ImportService
-        ImportService.configure(with: persistenceController.container.viewContext)
+        ImportService.configure(with: persistenceController.viewContext)
         
         // Esegui l'inizializzazione in modo asincrono per evitare blocchi
         Task {
@@ -155,63 +156,11 @@ struct PerXApp: App {
                     }
                 }
 
-                // Avvia il monitoring delle email se autenticato
+                // Avvia solo i servizi ammessi da questo account.
                 if GoogleAuthService.shared.isAuthenticated {
                     Task {
                         await CPUThrottler.shared.runAtStartup {
-                            print("[PerXApp] Avvio monitoring persistente delle email")
-                            MailViewModel.shared.startMonitoring()
-                        }
-                    }
-                    Task {
-                        await CPUThrottler.shared.runAtStartup {
-                            _ = AutomaticClaimAssignmentService.shared
-                        }
-                    }
-                    Task {
-                        await CPUThrottler.shared.runAtStartup {
-                            await UserProfileService.shared.refreshCurrentProfile()
-                            await UserProfileService.shared.refreshAllProfiles()
-                            await AutomaticClaimAssignmentService.shared.runNow(reason: "startup")
-                        }
-                    }
-                    Task {
-                        await CPUThrottler.shared.runAtStartup {
-                            ClaimAssignmentBackfillService.shared.runIfNeeded(
-                                context: persistenceController.container.viewContext,
-                                currentUserEmail: GoogleAuthService.shared.userEmail
-                            )
-                        }
-                    }
-                    Task {
-                        await CPUThrottler.shared.runAtStartup {
-                            AssignmentDateValidationService.shared.runIfNeeded(
-                                context: persistenceController.container.viewContext
-                            )
-                        }
-                    }
-                    Task {
-                        await CPUThrottler.shared.runAtStartup {
-                            OldSinistriCleanupService.shared.runIfNeeded(
-                                context: persistenceController.container.viewContext
-                            )
-                        }
-                    }
-                    Task.detached(priority: .utility) {
-                        try? await Task.sleep(nanoseconds: 3_000_000_000)
-                        await CPUThrottler.shared.runAtStartup {
-                            print("[PerXApp] Precaricamento PrincipaleViewModel in background")
-                            await PrincipaleViewModel.shared.preload()
-                        }
-                    }
-                }
-
-                Task {
-                    await CPUThrottler.shared.runAtStartup {
-                        if BuildFeatures.localWhatsAppServerEnabled {
-                            await setupWhatsApp()
-                        } else {
-                            print("[PerXApp] ℹ️ WhatsApp sospeso (Release/produzione)")
+                            AccountRuntime.applyCurrentProfile()
                         }
                     }
                 }
@@ -229,25 +178,8 @@ struct PerXApp: App {
                         }
                     }
                 }
-
-                Task {
-                    await CPUThrottler.shared.runAtStartup {
-                        PassiveTriggerService.shared.startMonitoring()
-                    }
-                }
-                
-                // Nota: Email/WA e richieste iPad passano dal backend Supabase/Hub.
             }
         }
-    }
-    
-    private func setupWhatsApp() async {
-        // WhatsApp funziona esclusivamente tramite Hub (già dentro runAtStartup del chiamante)
-        print("[PerXApp] WhatsApp: gestione tramite Hub")
-        WhatsAppService.shared.start()
-        print("[PerXApp] WhatsApp: servizio avviato, accountId: \(WhatsAppService.shared.selectedAccountId)")
-        WhatsAppNotificationService.shared.startPolling()
-        print("[PerXApp] WhatsApp: polling notifiche avviato")
     }
 }
 
@@ -292,23 +224,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         restoreResourcesForForeground()
     }
     
-    func applicationWillResignActive(_ notification: Notification) {
-        print("[PerXApp] 🔄 App in background - pulizia risorse")
-        cleanupResourcesForBackground()
-    }
-    
-    func applicationDidBecomeActive(_ notification: Notification) {
-        print("[PerXApp] ✅ App in foreground - ripristino risorse")
-        restoreResourcesForForeground()
-    }
-    
     private func cleanupResourcesForBackground() {
         Task { @MainActor in
             // Pulisci cache media
             MediaCacheService.shared.clearCache()
             
-            // Ferma timer di monitoraggio
+            // Ferma i timer dell'account. La posta resta: la sincronizza il server.
             PassiveTriggerService.shared.stopMonitoring()
+            WhatsAppNotificationService.shared.stopPolling()
             
             // Ferma prevenzione sleep
             BackgroundActivityManager.shared.stopPreventingSleep()
@@ -324,7 +247,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     private func restoreResourcesForForeground() {
         Task { @MainActor in
             // Ripristina monitoraggio trigger
-            PassiveTriggerService.shared.startMonitoring()
+            AccountRuntime.applyCurrentProfile()
             
             // Ripristina sync se necessario
             await ClaimSyncService.shared.resumeTemporarySyncsIfNeeded()

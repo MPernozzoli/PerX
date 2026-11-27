@@ -55,7 +55,12 @@ struct SalaRegiaView: View {
             .padding(24)
             .frame(maxWidth: 760, alignment: .leading)
         }
-        .task { await reload() }
+        .task {
+            while !Task.isCancelled {
+                await reload()
+                try? await Task.sleep(nanoseconds: 15_000_000_000)
+            }
+        }
     }
 
     @ViewBuilder

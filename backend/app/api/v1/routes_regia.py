@@ -7,8 +7,13 @@ from app.core.security import get_current_active_user
 from app.models.tenant import Tenant
 from app.models.user import User
 from app.schemas.regia import (
+    CompitoResponse,
+    EsitoRequest,
+    HeartbeatRequest,
     JobCreateRequest,
     JobResponse,
+    LeaseRequest,
+    LeaseResponse,
     QuestionAnswerRequest,
     QuestionCreateRequest,
     QuestionResponse,
@@ -239,6 +244,82 @@ async def enqueue_job(
     except RegiaError as exc:
         raise _as_http(exc) from exc
     return job
+
+
+@router.post("/lavori/prendi", response_model=LeaseResponse)
+async def take_job(
+    payload: LeaseRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    job = await RegiaService.lease_next(
+        db,
+        tenant_id=current_user.tenant_id,
+        worker_id=payload.worker_id,
+        mac_idle=payload.mac_idle,
+    )
+    await db.commit()
+    return LeaseResponse(job=JobResponse.model_validate(job) if job else None)
+
+
+@router.post("/lavori/{job_id}/heartbeat", response_model=JobResponse)
+async def heartbeat_job(
+    job_id: str,
+    payload: HeartbeatRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    try:
+        job = await RegiaService.heartbeat(
+            db,
+            tenant_id=current_user.tenant_id,
+            job_id=job_id,
+            worker_id=payload.worker_id,
+        )
+        await db.commit()
+    except RegiaError as exc:
+        raise _as_http(exc) from exc
+    return job
+
+
+@router.post("/lavori/{job_id}/esito", response_model=JobResponse)
+async def report_job(
+    job_id: str,
+    payload: EsitoRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    try:
+        job = await RegiaService.report_esito(
+            db,
+            tenant_id=current_user.tenant_id,
+            job_id=job_id,
+            worker_id=payload.worker_id,
+            ok=payload.ok,
+            output=payload.output,
+            model_level=payload.model_level,
+            duration_ms=payload.duration_ms,
+            cost_amount=payload.cost_amount,
+            error=payload.error,
+            rinviato=payload.rinviato,
+        )
+        await db.commit()
+    except RegiaError as exc:
+        raise _as_http(exc) from exc
+    return job
+
+
+@router.get("/compiti/{compito}", response_model=CompitoResponse)
+async def task_level(
+    compito: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    try:
+        described = await RegiaService.istruzioni_compito(db, current_user.tenant_id, compito)
+    except RegiaError as exc:
+        raise _as_http(exc) from exc
+    return described
 
 
 @router.post("/pratiche/{claim_id}/atto-firmato/iban")

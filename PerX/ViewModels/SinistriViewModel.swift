@@ -118,9 +118,11 @@ final class SinistriViewModel: ObservableObject {
         let isAdvancedSearch = !searchInFilteredOnly
         let hasSearchText = !debouncedSearchText.isEmpty
         let hasSelectedStates = !selectedStates.isEmpty
-        
-        // Step 0: Filtro assegnatario (utente)
-        var filtered = applyAssigneeFilter(to: allSinistri, isAdvancedSearch: isAdvancedSearch)
+
+        var filtered = allSinistri.filter {
+            AccountClaimScope.includes($0, email: GoogleAuthService.shared.userEmail)
+        }
+        filtered = applyAssigneeFilter(to: filtered, isAdvancedSearch: isAdvancedSearch)
         
         // Step 0.5: Filtro recenti (anno corrente e anno-1)
         if recentOnly && !isAdvancedSearch {
@@ -787,9 +789,11 @@ final class SinistriViewModel: ObservableObject {
         let giorniTotali = dataStato.map { calculateGiorniTotali(from: $0) } ?? 0
         let giorniLavorativi = dataStato.map { ItalianCalendarService.shared.getWorkingDaysSince($0) } ?? 0
         
+        let base = statoString ?? "N/D"
+        let sub = (sinistro.substate ?? "").replacingOccurrences(of: "_", with: " ").trimmingCharacters(in: .whitespaces)
         return StatoPopoverInfo(
             stato: stato,
-            descrizione: statoString ?? "N/D",
+            descrizione: sub.isEmpty ? base : "\(base) (\(sub))",
             dataStato: dataStato,
             giorniTotali: giorniTotali,
             giorniLavorativi: giorniLavorativi,

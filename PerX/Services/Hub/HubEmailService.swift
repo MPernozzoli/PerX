@@ -60,27 +60,30 @@ class HubEmailService: ObservableObject {
     
     /// Recupera email per l'utente corrente (con limit e opzionale mailbox filter)
     func fetchEmails(forUser userEmail: String, mailbox: String? = nil, limit: Int = 100) async throws -> [EmailDTO] {
-        var path = "emails?user=\(userEmail.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? userEmail)&limit=\(limit)"
-        if let mailbox = mailbox {
-            path += "&mailbox=\(mailbox)"
-        }
-
-        let emails: [EmailDTO] = try await cloudClient.cloudGet(compatPath(path))
+        let emails: [EmailDTO] = try await BackendAPIClient.shared.get(
+            "hub/emails",
+            queryItems: [
+                URLQueryItem(name: "user", value: userEmail),
+                URLQueryItem(name: "limit", value: String(limit)),
+            ] + (mailbox.map { [URLQueryItem(name: "mailbox", value: $0)] } ?? [])
+        )
         print("[HubEmailService] 📥 Scaricate \(emails.count) email per utente \(userEmail)")
         return emails
     }
     
     /// Recupera le caselle disponibili per l'utente
     func fetchMailboxes(forUser userEmail: String) async throws -> [MailboxDTO] {
-        let path = compatPath("emails/mailboxes?user=\(userEmail.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? userEmail)")
-        let mailboxes: [MailboxDTO] = try await cloudClient.cloudGet(path)
+        let mailboxes: [MailboxDTO] = try await BackendAPIClient.shared.get(
+            "hub/emails/mailboxes",
+            queryItems: [URLQueryItem(name: "user", value: userEmail)]
+        )
         print("[HubEmailService] 📬 Trovate \(mailboxes.count) caselle per \(userEmail)")
         return mailboxes
     }
     
     /// Recupera dettaglio email completo (body incluso)
     func fetchEmailDetail(messageId: String) async throws -> EmailDetailDTO {
-        try await cloudClient.cloudGet(compatPath("emails/detail/\(messageId)"))
+        try await BackendAPIClient.shared.get("hub/emails/detail/\(messageId)")
     }
     
     // MARK: - Email Actions
@@ -263,13 +266,23 @@ class HubEmailService: ObservableObject {
     
     // MARK: - Sync & Polling
     
+    private var activeUser: String?
+
+    func discard() {
+        emails = []
+        mailboxes = []
+        activeUser = nil
+    }
+
     /// Sincronizza mailbox e email in background
     func startPolling(userEmail: String, interval: TimeInterval = 60) {
         stopPolling()
-        
+        let user = userEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        activeUser = user
+
         pollingTask = Task {
             while !Task.isCancelled {
-                await syncUserEmails(userEmail: userEmail)
+                await syncUserEmails(userEmail: user)
                 try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
             }
         }
@@ -292,15 +305,20 @@ class HubEmailService: ObservableObject {
             async let mailboxesTask = fetchMailboxes(forUser: userEmail)
             
             let (fetchedEmails, fetchedMailboxes) = try await (emailsTask, mailboxesTask)
-            
+            guard userEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == activeUser else { return }
+
             self.emails = fetchedEmails
             self.mailboxes = fetchedMailboxes
             self.lastSyncDate = Date()
+            NotificationCenter.default.post(name: .serverMailUpdated, object: nil)
             
             print("[HubEmailService] ✅ Sync completato: \(fetchedEmails.count) email, \(fetchedMailboxes.count) caselle")
         } catch {
             self.error = error.localizedDescription
             print("[HubEmailService] ❌ Errore sync: \(error)")
+            if error.localizedDescription.localizedCaseInsensitiveContains("unauthorized") {
+                stopPolling()
+            }
         }
         
         isLoading = false
@@ -376,7 +394,9 @@ extension EmailDTO {
             recipients: [], // Non disponibile nel DTO base
             subject: subject,
             date: date,
-            body: nil // Richiede fetch dettaglio
+            body: nil, // Richiede fetch dettaglio
+            attachmentsNotice: attachmentsOnGmail == true ? (attachmentsNotice?.isEmpty == false ? attachmentsNotice : "Allegati non scaricati, apribili su Gmail.") : nil,
+            gmailWebUrl: attachmentsOnGmail == true ? gmailWebUrl : nil
         )
     }
 }
@@ -391,7 +411,13 @@ extension EmailDetailDTO {
             recipients: recipients.map { Contact(name: nil, email: $0) },
             subject: subject,
             date: date,
-            body: bodyHtml ?? bodyText
+            body: bodyHtml ?? bodyText,
+            attachmentsNotice: attachmentsOnGmail == true ? (attachmentsNotice?.isEmpty == false ? attachmentsNotice : "Allegati non scaricati, apribili su Gmail.") : nil,
+            gmailWebUrl: attachmentsOnGmail == true ? gmailWebUrl : nil
         )
     }
+}
+
+extension Notification.Name {
+    static let serverMailUpdated = Notification.Name("serverMailUpdated")
 }

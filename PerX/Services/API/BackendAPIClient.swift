@@ -48,6 +48,10 @@ final class BackendAPIClient {
         backendAccessToken != nil
     }
 
+    func currentAccessToken() -> String? {
+        backendAccessToken
+    }
+
     func storeAccessToken(_ token: String) {
         let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {

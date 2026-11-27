@@ -1,6 +1,6 @@
 ---
 tags: [perx, piattaforma, backend, api]
-updated: 2026-11-26
+updated: 2026-11-27
 ---
 
 # Backend Cloud API
@@ -101,11 +101,11 @@ Contesto e decisione → [[06-Decisioni-e-Intenzioni-Future]]; variabili → [[0
 | Portale assicurati | `routes_portal.py`, `routes_portal_me.py` | Vedi [[Portal-Web-Assicurati]] |
 | CAT Dispatcher | `routes_cat_dispatcher.py` | Vedi [[CatDispatcher]] |
 | Videoperizia | `routes_videoperizia.py` | Vedi [[Videoperizia]]. Chiusa se il tenant non ha la capacità |
-| Regia | `routes_regia.py` | Profilo, stati, revisioni, questioni, regole, job. Vedi [[Regia-Agenti-e-Tenant-Chiari]] |
+| Regia | `routes_regia.py` | Profilo, stati, revisioni, questioni, regole, lavori con lease e scala L0–L4. Vedi [[Regia-Agenti-e-Tenant-Chiari]] |
 | Process jobs (Mac mini) | `routes_process_jobs.py` | Vedi [[04-Infrastruttura-e-Deploy]]. I job della Regia aggiungono fase, risorsa e livello |
 | Pianificazione | `routes_planning.py`, `routes_reporting.py`, `routes_routing.py`, `routes_rubrica.py` | Agenda, reportistica, instradamento, rubrica contatti |
 | Bignami | `routes_bignami.py` | Ponte verso lo schema Postgres `bignami` — vedi [[Altre-Web-App]] |
-| Hub | `routes_hub_compat.py` | Compatibilità verso [[PerXHub]]. Il vault passa da `VaultStorageService` (provider `local`, `mac_mini`, `s3`); la posta Gmail del tenant Chiari arriva in queste righe dopo la sincronizzazione del backend |
+| Hub | `routes_hub_compat.py` | Compatibilità verso [[PerXHub]]. Il vault passa da `VaultStorageService` (provider `local`, `mac_mini`, `s3`). La posta Gmail del tenant arriva qui dopo `history.list`, avviata dal polling o da `POST /api/v1/emails/gmail/push`. Elenco e dettaglio mail espongono `attachmentsOnGmail` quando un allegato è rimasto su Gmail. `GET /vault/sinistri/{ref}/files` risponde `[]` se la pratica non è nel tenant: il Mac chiede anche i riferimenti locali a 7 cifre (`2508006`) che non sono in `claims` |
 
 Per l'elenco esaustivo degli endpoint con verbo HTTP, vedi `backend/README.md` (mantenuto
 aggiornato per l'uso pratico/setup; i concetti architetturali restano qui).
@@ -171,4 +171,4 @@ estensioni), **device token/push**, **AI prompt versioning & routing runs**, **r
 [[05-Stato-Sviluppo-e-Roadmap]].
 
 ---
-Ultimo aggiornamento: 2026-11-27 (API Regia e profilo tenant Chiari; provider S3 predisposto; migrazioni ricostruibili da zero)
+Ultimo aggiornamento: 2026-11-27 (elenco file vault vuoto se la pratica non c’è; API Regia e profilo tenant Chiari; provider S3 predisposto; migrazioni ricostruibili da zero)

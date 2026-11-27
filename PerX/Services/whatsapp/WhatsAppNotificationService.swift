@@ -80,6 +80,7 @@ class WhatsAppNotificationService: ObservableObject {
     
     /// Ferma il polling
     func stopPolling() {
+        guard pollingTimer != nil else { return }
         pollingTimer?.invalidate()
         pollingTimer = nil
         print("[WhatsAppNotification] Polling fermato")

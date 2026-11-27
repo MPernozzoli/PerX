@@ -37,6 +37,10 @@ struct DashboardView: View {
         taskPerOggi = summaryService.taskPerOggi()
     }
 
+    private func applyClaimScope() {
+        sinistri.nsPredicate = AccountClaimScope.predicate(for: GoogleAuthService.shared.userEmail)
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -57,6 +61,11 @@ struct DashboardView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(NSColor.windowBackgroundColor))
         .onDisappear { summaryService.markDashboardClosed() }
+        .onAppear { applyClaimScope() }
+        .onReceive(NotificationCenter.default.publisher(for: .accountClaimScopeChanged)) { _ in
+            applyClaimScope()
+            refreshSummaryCounters()
+        }
         .onReceive(taskManager.$updateCounter.dropFirst()) { _ in
             Task { @MainActor in
                 refreshTaskPerOggi()

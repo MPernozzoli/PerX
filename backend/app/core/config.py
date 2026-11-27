@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     GMAIL_SYNC_ENABLED: bool = True
     GMAIL_SYNC_POLL_SECONDS: int = 90
     GMAIL_SYNC_PAGE_SIZE: int = 40
+    GMAIL_PUBSUB_TOPIC: str = ""
+    GMAIL_PUSH_AUDIENCE: str = "https://api.perx.it/api/v1/emails/gmail/push"
+    GMAIL_PUSH_SERVICE_ACCOUNT: str = ""
     APP_PUBLIC_URL: str = "https://app.perx.it"
     LOGIN_PUBLIC_URL: str = "https://login.perx.it"
     

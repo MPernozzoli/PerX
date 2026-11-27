@@ -42,14 +42,34 @@ Provider **Resend**: invio via `RESEND_API_KEY`/`RESEND_DEFAULT_FROM_EMAIL`, sch
 `backend/docs/resend_supabase_inbound_pipeline.md` (non ancora incorporata in questo vault — da
 fare se questa pipeline viene toccata).
 
-Lato app, `GmailService.swift` resta uno stub: i client non parlano con Gmail. Dal 2026-11-27
-la casella Workspace del tenant Chiari la sincronizza il backend (`gmail_sync_service.py`):
-all'accesso Google parte il recupero di posta in arrivo e inviata, poi le mail nuove; gli
-allegati fino a 15 MB finiscono su Supabase Storage e il riferimento `26-602322` collega la mail
-alla pratica. L'elenco che l'app già legge da `GET /api/v1/hub/emails` mostra quelle righe.
-L'invio dall'app usa Gmail se la casella è collegata, altrimenti Resend. Il rinnovo del token
-sta sul server (`GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET`). La push Pub/Sub
-descritta sotto resta il passo successivo, non il flusso attuale.
+Lato app c’è un solo polling, `HubEmailService`, verso `GET /api/v1/hub/emails`, con il token e l’email dell’account connesso. Al cambio account la lista e i thread in memoria si svuotano: non resta la posta dell’account precedente. La cache locale delle mail non viene più ridisegnata sopra l’elenco. Dal 2026-11-27 un salvataggio Core Data qualunque non ricarica più tutti i thread: il reload parte da `reloadThreads()` quando cambia la posta.
+Gmail sul Mac e `MailManager` non scaricano più la posta. Il server, all’accesso Google, recupera
+la posta in arrivo e inviata e poi le mail nuove. Se `GMAIL_PUBSUB_TOPIC` è impostato, Gmail
+avvisa `POST /api/v1/emails/gmail/push` e lo scarico parte subito; altrimenti il server ricontrolla
+ogni 90 secondi. Gli allegati fino a 15 MB finiscono nel bucket privato `perx-portal-uploads`
+(prefisso `gmail/`). Le mail già entrate senza file vengono riprese a gruppi di 20 a ogni ciclo.
+L’abbinamento alla pratica
+è in cascata: prima il riferimento `26-602322`, poi il numero sinistro compagnia, poi il nome
+dell’assicurato. L’invio dall’app usa Gmail se la casella è collegata, con la firma della casella,
+altrimenti Resend. Il rinnovo del token sta sul server (`GOOGLE_OAUTH_CLIENT_ID` /
+`GOOGLE_OAUTH_CLIENT_SECRET`). Il Mac interroga il backend ogni 60 secondi.
+Il watch viene registrato prima del backfill. Il download di ogni allegato (push Pub/Sub e polling
+usano lo stesso import) viene ritentato tre volte, con attese di 0,4 e 0,8 secondi. Se dopo i retry
+Gmail o Storage non consegnano il file, oppure l’allegato supera i 15 MB o lo storage non è
+configurato, la mail resta in elenco. In `emails.raw_headers` finiscono `attachmentsOnGmail`,
+`attachmentsNotice` («Allegati non scaricati, apribili su Gmail.») e `gmailWebUrl`.
+`GET /api/v1/hub/emails` e `GET /api/v1/hub/emails/detail/{id}` espongono gli stessi tre campi.
+L’app Mac li mostra in lista e nel dettaglio, con il link per aprire il messaggio su Gmail.
+Le sync successive riprendono le mail senza `attachmentsChecked`, a gruppi di 20, con lo stesso
+download. Dopo tre passaggi falliti il recupero si ferma e l’avviso resta.
+Il webhook Pub/Sub salva inoltre l’evento padre prima di accodare il relativo job, rispettando la
+chiave esterna anche senza una relazione ORM esplicita tra i due modelli. I retry concorrenti
+della stessa casella vengono serializzati con un lock sul record `Mailbox`; l’idempotenza viene
+ricontrollata dopo il lock, evitando import simultanei della stessa email.
+Una push autenticata viene sempre confermata a Pub/Sub: se Gmail o il database falliscono in modo
+transitorio, il server registra `deferred` e lascia il recupero al polling ordinario, evitando una
+tempesta di retry. Un singolo messaggio Gmail non leggibile viene saltato senza perdere il resto
+della pagina o della history.
 
 ## Chat assicurato → team interno
 
@@ -73,4 +93,4 @@ Questo triage è responsabilità dell'agente AI applicativo **Elettra** — vedi
 route `routes_devices.py` — notifiche push verso app native (APNs) e web.
 
 ---
-Ultimo aggiornamento: 2026-11-27 (posta Gmail sincronizzata dal backend per il tenant Chiari)
+Ultimo aggiornamento: 2026-11-27 (retry allegati Gmail e avviso se restano su Gmail)

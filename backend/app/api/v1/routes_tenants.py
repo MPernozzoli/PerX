@@ -368,6 +368,30 @@ async def _send_supabase_invite(personal_email: str) -> tuple[str, str | None]:
         return "failed", str(exc)
 
 
+async def _resolve_own_tenant(
+    db: AsyncSession,
+    current_user: User,
+    tenant_id: str | None,
+) -> Tenant:
+    """Il perito legge solo il proprio tenant. L'admin di piattaforma può indicarne un altro."""
+    target_tenant_id = current_user.tenant_id
+    if tenant_id:
+        if current_user.is_platform_admin:
+            target_tenant_id = tenant_id
+        elif tenant_id != current_user.tenant_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Tenant access denied",
+            )
+    if not target_tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+    result = await db.execute(select(Tenant).where(Tenant.id == target_tenant_id))
+    tenant = result.scalar_one_or_none()
+    if tenant is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+    return tenant
+
+
 async def _resolve_target_tenant(
     db: AsyncSession,
     current_user: User,
@@ -403,7 +427,7 @@ async def get_my_tenant_settings(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    tenant = await _resolve_target_tenant(db, current_user, tenant_id)
+    tenant = await _resolve_own_tenant(db, current_user, tenant_id)
     settings = _normalized_settings(tenant, include_provider_secrets=False)
     return TenantSettingsResponse(tenant_id=tenant.id, **settings)
 

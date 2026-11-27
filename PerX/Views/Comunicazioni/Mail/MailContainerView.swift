@@ -40,11 +40,15 @@ struct MailContainerView: View {
             MailboxSettingsView(viewModel: viewModel)
         }
         .onAppear {
-            // Inizializza la cache in modo asincrono (non blocca)
+            if selectedMailboxId == "PRINCIPALE", principaleViewModel.displayedThreads.isEmpty {
+                selectedMailboxId = "INBOX"
+            }
             Task { @MainActor in
-                // Non accedere a displayedThreads qui - potrebbe non essere ancora caricato
                 updateFilteredThreads()
             }
+        }
+        .onChange(of: viewModel.accountGeneration) { _, _ in
+            selectedMailboxId = "INBOX"
         }
         .onChange(of: searchText) { _, _ in
             updateFilteredThreads()

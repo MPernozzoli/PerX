@@ -186,6 +186,8 @@ struct EmailListItem: Identifiable {
     let direction: String?
     let mailbox: String?
     let isRead: Bool
+    let attachmentsNotice: String?
+    let gmailWebUrl: String?
     
     init(from dto: EmailDTO) {
         self.id = dto.id
@@ -198,6 +200,8 @@ struct EmailListItem: Identifiable {
         self.direction = dto.direction
         self.mailbox = dto.mailbox
         self.isRead = dto.isRead ?? true
+        self.attachmentsNotice = Self.attachmentNotice(onGmail: dto.attachmentsOnGmail, text: dto.attachmentsNotice)
+        self.gmailWebUrl = dto.attachmentsOnGmail == true ? dto.gmailWebUrl : nil
     }
     
     init(from email: Email) {
@@ -211,9 +215,12 @@ struct EmailListItem: Identifiable {
         self.direction = nil
         self.mailbox = nil
         self.isRead = email.isRead
+        self.attachmentsNotice = email.attachmentsNotice
+        self.gmailWebUrl = email.gmailWebUrl
     }
 
     init(from dto: CloudEmailResponse) {
+        let notice = Self.notice(fromRawHeaders: dto.raw_headers)
         self.id = dto.id
         self.subject = dto.subject ?? "(Senza oggetto)"
         self.senderEmail = dto.from_address
@@ -224,6 +231,23 @@ struct EmailListItem: Identifiable {
         self.direction = nil
         self.mailbox = dto.mailbox_id
         self.isRead = true
+        self.attachmentsNotice = notice.text
+        self.gmailWebUrl = notice.url
+    }
+
+    fileprivate static func attachmentNotice(onGmail: Bool?, text: String?) -> String? {
+        guard onGmail == true else { return nil }
+        let trimmed = text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? "Allegati non scaricati, apribili su Gmail." : trimmed
+    }
+
+    private static func notice(fromRawHeaders raw: String?) -> (text: String?, url: String?) {
+        guard let raw,
+              let data = raw.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              (json["attachmentsOnGmail"] as? Bool) == true
+        else { return (nil, nil) }
+        return (attachmentNotice(onGmail: true, text: json["attachmentsNotice"] as? String), json["gmailWebUrl"] as? String)
     }
 }
 
@@ -238,6 +262,8 @@ struct EmailDetail: Identifiable {
     let bodyHtml: String?
     let category: String
     let sinistroRef: String?
+    let attachmentsNotice: String?
+    let gmailWebUrl: String?
     
     init(from dto: EmailDetailDTO) {
         self.id = dto.id
@@ -250,6 +276,8 @@ struct EmailDetail: Identifiable {
         self.bodyHtml = dto.bodyHtml
         self.category = dto.category
         self.sinistroRef = dto.sinistroRef
+        self.attachmentsNotice = EmailListItem.attachmentNotice(onGmail: dto.attachmentsOnGmail, text: dto.attachmentsNotice)
+        self.gmailWebUrl = dto.attachmentsOnGmail == true ? dto.gmailWebUrl : nil
     }
     
     init(from email: Email) {
@@ -263,6 +291,8 @@ struct EmailDetail: Identifiable {
         self.bodyHtml = nil
         self.category = "generic"
         self.sinistroRef = nil
+        self.attachmentsNotice = email.attachmentsNotice
+        self.gmailWebUrl = email.gmailWebUrl
     }
 }
 

@@ -46,10 +46,8 @@ final class HubConfigService: ObservableObject {
             UserDefaults.standard.set(hubBaseURL, forKey: "hub.baseURL")
             UserDefaults.standard.set(Date(), forKey: "localEditAt.hub.baseURL")
             
-            // Avvia/ferma timer quando URL cambia
             if !hubBaseURL.isEmpty {
                 startHealthCheckTimer()
-                startHeartbeatTimer()
             } else {
                 stopHealthCheckTimer()
                 stopHeartbeatTimer()
@@ -109,10 +107,10 @@ final class HubConfigService: ObservableObject {
             self.tenantHubOverrides = decoded
         }
         
-        // Avvia health check e heartbeat periodici se URL configurato
+        // Un solo controllo di raggiungibilità. Il POST /heartbeat del backend
+        // compat non registra la presenza, quindi non parte un timer ogni 60s.
         if !hubBaseURL.isEmpty {
             startHealthCheckTimer()
-            startHeartbeatTimer()
         }
     }
     

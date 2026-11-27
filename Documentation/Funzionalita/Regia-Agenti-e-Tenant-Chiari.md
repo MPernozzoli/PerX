@@ -242,13 +242,14 @@ Mac come postazione principale; iPhone e iPad per supervisione, Questioni e appr
 
 ### 3.8 Posta (Gmail → Supabase → client)
 
-Gmail API `users.watch` → Pub/Sub (push autenticato) → Edge Function `gmail-inbound` (stesso
-schema di `resend-inbound`: idempotenza, `inbound_email_events`, `email_processing_jobs`) →
-`history.list` e `messages.get` → righe `emails` del tenant e allegati su Supabase Storage. I
-client non sincronizzano Gmail: scaricano dal backend in modo incrementale e ricevono un segnale
-(push o realtime) per sapere quando farlo. Token della casella solo lato server. Invio dal
-backend via Gmail API (parte dall'account Workspace e resta nel thread), con la firma letta da
-`sendAs` perché Gmail non la aggiunge ai messaggi inviati via API. Scope: `gmail.modify`,
+Gmail API `users.watch` → Pub/Sub (push con token OIDC) → `POST /api/v1/emails/gmail/push` sul
+backend (il token della casella non esce dal server: per questo non passa da una Edge Function) →
+`history.list` e `messages.get` → righe `emails` del tenant, evento in `inbound_email_events` e
+allegati su Supabase Storage. Se un allegato non si scarica dopo tre tentativi, la mail resta e
+l’hub segnala che i file sono ancora su Gmail. I client non sincronizzano Gmail: il Mac scarica
+dal backend ogni 60 secondi e lo stream `mail_updated` avvisa chi è collegato. Token della casella solo lato server.
+Invio dal backend via Gmail API (parte dall’account Workspace e resta nel thread), con la firma
+letta da `sendAs` perché Gmail non la aggiunge ai messaggi inviati via API. Scope: `gmail.modify`,
 `gmail.send`, `gmail.settings.basic`.
 
 ### 3.9 Browser (estensione Chrome)
@@ -312,16 +313,16 @@ Tutte le tabelle nuove con `tenant_id`, RLS attiva e accesso solo dal backend.
   utenti esistenti entrano come prima; i test di isolamento passano.
 
 ### F2 — Posta Gmail su Supabase
-- Collegamento della casella (OAuth lato backend, accesso offline), token cifrato.
-- Pub/Sub + Edge Function `gmail-inbound`; rinnovo giornaliero del `watch`; recupero periodico e
-  risincronizzazione se l'`historyId` è troppo vecchio.
-- API backend: elenco incrementale, dettaglio, allegati con URL firmati, invio con firma e
-  thread, letto/etichette. Segnale ai client.
-- App: adapter email «cloud» al posto dello stub `GmailService`. Import dello storico delle
-  pratiche aperte.
-- **Fatto quando:** una mail nuova compare su Mac e iPhone in meno di un minuto senza
-  sincronizzazione Gmail sui client; una mail inviata da PerX è in Gmail «Inviata», con firma,
-  nel thread giusto.
+- Collegamento della casella (OAuth lato backend, accesso offline), token cifrato. Fatto.
+- `users.watch`, rinnovo quando manca meno di un giorno, push su
+  `POST /api/v1/emails/gmail/push`, recupero se lo `historyId` è troppo vecchio. Il codice c’è;
+  il topic Pub/Sub sul progetto Google no.
+- API backend: elenco, dettaglio, allegati su Storage, invio con firma `sendAs` e thread,
+  letto/etichette. Segnale `mail_updated`. Il Mac legge ogni 60 secondi.
+- **Fatto quando:** una mail nuova fa scattare subito `history.list` e compare sul Mac al giro
+  successivo verso il backend, entro 60 secondi, senza sincronizzazione Gmail sui client; una mail
+  inviata da PerX è in Gmail «Inviata», con firma, nel thread giusto. Manca ancora il topic,
+  quindi oggi il limite è il polling di 90 secondi.
 
 ### F3 — Dati Chiari e motore di stima
 - Stati per tenant, campi Chiari, gruppi, revisioni, atti (§4).
@@ -336,6 +337,12 @@ Tutte le tabelle nuove con `tenant_id`, RLS attiva e accesso solo dal backend.
   locale e i test golden passano.
 
 ### F4 — Regia v1: porting della coda, a parità
+Vale per ogni tenant. Chiari è il primo caso, non un flusso a parte.
+Il backend assegna i lavori (un solo lavoro per pratica, un solo Chrome, il modello locale
+solo a Mac libero), tiene il lease e dopo tre tentativi apre una Questione. L’esito è quello
+della coda: `DAL_PERITO`, `STIMA_DA_RIVEDERE`, `CHIUSURA_DA_RIVEDERE`, e lo stato PerX diventa
+`da_revisionare` se il perito non ha scelto lui lo stato. Il Mac prende i lavori con
+`RegiaWorker`. La settimana di paragone con la coda locale non è ancora stata misurata.
 - Job, lease e arbitraggio delle risorse sul backend; worker Swift nell'app e nell'helper.
 - Fasi di §3.2 con gli stessi esiti di `coda.py`; testi con PDFKit e Vision.
 - L2 ancora su Ollama, come oggi, per confrontare a parità.
@@ -345,6 +352,11 @@ Tutte le tabelle nuove con `tenant_id`, RLS attiva e accesso solo dal backend.
   segreteria).
 
 ### F5 — Livelli di modello e Apple Intelligence
+Come F4: è il modo in cui lavora PerX, per ogni tenant.
+Ogni compito ha un livello di partenza e una scala (`regia_scala`). Si sale se il controllo L0
+non passa. Le regole attive del regolario entrano nel prompt (`GET /api/v1/regia/compiti/{compito}`).
+Il worker registra livello e durata. L1–L3 non chiamano ancora il modello: il lavoro resta in coda
+e non diventa Questione solo perché Apple Intelligence o Ollama non hanno risposto.
 - Astrazione sul protocollo `LanguageModel` (prototipo prima: executor per Ollama e Claude).
 - Router per tipo di compito con livello di partenza e condizioni di salita, configurato in
   `ai_routing_policy` per tenant.
@@ -446,4 +458,4 @@ F4; F7 può anticipare la parte di autenticazione e URL configurabile.
 - Tempo tra l'arrivo di una mail e l'aggiornamento della pratica.
 
 ---
-Ultimo aggiornamento: 2026-11-26 (avvio: profilo Chiari, dati Regia, import in prova a vuoto)
+Ultimo aggiornamento: 2026-11-27 (watch Gmail sull’API; F4 e F5 per ogni tenant)

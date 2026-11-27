@@ -26,6 +26,13 @@ class SupabaseBlob:
     mime_type: Optional[str] = None
 
 
+def _raise_for_status(resp: httpx.Response, object_path: str) -> None:
+    if not resp.is_error:
+        return
+    detail = " ".join((resp.text or "").split())[:500]
+    raise RuntimeError(f"Supabase Storage rejected {object_path} ({resp.status_code}): {detail}")
+
+
 class SupabaseStorageService:
     @staticmethod
     def _base_url() -> str:
@@ -84,7 +91,7 @@ class SupabaseStorageService:
                 headers={**cls._headers(), "Content-Type": mime, "x-upsert": "true"},
                 content=content,
             )
-            resp.raise_for_status()
+            _raise_for_status(resp, object_path)
 
         return SupabaseBlob(
             bucket=bucket,
@@ -102,7 +109,7 @@ class SupabaseStorageService:
                 f"{cls._base_url()}/object/{bucket}/{object_path}",
                 headers=cls._headers(),
             )
-            resp.raise_for_status()
+            _raise_for_status(resp, object_path)
             return resp.content
 
     @classmethod
@@ -116,7 +123,7 @@ class SupabaseStorageService:
                 headers={**cls._headers(), "Content-Type": "application/json"},
                 json={},
             )
-            resp.raise_for_status()
+            _raise_for_status(resp, object_path)
             data = resp.json()
 
         signed_url = data.get("url") or data.get("signedURL") or data.get("signedUrl") or ""
@@ -138,7 +145,7 @@ class SupabaseStorageService:
                 headers={**cls._headers(), "Content-Type": "application/json"},
                 json={"expiresIn": expires_in_seconds},
             )
-            resp.raise_for_status()
+            _raise_for_status(resp, object_path)
             data = resp.json()
 
         signed_url = data.get("signedURL") or data.get("signedUrl") or ""

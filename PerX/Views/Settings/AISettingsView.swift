@@ -25,6 +25,7 @@ struct AISettingsView: View {
     
     @StateObject private var aiManager = AIManager.shared
     @StateObject private var resourceMonitor = ResourceMonitor.shared
+    @State private var monitoringResources = false
     
     @FetchRequest(
         sortDescriptors: [NSSortDescriptor(keyPath: \AIKnowledgeDocument.ordine, ascending: true)],
@@ -417,6 +418,16 @@ struct AISettingsView: View {
         .sheet(isPresented: $showKnowledgeEditor) {
             knowledgeEditor
                 .frame(width: 600, height: 500)
+        }
+        .onAppear {
+            guard !monitoringResources else { return }
+            monitoringResources = true
+            resourceMonitor.retainMonitoring()
+        }
+        .onDisappear {
+            guard monitoringResources else { return }
+            monitoringResources = false
+            resourceMonitor.releaseMonitoring()
         }
     }
     

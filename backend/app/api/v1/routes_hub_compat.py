@@ -28,7 +28,7 @@ from app.models.document import Document
 from app.models.document_version import DocumentVersion
 from app.models.email import Email, EmailClaimLink
 from app.models.user import User
-from app.services.gmail_sync_service import GmailSyncService, REF_RE, _link_claims
+from app.services.gmail_sync_service import GmailSyncService, attachment_notice_fields, link_email_to_claims
 from app.services.resend_email_service import ResendEmailMessage, ResendEmailService
 from app.services.email_routing_service import EmailRoutingService
 from app.services.vault_storage_service import VaultStorageService
@@ -113,14 +113,18 @@ def _sha256(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
 
 
-async def _resolve_claim_or_404(db: AsyncSession, current_user: User, claim_ref: str) -> Claim:
+async def _find_claim(db: AsyncSession, current_user: User, claim_ref: str) -> Claim | None:
     result = await db.execute(
         select(Claim).where(
             Claim.tenant_id == current_user.tenant_id,
             (Claim.id == claim_ref) | (Claim.external_ref == claim_ref),
         ).order_by(Claim.updated_at.desc(), Claim.created_at.desc())
     )
-    claim = result.scalars().first()
+    return result.scalars().first()
+
+
+async def _resolve_claim_or_404(db: AsyncSession, current_user: User, claim_ref: str) -> Claim:
+    claim = await _find_claim(db, current_user, claim_ref)
     if not claim:
         raise HTTPException(status_code=404, detail="Claim not found")
     return claim
@@ -347,7 +351,9 @@ async def list_vault_files(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    claim = await _resolve_claim_or_404(db, current_user, sinistro_ref)
+    claim = await _find_claim(db, current_user, sinistro_ref)
+    if claim is None:
+        return []
     claim_ref = _claim_ref(claim)
     documents = await _vault_documents(db, current_user, claim)
     return [_document_to_vault_dto(document, claim_ref) for document in documents]
@@ -726,6 +732,7 @@ async def compat_list_emails(
             "direction": metadata.get("direction") or ("out" if email.status.startswith("outbound") or email.status == "scheduled" else "in"),
             "mailbox": email.mailbox_id,
             "isRead": metadata.get("isRead", True),
+            **attachment_notice_fields(metadata),
         })
     return items
 
@@ -781,6 +788,7 @@ async def compat_email_detail(
         "category": email.status,
         "sinistroRef": metadata.get("sinistroRef"),
         "direction": metadata.get("direction") or ("out" if email.status.startswith("outbound") or email.status == "scheduled" else "in"),
+        **attachment_notice_fields(metadata),
     }
 
 
@@ -899,7 +907,6 @@ async def compat_send_email(
         success, resend_message_id, error_message = await _send_email_via_resend(payload, current_user)
         from_address = _resolve_resend_from_address(payload, current_user)
         provider = "resend"
-    found_refs = REF_RE.findall(f"{payload.subject}\n{payload.body}")
     metadata = {
         "accountId": payload.accountId,
         "to": payload.to,
@@ -908,7 +915,7 @@ async def compat_send_email(
         "direction": "out",
         "compat": True,
         "provider": provider,
-        "sinistroRef": found_refs[0] if found_refs else None,
+        "sinistroRef": None,
         "isRead": True,
         "resendMessageId": resend_message_id if provider == "resend" else None,
         "gmailId": gmail_id,
@@ -932,9 +939,12 @@ async def compat_send_email(
         provider_id=gmail_id or resend_message_id or provider,
     )
     db.add(email)
-    if success and found_refs and current_user.tenant_id:
+    if success and current_user.tenant_id:
         await db.flush()
-        await _link_claims(db, current_user.tenant_id, email, found_refs)
+        found = await link_email_to_claims(db, current_user.tenant_id, email, payload.subject, payload.body)
+        metadata["sinistroRef"] = found.sinistro_ref
+        metadata["match"] = found.source
+        email.raw_headers = json.dumps(metadata)
     await db.commit()
     return {"success": success, "message_id": resend_message_id, "error": error_message}
 
