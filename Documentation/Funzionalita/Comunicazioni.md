@@ -54,7 +54,9 @@ altrimenti Resend. Il rinnovo del token sta sul server (`GOOGLE_OAUTH_CLIENT_ID`
 Il watch viene registrato prima del backfill; un singolo allegato rifiutato da Storage viene
 registrato nei log ma non blocca l’import della mail né il rinnovo del watch.
 Il webhook Pub/Sub salva inoltre l’evento padre prima di accodare il relativo job, rispettando la
-chiave esterna anche senza una relazione ORM esplicita tra i due modelli.
+chiave esterna anche senza una relazione ORM esplicita tra i due modelli. I retry concorrenti
+della stessa casella vengono serializzati con un lock sul record `Mailbox`; l’idempotenza viene
+ricontrollata dopo il lock, evitando import simultanei della stessa email.
 
 ## Chat assicurato → team interno
 

@@ -330,23 +330,26 @@ class GmailSyncService:
     @staticmethod
     async def accept_push(db: AsyncSession, note: dict[str, str]) -> str:
         message_id = note["message_id"] or f"gmail-history:{note['email']}:{note['history_id']}"
+        result = await db.execute(
+            select(Mailbox).where(
+                Mailbox.provider == "gmail",
+                func.lower(Mailbox.email_address) == note["email"],
+                Mailbox.active == "true",
+            ).with_for_update()
+        )
+        mailboxes = list(result.scalars().all())
+        if not mailboxes:
+            return "ignored"
+        mailbox = mailboxes[0]
+        # Pub/Sub can deliver the same notification concurrently while a prior
+        # attempt is still running. Locking the mailbox serializes its Gmail
+        # history import; re-check idempotency only after acquiring that lock.
         existing = await db.execute(
             select(InboundEmailEvent).where(InboundEmailEvent.provider_event_id == message_id)
         )
         event = existing.scalar_one_or_none()
         if event is not None and event.status == "processed":
             return "duplicate"
-        result = await db.execute(
-            select(Mailbox).where(
-                Mailbox.provider == "gmail",
-                func.lower(Mailbox.email_address) == note["email"],
-                Mailbox.active == "true",
-            )
-        )
-        mailboxes = list(result.scalars().all())
-        if not mailboxes:
-            return "ignored"
-        mailbox = mailboxes[0]
         if event is None:
             event = InboundEmailEvent(
                 id=str(uuid.uuid4()),
