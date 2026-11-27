@@ -244,6 +244,10 @@ class GmailSyncService:
             if not mailbox.gmail_history_id:
                 profile = await _gmail(client, access, "GET", "/profile")
                 mailbox.gmail_history_id = str(profile.get("historyId") or "")
+            try:
+                await _ensure_watch(client, access, mailbox)
+            except Exception:
+                logger.exception("Watch Gmail non rinnovato per %s", mailbox.email_address)
             if not settings_json.get("backfill_done"):
                 for label in ("INBOX", "SENT"):
                     for _ in range(5):
@@ -262,10 +266,6 @@ class GmailSyncService:
                 mailbox.gmail_history_id = None
                 settings_json["backfill_done"] = False
                 settings_json["backfill"] = {}
-            try:
-                await _ensure_watch(client, access, mailbox)
-            except Exception:
-                logger.exception("Watch Gmail non rinnovato per %s", mailbox.email_address)
         settings_json["last_sync_at"] = datetime.now(timezone.utc).isoformat()
         settings_json.pop("last_error", None)
         mailbox.settings_json = settings_json
@@ -714,8 +714,22 @@ async def _store_attachments(
         if not content or len(content) > MAX_ATTACHMENT_BYTES:
             continue
         safe_name = os.path.basename(item["filename"]) or "allegato"
+        safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", safe_name).strip("._") or "allegato"
         path = f"gmail/{mailbox.tenant_id}/{gmail_id}/{uuid.uuid4().hex}-{safe_name}"
-        blob = await SupabaseStorageService.upload(object_path=path, content=content, mime_type=item["mime"])
+        try:
+            blob = await SupabaseStorageService.upload(
+                object_path=path,
+                content=content,
+                mime_type=item["mime"],
+            )
+        except Exception:
+            logger.exception(
+                "Allegato Gmail non salvato su Storage: mailbox=%s message=%s file=%s",
+                mailbox.email_address,
+                gmail_id,
+                safe_name,
+            )
+            continue
         db.add(
             Attachment(
                 id=str(uuid.uuid4()),

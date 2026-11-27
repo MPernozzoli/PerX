@@ -42,13 +42,17 @@ Provider **Resend**: invio via `RESEND_API_KEY`/`RESEND_DEFAULT_FROM_EMAIL`, sch
 `backend/docs/resend_supabase_inbound_pipeline.md` (non ancora incorporata in questo vault — da
 fare se questa pipeline viene toccata).
 
-Lato app c’è un solo polling, `HubEmailService`, verso `GET /api/v1/hub/emails`, con il token dell’accesso.
+Lato app c’è un solo polling, `HubEmailService`, verso `GET /api/v1/hub/emails`, con il token e l’email dell’account connesso. Al cambio account la lista e i thread in memoria si svuotano: non resta la posta dell’account precedente. La cache locale delle mail non viene più ridisegnata sopra l’elenco.
 Gmail sul Mac e `MailManager` non scaricano più la posta. Il server, all’accesso Google, recupera
-la posta in arrivo e inviata e poi le mail nuove; gli allegati fino a 15 MB finiscono su Supabase
-Storage. L’abbinamento alla pratica è in cascata: prima il riferimento `26-602322`, poi il numero
-sinistro compagnia, poi il nome dell’assicurato. L’invio dall’app usa Gmail se la casella è
-collegata, altrimenti Resend. Il rinnovo del token sta sul server (`GOOGLE_OAUTH_CLIENT_ID` /
-`GOOGLE_OAUTH_CLIENT_SECRET`). La push Pub/Sub descritta sotto resta il passo successivo.
+la posta in arrivo e inviata e poi le mail nuove. Se `GMAIL_PUBSUB_TOPIC` è impostato, Gmail
+avvisa `POST /api/v1/emails/gmail/push` e lo scarico parte subito; altrimenti il server ricontrolla
+ogni 90 secondi. Gli allegati fino a 15 MB finiscono su Supabase Storage. L’abbinamento alla pratica
+è in cascata: prima il riferimento `26-602322`, poi il numero sinistro compagnia, poi il nome
+dell’assicurato. L’invio dall’app usa Gmail se la casella è collegata, con la firma della casella,
+altrimenti Resend. Il rinnovo del token sta sul server (`GOOGLE_OAUTH_CLIENT_ID` /
+`GOOGLE_OAUTH_CLIENT_SECRET`). Il Mac interroga il backend ogni 60 secondi.
+Il watch viene registrato prima del backfill; un singolo allegato rifiutato da Storage viene
+registrato nei log ma non blocca l’import della mail né il rinnovo del watch.
 
 ## Chat assicurato → team interno
 
@@ -72,4 +76,4 @@ Questo triage è responsabilità dell'agente AI applicativo **Elettra** — vedi
 route `routes_devices.py` — notifiche push verso app native (APNs) e web.
 
 ---
-Ultimo aggiornamento: 2026-11-27 (posta Gmail sincronizzata dal backend per il tenant Chiari)
+Ultimo aggiornamento: 2026-11-27 (watch Gmail e push sull’API)
