@@ -58,6 +58,7 @@ class GoogleAuthService: ObservableObject {
                let user = await fetchBackendUserInfo(accessToken: accessToken, baseURL: baseURL) {
                 hasCompletedInitialCheck = true
                 persistAuthenticatedUser(email: user.email, fullName: user.full_name)
+                AccountClaimScope.remember(tenantId: user.tenant_id)
                 return AuthCheckResult(
                     authenticated: true,
                     email: user.email,
@@ -70,6 +71,7 @@ class GoogleAuthService: ObservableObject {
                let user = await fetchBackendUserInfo(accessToken: accessToken, baseURL: baseURL) {
                 hasCompletedInitialCheck = true
                 persistAuthenticatedUser(email: user.email, fullName: user.full_name)
+                AccountClaimScope.remember(tenantId: user.tenant_id)
                 return AuthCheckResult(
                     authenticated: true,
                     email: user.email,
@@ -100,6 +102,9 @@ class GoogleAuthService: ObservableObject {
             self.userName = userName
             self.isAuthenticated = authenticated
             self.needsReAuthentication = needsReAuth
+            if authenticated, let email, !email.isEmpty {
+                AccountClaimSync.shared.refresh(email: email)
+            }
         }
     }
 
@@ -292,6 +297,7 @@ class GoogleAuthService: ObservableObject {
         UserDefaults.standard.removeObject(forKey: "last_google_user_id")
         UserDefaults.standard.removeObject(forKey: "current_user_email")
         UserDefaults.standard.removeObject(forKey: "userEmail")
+        AccountClaimScope.clear()
         hasCompletedInitialCheck = false
         
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
@@ -299,6 +305,7 @@ class GoogleAuthService: ObservableObject {
             self.isAuthenticated = false
             self.userEmail = nil
             self.userName = nil
+            NotificationCenter.default.post(name: .accountClaimScopeChanged, object: nil)
             NotificationCenter.default.post(name: .init("GoogleAuthStateChanged"), object: nil, userInfo: ["signedOut": true])
         }
     }
@@ -345,10 +352,12 @@ class GoogleAuthService: ObservableObject {
         HubConfigService.shared.cloudAPIEmail = user.email.lowercased()
         let displayName = Self.resolveDisplayName(email: user.email, fullName: user.full_name)
         persistAuthenticatedUser(email: user.email, fullName: user.full_name)
+        AccountClaimScope.remember(tenantId: user.tenant_id)
         userEmail = user.email
         userName = displayName
         isAuthenticated = true
         needsReAuthentication = false
+        AccountClaimSync.shared.refresh(email: user.email)
         NotificationCenter.default.post(name: .init("GoogleAuthStateChanged"), object: nil, userInfo: ["signedOut": false])
     }
 
@@ -569,6 +578,7 @@ class GoogleAuthService: ObservableObject {
 
         let displayName = Self.resolveDisplayName(email: user.email, fullName: user.full_name)
         persistAuthenticatedUser(email: user.email, fullName: user.full_name)
+        AccountClaimScope.remember(tenantId: user.tenant_id)
 
         if persistAccount {
             AccountManager.shared.saveAccount(email: user.email, displayName: displayName, password: normalizedPassword)
@@ -580,6 +590,7 @@ class GoogleAuthService: ObservableObject {
             self.userName = displayName
             self.isAuthenticated = true
             self.needsReAuthentication = false
+            AccountClaimSync.shared.refresh(email: user.email)
             NotificationCenter.default.post(name: .init("GoogleAuthStateChanged"), object: nil, userInfo: ["signedOut": false])
         }
 

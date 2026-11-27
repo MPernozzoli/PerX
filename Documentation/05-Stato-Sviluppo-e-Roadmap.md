@@ -91,7 +91,8 @@ Vedi [[Login-Unificato-SSO]] per il piano completo (5 fasi). Ad oggi:
   Atto sugli importi del motore; valore reale della partita e indennizzo virtuale delle
   coassicurazioni indirette nel Quadro contrattuale.
 - Core Data versionato (`PerX v2`), migrazione leggera verificata su uno store di prova; backup
-  dello store al posto della cancellazione.
+  dello store al posto della cancellazione. Dal 2026-11-27 il modello corrente è `PerX v3`,
+  con `tenantId` sul sinistro: la lista mostra solo l'utente connesso e il suo tenant.
 - 91 verifiche del motore superate in esecuzione standalone (`swiftc`) con i casi di
   `test_stima.py`; suite `StimaEngineTests` compilata nel target `PerXTests`.
 

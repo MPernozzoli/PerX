@@ -118,9 +118,11 @@ final class SinistriViewModel: ObservableObject {
         let isAdvancedSearch = !searchInFilteredOnly
         let hasSearchText = !debouncedSearchText.isEmpty
         let hasSelectedStates = !selectedStates.isEmpty
-        
-        // Step 0: Filtro assegnatario (utente)
-        var filtered = applyAssigneeFilter(to: allSinistri, isAdvancedSearch: isAdvancedSearch)
+
+        var filtered = allSinistri.filter {
+            AccountClaimScope.includes($0, email: GoogleAuthService.shared.userEmail)
+        }
+        filtered = applyAssigneeFilter(to: filtered, isAdvancedSearch: isAdvancedSearch)
         
         // Step 0.5: Filtro recenti (anno corrente e anno-1)
         if recentOnly && !isAdvancedSearch {

@@ -29,8 +29,12 @@ final class PersistenceController {
     init(inMemory: Bool = false) {
         container = NSPersistentContainer(name: "PerX")
         
-        if inMemory {
-            container.persistentStoreDescriptions.first?.url = URL(fileURLWithPath: "/dev/null")
+        if let description = container.persistentStoreDescriptions.first {
+            description.shouldMigrateStoreAutomatically = true
+            description.shouldInferMappingModelAutomatically = true
+            if inMemory {
+                description.url = URL(fileURLWithPath: "/dev/null")
+            }
         }
         
         container.loadPersistentStores { description, error in

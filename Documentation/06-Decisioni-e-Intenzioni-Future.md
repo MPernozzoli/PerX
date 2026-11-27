@@ -22,6 +22,25 @@ Motivazione: ...
 
 ---
 
+## 2026-11-27 — Utente e tenant sempre separati
+Contesto: la prima chiusura mostrava i sinistri dell'altro account solo quando si entrava con
+Chiari. La divisione non è una regola di quel tenant.
+Decisione: vale per ogni accesso. La lista Sinistri e la dashboard mostrano solo le pratiche
+dell'utente connesso e del suo tenant. All'ingresso si scaricano le pratiche di quel tenant e si
+segna `tenantId` sulla copia locale. Senza accesso non si mostra l'archivio di un altro utente.
+Sul server, se non si indica un tenant, anche l'amministratore di piattaforma resta nel proprio.
+Motivazione: due studi sulla stessa macchina non possono mescolare le pratiche.
+
+## 2026-11-27 — La sessione Chiari non mostra i sinistri dell'altro account
+Contesto: sul Mac la lista Sinistri legge l'archivio locale, condiviso fra gli account aperti
+su quella macchina. Entrando con `massimo.pernozzoli@chiarisrl.it` comparivano le pratiche
+dell'altro tenant.
+Decisione: con l'account Chiari la lista mostra solo le pratiche di quella mail. Le pratiche
+Chiari arrivano dal server e restano segnate con quella mail. L'altro account non le vede.
+Il perito può leggere le impostazioni del proprio tenant: prima l'endpoint le riservava
+all'amministratore, quindi l'app restava sul profilo dello studio precedente.
+Motivazione: un tenant con un solo perito non deve vedere i sinistri di un altro studio.
+
 ## 2026-11-27 — Abbinamento mail al sinistro: riferimento, numero compagnia, nome
 Contesto: la sincronizzazione Gmail collegava la mail solo se nel testo c'era il riferimento
 `YY-NNNNNN`.

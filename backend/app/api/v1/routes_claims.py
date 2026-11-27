@@ -67,7 +67,7 @@ async def list_claims(
     """List claims with filters and pagination"""
     effective_tenant_id = current_user.tenant_id
     if current_user.is_platform_admin:
-        effective_tenant_id = tenant_id
+        effective_tenant_id = tenant_id or current_user.tenant_id
     elif tenant_id and tenant_id != current_user.tenant_id:
         raise HTTPException(status_code=403, detail="Tenant access denied")
 
@@ -93,7 +93,7 @@ async def get_claim(
     """Get a claim by ID"""
     effective_tenant_id = current_user.tenant_id
     if current_user.is_platform_admin:
-        effective_tenant_id = tenant_id
+        effective_tenant_id = tenant_id or current_user.tenant_id
     elif tenant_id and tenant_id != current_user.tenant_id:
         raise HTTPException(status_code=403, detail="Tenant access denied")
 
@@ -324,7 +324,7 @@ async def get_claim_events(
     
     effective_tenant_id = current_user.tenant_id
     if current_user.is_platform_admin:
-        effective_tenant_id = tenant_id
+        effective_tenant_id = tenant_id or current_user.tenant_id
     elif tenant_id and tenant_id != current_user.tenant_id:
         raise HTTPException(status_code=403, detail="Tenant access denied")
 

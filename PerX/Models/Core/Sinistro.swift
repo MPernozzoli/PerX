@@ -139,6 +139,7 @@ public class Sinistro: NSManagedObject, Identifiable {
     
     // MARK: - Assegnazione / owner (multi-utente)
     @NSManaged public var ownerEmail: String?
+    @NSManaged public var tenantId: String?
     @NSManaged public var assignedToUserEmail: String?
     @NSManaged public var assignedToUserName: String?
     

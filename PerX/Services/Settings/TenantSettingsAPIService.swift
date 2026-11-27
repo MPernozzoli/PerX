@@ -242,6 +242,7 @@ final class TenantSettingsAPIService: ObservableObject {
             lastSyncError = nil
 
             let mapped = map(dto)
+            AccountClaimScope.remember(tenantId: dto.tenant_id)
             TenantMailSettingsService.shared.settings = mapped
             return mapped
         } catch {
