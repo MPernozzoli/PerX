@@ -9,6 +9,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from app.domain.chiari_stima import hash_calcolo, hash_economico, liquidabile_di
+from app.domain.chiari_states import perx_slug
 
 
 def _decimal(value: Any) -> Decimal | None:
@@ -46,7 +47,8 @@ def map_claim(tenant_id: str, raw: dict) -> dict[str, Any]:
         "external_ref": riferimento,
         "numero_sinistro": _text(raw.get("numero")) or _text(raw.get("numero_sinistro")) or _text(raw.get("n_compagnia")),
         "compagnia": _text(raw.get("compagnia")) or "Vittoria",
-        "stato_corrente": stato,
+        "stato_corrente": perx_slug(stato),
+        "chiari_stato": stato,
         "nome_assicurato": _text(nome),
         "numero_polizza": _text(raw.get("polizza")) or _text(raw.get("numero_polizza")) or _text(raw.get("polizza_n")),
         "agenzia": _text(raw.get("agenzia")),
@@ -69,6 +71,7 @@ def map_claim(tenant_id: str, raw: dict) -> dict[str, Any]:
             "passages": raw.get("passaggi") if isinstance(raw.get("passaggi"), (dict, list)) else None,
             "checks": raw.get("controlli") if isinstance(raw.get("controlli"), (dict, list)) else None,
             "reclaim_model": _text(raw.get("modello_reclaim")),
+            "chiari_state": stato,
         },
         "events": _events(raw),
         "revisions": _revisions(raw),

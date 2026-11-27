@@ -157,6 +157,7 @@ enum BackendStatoMapping {
         case "da_revisionare":               return .daRevisionare
         case "da_chiudere_a_sistema":       return .daChiudereASistema
         case "chiusa":                       return .chiusa
+        case "revocata":                     return .revocata
         case "richiesta_autorizzazione":    return .richiestaAutorizzazione
         case "supervisione_non_concordata": return .supervisioneNonConcordata
         default:                              return nil

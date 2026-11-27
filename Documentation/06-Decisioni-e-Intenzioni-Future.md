@@ -22,6 +22,19 @@ Motivazione: ...
 
 ---
 
+## 2026-11-27 — Stati Chiari rimappati sugli stati PerX
+Contesto: le automazioni, i filtri e i contatori leggono gli stati PerX
+(`atto_inviato`, `chiusa`, `in_attesa_documentale`, …). Le pratiche Chiari avevano codici propri.
+Decisione: `stato_corrente` diventa lo slug PerX. Il codice Chiari resta in
+`claim_workflows.manual_state_code`. In app lo stato si vede con l’etichetta PerX
+(Atto inviato, Chiusa, Revocata, …).
+Corrispondenza: attesa sopralluogo → sopralluogo; da lavorare → istruzione;
+in lavorazione → in gestione; da contattare → primo contatto; attesa documenti →
+in attesa documentale; decide il perito, stima da rivedere e chiusura da rivedere →
+da revisionare; atto pronto → atto da inviare; atto inviato → atto inviato;
+da chiudere e in chiusura → da chiudere a sistema; chiuso → chiusa; revocato → revocata.
+Motivazione: senza questa traduzione i sistemi esistenti non riconoscono la pratica.
+
 ## 2026-11-27 — I servizi partono solo se l'account li ha
 Contesto: nei log, Chiari avviava i trigger dello studio (follow-up atto e documenti),
 il polling WhatsApp di un account staccato e la sync mail con un token non suo (`unauthorized`).

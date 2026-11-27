@@ -120,7 +120,9 @@ def test_dated_rules_and_claim_mapping_keep_counts_without_names():
     )
     summary = summarize([mapped])
     assert summary["pratiche"] == 1
-    assert summary["per_stato"]["CHIUSO"] == 1
+    assert summary["per_stato"]["chiusa"] == 1
+    assert mapped["stato_corrente"] == "chiusa"
+    assert mapped["chiari_stato"] == "CHIUSO"
     assert summary["revisioni"] == 1
     assert mapped["revisions"][0]["approved"] is True
     assert mapped["liquidato"] == Decimal("10")

@@ -115,3 +115,25 @@ CHIARI_STATES: tuple[dict, ...] = (
         "sort_order": 140,
     },
 )
+
+# Stato Chiari → slug già usato da PerX (automazioni, filtri, contatori).
+CHIARI_TO_PERX = {
+    "ATTESA_SOPRALLUOGO": "sopralluogo",
+    "DA_LAVORARE": "istruzione",
+    "IN_LAVORAZIONE": "in_gestione",
+    "DA_CONTATTARE": "primo_contatto",
+    "IN_ATTESA_DOC": "in_attesa_documentale",
+    "DAL_PERITO": "da_revisionare",
+    "ATTO_PRONTO": "atto_da_inviare",
+    "ATTO_INVIATO": "atto_inviato",
+    "STIMA_DA_RIVEDERE": "da_revisionare",
+    "DA_CHIUDERE": "da_chiudere_a_sistema",
+    "IN_CHIUSURA": "da_chiudere_a_sistema",
+    "CHIUSURA_DA_RIVEDERE": "da_revisionare",
+    "CHIUSO": "chiusa",
+    "REVOCATO": "revocata",
+}
+
+
+def perx_slug(chiari_code: str) -> str:
+    return CHIARI_TO_PERX.get(chiari_code, "istruzione")

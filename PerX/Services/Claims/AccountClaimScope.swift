@@ -159,7 +159,7 @@ final class AccountClaimSync {
         sinistro.nomeCompagnia = item.compagnia
         sinistro.agenzia = item.agenzia
         sinistro.numeroPolizza = item.numeroPolizza
-        sinistro.stato = item.stato
+        sinistro.stato = BackendStatoMapping.statoSinistro(forCloudSlug: item.stato)?.descrizione ?? item.stato
         if let data = item.dataSinistro {
             sinistro.dataSinistro = data
         }

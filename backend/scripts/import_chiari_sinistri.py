@@ -76,7 +76,7 @@ async def apply(mapped: list[dict], tenant_id: str) -> None:
                 workflow["closed_on"], workflow["outcome"], workflow["expected_close_on"],
                 json.dumps(workflow["passages"]) if workflow["passages"] is not None else None,
                 json.dumps(workflow["checks"]) if workflow["checks"] is not None else None,
-                workflow["reclaim_model"],
+                workflow["reclaim_model"], workflow["chiari_state"],
             ))
             for index, event in enumerate(claim["events"]):
                 events.append((
@@ -148,9 +148,9 @@ async def apply(mapped: list[dict], tenant_id: str) -> None:
                 INSERT INTO claim_workflows (
                     claim_id, tenant_id, salesforce_id, company_claim_number, ispettorato,
                     liquidatore, salesforce_status, closed_on, outcome, expected_close_on,
-                    passages_json, checks_json, reclaim_model
+                    passages_json, checks_json, reclaim_model, manual_state_code
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::json, $12::json, $13)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::json, $12::json, $13, $14)
                 ON CONFLICT (claim_id) DO UPDATE SET
                     salesforce_id = EXCLUDED.salesforce_id,
                     salesforce_status = EXCLUDED.salesforce_status,
@@ -158,7 +158,8 @@ async def apply(mapped: list[dict], tenant_id: str) -> None:
                     outcome = EXCLUDED.outcome,
                     reclaim_model = EXCLUDED.reclaim_model,
                     passages_json = EXCLUDED.passages_json,
-                    checks_json = EXCLUDED.checks_json
+                    checks_json = EXCLUDED.checks_json,
+                    manual_state_code = EXCLUDED.manual_state_code
                 """,
                 workflows,
             )
