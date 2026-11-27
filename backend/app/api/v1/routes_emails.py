@@ -67,8 +67,12 @@ async def gmail_push(
     try:
         outcome = await GmailSyncService.accept_push(db, note)
     except Exception:
-        logger.exception("Push Gmail non applicato")
-        raise HTTPException(status_code=500, detail="Sincronizzazione non riuscita") from None
+        await db.rollback()
+        # A non-2xx response makes Pub/Sub redeliver immediately and can turn a
+        # transient Gmail/DB failure into a retry storm. The normal mailbox poll
+        # remains the recovery path, so acknowledge the authenticated push.
+        logger.exception("Push Gmail rinviato al polling")
+        return {"status": "deferred"}
     return {"status": outcome}
 
 

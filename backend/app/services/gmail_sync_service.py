@@ -516,8 +516,16 @@ async def _import_page(
     listing = await _gmail(client, access, "GET", "/messages", params=params)
     imported = 0
     for item in listing.get("messages") or []:
-        if await _import_message(db, client, mailbox, access, item.get("id") or "", claim_keys):
-            imported += 1
+        gmail_id = item.get("id") or ""
+        try:
+            if await _import_message(db, client, mailbox, access, gmail_id, claim_keys):
+                imported += 1
+        except RuntimeError:
+            logger.exception(
+                "Messaggio Gmail saltato durante il backfill: mailbox=%s message=%s",
+                mailbox.email_address,
+                gmail_id,
+            )
     backfill[label] = listing.get("nextPageToken") or "done"
     return imported
 
@@ -545,8 +553,17 @@ async def _import_history(
     for item in history.get("history") or []:
         for added in item.get("messagesAdded") or []:
             message = (added.get("message") or {}).get("id")
-            if message and await _import_message(db, client, mailbox, access, message, claim_keys):
-                imported += 1
+            if not message:
+                continue
+            try:
+                if await _import_message(db, client, mailbox, access, message, claim_keys):
+                    imported += 1
+            except RuntimeError:
+                logger.exception(
+                    "Messaggio Gmail saltato dalla history: mailbox=%s message=%s",
+                    mailbox.email_address,
+                    message,
+                )
     if history.get("historyId"):
         mailbox.gmail_history_id = str(history["historyId"])
     return imported

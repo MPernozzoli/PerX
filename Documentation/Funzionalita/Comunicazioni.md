@@ -58,6 +58,10 @@ Il webhook Pub/Sub salva inoltre l’evento padre prima di accodare il relativo 
 chiave esterna anche senza una relazione ORM esplicita tra i due modelli. I retry concorrenti
 della stessa casella vengono serializzati con un lock sul record `Mailbox`; l’idempotenza viene
 ricontrollata dopo il lock, evitando import simultanei della stessa email.
+Una push autenticata viene sempre confermata a Pub/Sub: se Gmail o il database falliscono in modo
+transitorio, il server registra `deferred` e lascia il recupero al polling ordinario, evitando una
+tempesta di retry. Un singolo messaggio Gmail non leggibile viene saltato senza perdere il resto
+della pagina o della history.
 
 ## Chat assicurato → team interno
 
