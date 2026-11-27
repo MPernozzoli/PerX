@@ -27,7 +27,7 @@ from app.models.document import Document
 from app.models.document_version import DocumentVersion
 from app.models.email import Email, EmailClaimLink
 from app.models.user import User
-from app.services.gmail_sync_service import GmailSyncService, link_email_to_claims
+from app.services.gmail_sync_service import GmailSyncService, attachment_notice_fields, link_email_to_claims
 from app.services.resend_email_service import ResendEmailMessage, ResendEmailService
 from app.services.email_routing_service import EmailRoutingService
 from app.services.vault_storage_service import VaultStorageService
@@ -112,14 +112,18 @@ def _sha256(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
 
 
-async def _resolve_claim_or_404(db: AsyncSession, current_user: User, claim_ref: str) -> Claim:
+async def _find_claim(db: AsyncSession, current_user: User, claim_ref: str) -> Claim | None:
     result = await db.execute(
         select(Claim).where(
             Claim.tenant_id == current_user.tenant_id,
             (Claim.id == claim_ref) | (Claim.external_ref == claim_ref),
         ).order_by(Claim.updated_at.desc(), Claim.created_at.desc())
     )
-    claim = result.scalars().first()
+    return result.scalars().first()
+
+
+async def _resolve_claim_or_404(db: AsyncSession, current_user: User, claim_ref: str) -> Claim:
+    claim = await _find_claim(db, current_user, claim_ref)
     if not claim:
         raise HTTPException(status_code=404, detail="Claim not found")
     return claim
@@ -346,7 +350,9 @@ async def list_vault_files(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    claim = await _resolve_claim_or_404(db, current_user, sinistro_ref)
+    claim = await _find_claim(db, current_user, sinistro_ref)
+    if claim is None:
+        return []
     claim_ref = _claim_ref(claim)
     documents = await _vault_documents(db, current_user, claim)
     return [_document_to_vault_dto(document, claim_ref) for document in documents]
@@ -716,6 +722,7 @@ async def compat_list_emails(
             "direction": metadata.get("direction") or ("out" if email.status.startswith("outbound") or email.status == "scheduled" else "in"),
             "mailbox": email.mailbox_id,
             "isRead": metadata.get("isRead", True),
+            **attachment_notice_fields(metadata),
         })
     return items
 
@@ -771,6 +778,7 @@ async def compat_email_detail(
         "category": email.status,
         "sinistroRef": metadata.get("sinistroRef"),
         "direction": metadata.get("direction") or ("out" if email.status.startswith("outbound") or email.status == "scheduled" else "in"),
+        **attachment_notice_fields(metadata),
     }
 
 

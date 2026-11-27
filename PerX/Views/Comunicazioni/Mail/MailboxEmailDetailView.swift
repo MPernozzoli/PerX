@@ -266,7 +266,7 @@ struct MailboxEmailDetailView: View {
     
     private func checkForCachedEmail() {
         if let cachedEmail = EmailRepository.shared.getEmail(byId: currentEmail.id) {
-            currentEmail = cachedEmail
+            currentEmail = cachedEmail.keepingAttachmentNotice(from: currentEmail)
         }
     }
     

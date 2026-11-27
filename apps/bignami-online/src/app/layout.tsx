@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import "../index.css";
 
 const siteUrl =
-  process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://bignamionline.pynkstudio.eu";
+  process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://bignami.perx.it";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),

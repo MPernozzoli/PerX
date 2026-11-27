@@ -23,6 +23,12 @@ enum AccountRuntime {
             WhatsAppService.shared.stop()
         }
 
+        if signedIn {
+            RegiaWorker.shared.start()
+        } else {
+            RegiaWorker.shared.stop()
+        }
+
         if signedIn && !access.singleOperator {
             PassiveTriggerService.shared.startMonitoring()
         } else {
@@ -32,6 +38,7 @@ enum AccountRuntime {
 
     static func stopAll() {
         MailViewModel.shared.stopMonitoring()
+        RegiaWorker.shared.stop()
         WhatsAppNotificationService.shared.stopPolling()
         WhatsAppService.shared.stop()
         PassiveTriggerService.shared.stopMonitoring()

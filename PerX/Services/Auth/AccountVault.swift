@@ -34,7 +34,7 @@ enum AccountVault {
                 print("[AccountVault] Apertura archivio non riuscita: \(error.localizedDescription)")
             }
         }
-        reloadMemory()
+        reloadMemory(for: normalized)
     }
 
     static func suspend() {
@@ -134,12 +134,13 @@ enum AccountVault {
         }
     }
 
-    private static func reloadMemory() {
+    private static func reloadMemory(for email: String) {
         ImportService.configure(with: PersistenceController.shared.viewContext)
         WorkScheduleManager.shared.replaceFromDefaults()
         SmartSchedulePreferences.shared.reloadForAccount()
         StudioNewsService.shared.reloadForAccount()
         NotificationCenter.default.post(name: .tenantSettingsChanged, object: nil)
         NotificationCenter.default.post(name: .accountClaimScopeChanged, object: nil)
+        MailViewModel.shared.bind(to: email)
     }
 }

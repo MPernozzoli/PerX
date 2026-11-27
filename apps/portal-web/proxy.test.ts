@@ -5,10 +5,12 @@ import { localFallback } from "./proxy";
 describe("product domain fallback routing", () => {
   it.each([
     ["perx.it", "insight_studio"],
+    ["app.perx.it", "insight_studio"],
     ["perx.pynkstudio.eu", "insight_studio"],
     ["app-perx.pynkstudio.eu", "insight_studio"],
     ["login-perx.pynkstudio.eu", "insight_studio"],
     ["catdispatcher.it", "catdispatcher"],
+    ["catdispatcher.perx.it", "catdispatcher"],
     ["catdispatcher.pynkstudio.eu", "catdispatcher"],
     ["bignami.perx.it", "bignami"],
     ["bignamionline.pynkstudio.eu", "bignami"],
@@ -22,5 +24,11 @@ describe("product domain fallback routing", () => {
       app: "insured_portal",
       tenant_domain: "randa.perx.it",
     });
+  });
+
+  it("marks product hosts as fixed routes, distinct from tenant portal hosts", () => {
+    expect(localFallback("catdispatcher.perx.it").app).not.toBe("insured_portal");
+    expect(localFallback("bignami.perx.it").app).not.toBe("insured_portal");
+    expect(localFallback("assicurati.randa.perx.it").app).toBe("insured_portal");
   });
 });

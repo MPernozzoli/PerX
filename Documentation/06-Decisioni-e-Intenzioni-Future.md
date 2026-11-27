@@ -22,6 +22,106 @@ Motivazione: ...
 
 ---
 
+## 2026-11-27 — Elenco file vault senza pratica: lista vuota
+Contesto: il Mac, a ogni sync, chiede `GET /api/v1/hub/vault/sinistri/{ref}/files` per ogni
+pratica locale ancora aperta. I riferimenti `2508006` sono l’anno 2025 a 7 cifre. Nel database
+ci sono solo i riferimenti `26-577242` … `26-611917` (e i demo `GEN-…`). La route rispondeva 404.
+Decisione: se la pratica non c’è, l’elenco file è `[]`. Upload, stato cartella e creazione
+restano 404: non si inventa una pratica.
+Motivazione: l’Hub storico elencava i file del riferimento e, se non ce n’erano, restituiva
+una lista vuota. Il 404 riempiva i log di Render a ogni ciclo.
+
+## 2026-11-27 — Allegato Gmail non scaricato: retry breve, mail visibile, avviso
+Contesto: se il download di un allegato falliva durante l’import Gmail (push Pub/Sub o polling,
+stesso `_import_message`), il file veniva solo loggato. La mail restava senza indicare che
+l’allegato non era in PerX.
+Decisione: tre tentativi, con attese di 0,4 e 0,8 secondi, senza una coda infinita. Se il file non
+arriva, la mail viene comunque salvata. Lo stato sta nel JSON già usato in `emails.raw_headers`
+(`attachmentsOnGmail`, `attachmentsNotice`, `failedAttachments`, `gmailWebUrl`), non in una
+tabella nuova. L’hub lo espone in elenco e dettaglio. L’app Mac mostra «Allegati non scaricati,
+apribili su Gmail.» Le sync successive riprendono le mail senza `attachmentsChecked`, a gruppi
+di 20, con lo stesso download. Dopo tre passaggi falliti il flag viene chiuso e l’avviso resta.
+Motivazione: un allegato mancante non deve far sparire la mail, e chi legge deve sapere che il
+file è ancora su Gmail.
+
+## 2026-11-27 — Bucket `perx-portal-uploads` privato, senza filtro MIME
+Contesto: gli upload degli allegati Gmail su Render fallivano con HTTP 400. In
+`storage.buckets` non c’era nessuna riga: il bucket era solo nel codice e nella doc.
+Decisione: bucket privato, `allowed_mime_types` vuoto, creato dalla migrazione
+`044_portal_uploads_bucket`. Stesso bucket per portale, videoperizia e posta
+(`gmail/{tenant}/{message}/…`).
+Motivazione: un allowlist MIME avrebbe rifiutato PDF e altri allegati di casella.
+Il 400 di Storage, quando il bucket manca, non dice “bucket not found” nello status HTTP.
+Le mail già importate senza file non vengono rilette dalla history: il sync le riprende
+a gruppi di 20 finché `attachmentsChecked` non è vero.
+
+## 2026-11-27 — Regia e scala dei modelli per ogni tenant
+Contesto: F4 e F5 non sono un flusso solo Chiari.
+Decisione: il backend assegna i lavori con lease, un Chrome alla volta e il modello locale solo
+a Mac libero. Tre tentativi falliti aprono una Questione e portano la pratica in
+`da_revisionare`, con l’esito della coda (`DAL_PERITO`, `STIMA_DA_RIVEDERE`,
+`CHIUSURA_DA_RIVEDERE`). La scala dei compiti sta in `regia_scala`; le regole attive entrano nel
+prompt. `RegiaWorker` sul Mac esegue L0 e rimette in coda i livelli superiori se il modello non
+c’è, senza consumare i tre tentativi. Apple Intelligence, Ollama e Claude non sono ancora
+chiamati dal worker.
+Motivazione: la coda e i livelli sono il modo di lavorare di PerX.
+
+## 2026-11-27 — Meno lavoro in background sull’app Mac
+Contesto: l’app risultava lenta. Più timer facevano la stessa cosa e alcuni ricalcoli
+giravano sul main thread a ogni salvataggio Core Data o a ogni cambio finestra.
+Decisione: un solo health check Hub, ogni 5 minuti, in `HubConfigService`. Il POST
+`/heartbeat` del backend compat non registra la presenza, quindi il client non lo invia
+più ogni 60 secondi. `HubModeService` legge quello stato e non chiama più `/health`.
+I thread mail non si ricaricano a ogni save Core Data: solo quando cambia la posta.
+`AIManager` e `ResourceMonitor` campionano solo con task in coda, oppure mentre è aperta
+la schermata impostazioni AI. Perdere il focus della finestra non ferma e non riavvia
+posta, WhatsApp e sync: quello resta legato a sleep e wake del Mac. `CPUThrottler` misura
+il delta di CPU fra due campioni e rilascia il buffer di `host_processor_info`.
+Motivazione: togliere lavoro duplicato e le pause finte, senza spegnere posta, chiamate
+in arrivo e sync delle cartelle.
+
+## 2026-11-27 — La posta in app segue l’account connesso
+Contesto: in Comunicazioni/Mail restavano i thread e la cache dell’account precedente.
+Decisione: al cambio account si svuota la lista, i thread e il polling ripartono sull’email
+connessa. La cache locale non sovrascrive più l’elenco arrivato dal server.
+Motivazione: ogni account porta la propria posta, come i sinistri.
+
+## 2026-11-27 — F4 e F5 sono il modo di lavorare di PerX, non solo di Chiari
+Contesto: il piano Regia nasce dal tenant Chiari. L’utente li indica come prioritari dopo la posta.
+Decisione: la Regia (coda, worker, lease) e i livelli di modello (F4 e F5) valgono per ogni tenant.
+Chiari è il primo caso, non un prodotto a parte. Si parte dopo F2.
+Motivazione: è così che PerX deve operare in generale.
+
+## 2026-11-27 — Stima Chiari già nel motore v2, polizze ancora fuori da Bignami
+Contesto: F3 chiedeva di portare `stima.py` e le polizze.
+Decisione: il motore deterministico è già in PerX (`ac30147`, profilo Chiari in
+`ChiariStimaWorkflow.swift`, commit `17fe7bb`). Le polizze Chiari non sono ancora nello schema
+`bignami`. Restano da fare i file dei dossier nel vault e i test golden sulle revisioni approvate.
+
+## 2026-11-27 — La push Gmail arriva sull’API, non su una Edge Function
+Contesto: il piano F2 copiava `resend-inbound` (Pub/Sub → Edge Function → tabelle inbound).
+Il token della casella e `history.list` stanno sul backend.
+Decisione: `users.watch` pubblica su un topic Pub/Sub; la subscription push chiama
+`POST /api/v1/emails/gmail/push` con un token OIDC. L’API verifica il token, registra
+`inbound_email_events` e `email_processing_jobs`, scarica la history e avvisa i client sullo
+stream `mail_updated`. Il polling ogni 90 secondi resta il recupero se la push manca o lo
+historyId è scaduto. Il watch si rinnova quando manca meno di un giorno alla scadenza.
+L’invio accoda la firma letta da `sendAs`. Dopo la push il server scarica subito la history; il
+Mac vede la mail al giro successivo verso il backend, entro 60 secondi. Senza
+`GMAIL_PUBSUB_TOPIC` il watch non parte e resta solo il polling.
+Motivazione: l’Edge Function non può leggere il token cifrato della casella.
+
+## 2026-11-27 — Tre stati Chiari corretti sul mapping PerX
+Contesto: la voce precedente mappava da lavorare su istruzione, da contattare su primo contatto
+e attesa sopralluogo sul solo slug sopralluogo.
+Decisione: attesa sopralluogo → `sopralluogo` con substato `da_eseguire` (in app «Sopralluogo fissato»:
+PerX non ha l’etichetta «sopralluogo da eseguire»; «fissato» è il rappresentante dello slug).
+Da lavorare → `da_gestire_tradizionale` con substato `da_eseguire` (in app «Perizia da eseguire»).
+In lavorazione → `in_gestione` con substato dinamico `da {agente}` (agente del lavoro in corso,
+altrimenti l’assegnato, altrimenti l’ultimo evento). Da contattare → `in_attesa_terzi` con substato
+`ricontatto`. Le altre corrispondenze della voce precedente restano.
+Motivazione: sono gli stati che automazioni e filtri già conoscono, e il substato tiene il dettaglio Chiari.
+
 ## 2026-11-27 — Stati Chiari rimappati sugli stati PerX
 Contesto: le automazioni, i filtri e i contatori leggono gli stati PerX
 (`atto_inviato`, `chiusa`, `in_attesa_documentale`, …). Le pratiche Chiari avevano codici propri.
@@ -111,8 +211,9 @@ nuove tramite `history.list`. Il riferimento `26-602322` nel testo collega la ma
 Gli allegati fino a 15 MB vanno su Supabase Storage. L'invio dall'app, se la casella Gmail è
 collegata, parte da Gmail e non da Resend. Il rinnovo del token richiede sul server le variabili
 `GOOGLE_OAUTH_CLIENT_ID` e `GOOGLE_OAUTH_CLIENT_SECRET`, gli stessi valori già messi nel
-provider Google di Supabase: non stanno nel sorgente. La push Pub/Sub del piano F2 resta
-successiva: per ora il server interroga Gmail circa ogni 90 secondi.
+provider Google di Supabase: non stanno nel sorgente. Stato aggiornato nello stesso giorno: la
+push Pub/Sub di F2 è ora nel codice; finché non viene creato il topic sul progetto Google di
+Chiari, il server continua a interrogare Gmail circa ogni 90 secondi.
 Motivazione: senza la rotta pubblicata l'accesso non può funzionare, e senza sync sul server
 la posta vecchia e nuova non arriva in PerX.
 

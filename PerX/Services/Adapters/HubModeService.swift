@@ -40,7 +40,6 @@ final class HubModeService: ObservableObject {
     @Published private(set) var hubURL: String
     
     private var cancellables = Set<AnyCancellable>()
-    private var connectionCheckTimer: Timer?
     
     // MARK: - Initialization
     
@@ -60,47 +59,14 @@ final class HubModeService: ObservableObject {
         
         self.hubURL = Self.fixedHubURL
         UserDefaults.standard.set(Self.fixedHubURL, forKey: "hub_url")
-        
-        // Avvia controllo connessione
-        startConnectionCheck()
-    }
-    
-    // MARK: - Connection Check
-    
-    private func startConnectionCheck() {
-        // Check immediato
-        Task { await checkHubConnection() }
-        
-        // Check periodico ogni 30 secondi
-        connectionCheckTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                await self?.checkHubConnection()
+
+        let config = HubConfigService.shared
+        hubConnected = config.isHubReachable
+        config.$isHubReachable
+            .sink { [weak self] reachable in
+                self?.hubConnected = reachable
             }
-        }
-    }
-    
-    func checkHubConnection() async {
-        let baseURL = HubConfigService.shared.cloudAPIBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !baseURL.isEmpty,
-              let url = URL(string: "\(baseURL)/health") else {
-            hubConnected = false
-            return
-        }
-        
-        do {
-            let (data, response) = try await URLSession.shared.data(from: url)
-            
-            if let httpResponse = response as? HTTPURLResponse,
-               httpResponse.statusCode == 200 {
-                hubConnected = true
-                print("[HubMode] ✅ Hub connesso")
-            } else {
-                hubConnected = false
-            }
-        } catch {
-            hubConnected = false
-            print("[HubMode] ❌ Hub non raggiungibile: \(error.localizedDescription)")
-        }
+            .store(in: &cancellables)
     }
     
     // MARK: - Mode Helpers

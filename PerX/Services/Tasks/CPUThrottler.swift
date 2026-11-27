@@ -12,6 +12,7 @@ actor CPUThrottler {
     private let maxCPUUsage: Double = 0.30 // 30%
     private var lastCheckTime: Date = Date()
     private let checkInterval: TimeInterval = 1.0
+    private var previousCPUTicks: [Int32]?
 
     private init() {}
 
@@ -50,12 +51,9 @@ actor CPUThrottler {
     }
 
     private func getCurrentCPUUsage() -> Double {
-        var cpuInfo: processor_info_array_t!
-        var prevCpuInfo: processor_info_array_t?
+        var cpuInfo: processor_info_array_t?
         var numCpuInfo: mach_msg_type_number_t = 0
-        var numPrevCpuInfo: mach_msg_type_number_t = 0
         var numCPUs: uint = 0
-        var totalUsage: Double = 0.0
 
         var mibKeys: [Int32] = [CTL_HW, HW_NCPU]
         var sizeOfNumCPUs = MemoryLayout<uint>.size
@@ -64,34 +62,31 @@ actor CPUThrottler {
 
         var numCPUsU = natural_t(numCPUs)
         let result = host_processor_info(mach_host_self(), PROCESSOR_CPU_LOAD_INFO, &numCPUsU, &cpuInfo, &numCpuInfo)
-        if result != KERN_SUCCESS { return 0.0 }
+        guard result == KERN_SUCCESS, let cpuInfo else { return 0.0 }
+        let sampleCount = Int(numCpuInfo)
+        var ticks = [Int32](repeating: 0, count: sampleCount)
+        for index in 0..<sampleCount {
+            ticks[index] = cpuInfo[index]
+        }
+        let sampleSize = MemoryLayout<integer_t>.stride * sampleCount
+        vm_deallocate(mach_task_self_, vm_address_t(bitPattern: cpuInfo), vm_size_t(sampleSize))
+
+        let previous = previousCPUTicks
+        previousCPUTicks = ticks
+        guard let previous, previous.count == ticks.count else { return 0.0 }
 
         let cpuCount = Int(numCPUs)
         let stateMax = Int(CPU_STATE_MAX)
+        var totalUsage: Double = 0.0
         for i in 0..<cpuCount {
             let base = stateMax * i
-            let idxUser = base + Int(CPU_STATE_USER)
-            let idxSystem = base + Int(CPU_STATE_SYSTEM)
-            let idxNice = base + Int(CPU_STATE_NICE)
-            let idxIdle = base + Int(CPU_STATE_IDLE)
-            var inUse: Int32 = 0
-            var total: Int32 = 0
-            if let prev = prevCpuInfo {
-                inUse = (cpuInfo[idxUser] - prev[idxUser]) + (cpuInfo[idxSystem] - prev[idxSystem]) + (cpuInfo[idxNice] - prev[idxNice])
-                let idleDelta = cpuInfo[idxIdle] - prev[idxIdle]
-                total = inUse + idleDelta
-            } else {
-                inUse = cpuInfo[idxUser] + cpuInfo[idxSystem] + cpuInfo[idxNice]
-                total = inUse + cpuInfo[idxIdle]
-            }
-            if total != 0 { totalUsage += Double(inUse) / Double(total) }
+            guard base + Int(CPU_STATE_IDLE) < ticks.count else { break }
+            let inUse = (ticks[base + Int(CPU_STATE_USER)] - previous[base + Int(CPU_STATE_USER)])
+                + (ticks[base + Int(CPU_STATE_SYSTEM)] - previous[base + Int(CPU_STATE_SYSTEM)])
+                + (ticks[base + Int(CPU_STATE_NICE)] - previous[base + Int(CPU_STATE_NICE)])
+            let total = inUse + (ticks[base + Int(CPU_STATE_IDLE)] - previous[base + Int(CPU_STATE_IDLE)])
+            if total > 0 { totalUsage += Double(inUse) / Double(total) }
         }
-        if let prev = prevCpuInfo {
-            let prevSize = MemoryLayout<integer_t>.stride * Int(numPrevCpuInfo)
-            vm_deallocate(mach_task_self_, vm_address_t(bitPattern: prev), vm_size_t(prevSize))
-        }
-        prevCpuInfo = cpuInfo
-        numPrevCpuInfo = numCpuInfo
         return cpuCount > 0 ? totalUsage / Double(cpuCount) : 0.0
     }
 }

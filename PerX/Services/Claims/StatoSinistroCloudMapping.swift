@@ -114,11 +114,20 @@ enum BackendStatoMapping {
         forCloudSlug slug: String,
         substati: [CloudSubstato]? = nil
     ) -> StatoManager.StatoSinistro? {
+        let tags = Set((substati ?? []).map(\.tag))
         if slug == "videoperizia" || slug == "videoperizia_da_eseguire" {
-            let tags = Set((substati ?? []).map(\.tag))
             if tags.contains("da_eseguire") { return .videoperiziaDaEseguire }
             if tags.contains("fissata")     { return .videoperiziaFissata }
             return .videoperiziaDaFissare
+        }
+        if slug == "sopralluogo" {
+            if tags.contains("da_fissare") { return .sopralluogoDaFissare }
+            if tags.contains("da_rifissare") { return .sopralluogoRestituito }
+            if tags.contains("da_concordare") { return .sopralluogoDaConcordare }
+            return .sopralluogoFissato
+        }
+        if slug == "da_gestire_tradizionale", tags.contains("da_eseguire") {
+            return .periziaDaEseguire
         }
         return statoSinistro(forCloudSlug: slug)
     }

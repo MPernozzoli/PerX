@@ -9,7 +9,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from app.domain.chiari_stima import hash_calcolo, hash_economico, liquidabile_di
-from app.domain.chiari_states import perx_slug
+from app.domain.chiari_states import perx_state
 
 
 def _decimal(value: Any) -> Decimal | None:
@@ -41,14 +41,16 @@ def map_claim(tenant_id: str, raw: dict) -> dict[str, Any]:
     if isinstance(assicurato, dict):
         nome = assicurato.get("nome") or assicurato.get("denominazione")
     stato = _text(raw.get("stato")) or "DA_LAVORARE"
+    slug, substati = perx_state(stato, _current_agent(raw))
     return {
         "id": claim_id_for(tenant_id, riferimento),
         "tenant_id": tenant_id,
         "external_ref": riferimento,
         "numero_sinistro": _text(raw.get("numero")) or _text(raw.get("numero_sinistro")) or _text(raw.get("n_compagnia")),
         "compagnia": _text(raw.get("compagnia")) or "Vittoria",
-        "stato_corrente": perx_slug(stato),
+        "stato_corrente": slug,
         "chiari_stato": stato,
+        "substati": substati,
         "nome_assicurato": _text(nome),
         "numero_polizza": _text(raw.get("polizza")) or _text(raw.get("numero_polizza")) or _text(raw.get("polizza_n")),
         "agenzia": _text(raw.get("agenzia")),
@@ -78,6 +80,26 @@ def map_claim(tenant_id: str, raw: dict) -> dict[str, Any]:
         "atti": _atti(raw),
         "groups": _groups(riferimento, raw),
     }
+
+
+def _current_agent(raw: dict) -> str | None:
+    live = _text(raw.get("_agente_lavoro"))
+    if live:
+        return live
+    agents = raw.get("agenti") if isinstance(raw.get("agenti"), dict) else {}
+    assigned = agents.get("assegnati") if isinstance(agents, dict) else None
+    if isinstance(assigned, list) and assigned:
+        first = _text(assigned[0])
+        if first:
+            return first
+    events = raw.get("eventi") or []
+    for item in reversed(events):
+        if not isinstance(item, dict):
+            continue
+        agent = _text(item.get("agente"))
+        if agent:
+            return agent
+    return None
 
 
 def _totali(raw: dict) -> dict:

@@ -28,7 +28,24 @@ def load_mapped(path: Path, tenant_id: str) -> list[dict]:
     rows = payload.get("sinistri") if isinstance(payload, dict) else payload
     if not isinstance(rows, list):
         raise SystemExit("Il file non contiene l'elenco sinistri.")
-    return [map_claim(tenant_id, row) for row in rows if isinstance(row, dict)]
+    live_dir = path.parent / "live"
+    mapped = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        rif = row.get("rif_chiari") or row.get("rif")
+        session_path = live_dir / f"{rif}.json"
+        claim = row
+        if rif and session_path.is_file():
+            try:
+                session = json.loads(session_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                session = None
+            agent = session.get("agente") if isinstance(session, dict) else None
+            if agent:
+                claim = {**row, "_agente_lavoro": agent}
+        mapped.append(map_claim(tenant_id, claim))
+    return mapped
 
 
 def _when(value: str | None) -> datetime | None:
@@ -68,6 +85,7 @@ async def apply(mapped: list[dict], tenant_id: str) -> None:
                 claim["stato_corrente"], claim["nome_assicurato"], claim["numero_polizza"], claim["agenzia"],
                 claim["garanzia"], claim["richiesta"], claim["liquidato"], claim["danno_accertato"],
                 _when(claim["data_sinistro"]), _when(claim["data_incarico"]), _when(claim["closed_at"]), now,
+                json.dumps(claim["substati"]),
             ))
             workflow = claim["workflow"]
             workflows.append((
@@ -121,17 +139,20 @@ async def apply(mapped: list[dict], tenant_id: str) -> None:
                     nome_assicurato, numero_polizza, agenzia, garanzia, richiesta, liquidato,
                     danno_accertato, data_sinistro, data_incarico, closed_at, created_at, updated_at,
                     priority, version, iban, sinistro_collegato, sopralluogo, giustificativi,
-                    foto, oltre_dieci_beni, concordata, negativa, ubicazione_validata
+                    foto, oltre_dieci_beni, concordata, negativa, ubicazione_validata,
+                    stato_substati
                 )
                 VALUES (
                     $1, $2, $3, $4, $5, $6,
                     $7, $8, $9, $10, $11, $12,
                     $13, $14, $15, $16, $17, $17,
                     0, 1, false, false, false, false,
-                    false, false, false, false, false
+                    false, false, false, false, false,
+                    $18::jsonb
                 )
                 ON CONFLICT (id) DO UPDATE SET
                     stato_corrente = EXCLUDED.stato_corrente,
+                    stato_substati = EXCLUDED.stato_substati,
                     nome_assicurato = EXCLUDED.nome_assicurato,
                     numero_sinistro = EXCLUDED.numero_sinistro,
                     numero_polizza = EXCLUDED.numero_polizza,

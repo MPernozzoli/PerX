@@ -159,7 +159,11 @@ final class AccountClaimSync {
         sinistro.nomeCompagnia = item.compagnia
         sinistro.agenzia = item.agenzia
         sinistro.numeroPolizza = item.numeroPolizza
-        sinistro.stato = BackendStatoMapping.statoSinistro(forCloudSlug: item.stato)?.descrizione ?? item.stato
+        sinistro.stato = BackendStatoMapping.statoSinistro(
+            forCloudSlug: item.stato,
+            substati: item.substati
+        )?.descrizione ?? item.stato
+        sinistro.substate = item.substati.first?.tag
         if let data = item.dataSinistro {
             sinistro.dataSinistro = data
         }
@@ -264,6 +268,7 @@ private struct TenantClaimRow: Decodable {
     let richiesta: Double?
     let liquidato: Double?
     let dannoAccertato: Double?
+    let substati: [CloudSubstato]
 
     enum CodingKeys: String, CodingKey {
         case externalRef = "external_ref"
@@ -277,6 +282,7 @@ private struct TenantClaimRow: Decodable {
         case richiesta
         case liquidato
         case dannoAccertato = "danno_accertato"
+        case statoSubstati = "stato_substati"
     }
 
     init(from decoder: Decoder) throws {
@@ -291,6 +297,7 @@ private struct TenantClaimRow: Decodable {
         richiesta = Self.amount(container, .richiesta)
         liquidato = Self.amount(container, .liquidato)
         dannoAccertato = Self.amount(container, .dannoAccertato)
+        substati = (try? container.decodeIfPresent([CloudSubstato].self, forKey: .statoSubstati)) ?? []
         if let raw = try? container.decodeIfPresent(String.self, forKey: .dataSinistro) {
             dataSinistro = Self.parseDate(raw)
         } else {

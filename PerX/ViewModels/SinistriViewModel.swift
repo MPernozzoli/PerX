@@ -789,9 +789,11 @@ final class SinistriViewModel: ObservableObject {
         let giorniTotali = dataStato.map { calculateGiorniTotali(from: $0) } ?? 0
         let giorniLavorativi = dataStato.map { ItalianCalendarService.shared.getWorkingDaysSince($0) } ?? 0
         
+        let base = statoString ?? "N/D"
+        let sub = (sinistro.substate ?? "").replacingOccurrences(of: "_", with: " ").trimmingCharacters(in: .whitespaces)
         return StatoPopoverInfo(
             stato: stato,
-            descrizione: statoString ?? "N/D",
+            descrizione: sub.isEmpty ? base : "\(base) (\(sub))",
             dataStato: dataStato,
             giorniTotali: giorniTotali,
             giorniLavorativi: giorniLavorativi,

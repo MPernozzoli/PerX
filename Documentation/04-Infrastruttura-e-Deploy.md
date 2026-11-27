@@ -1,6 +1,6 @@
 ---
 tags: [perx, infrastruttura, deploy]
-updated: 2026-11-26
+updated: 2026-11-27
 ---
 
 # Infrastruttura e deploy
@@ -32,6 +32,22 @@ Il backend FastAPI viene distribuito come immagine Docker su **Render** (`render
 (`DATABASE_URL`, `SECRET_KEY`, credenziali Supabase) sono impostate come secret su Render, non nel
 repo. `SINGLE_TENANT_MODE` è configurabile per ambiente (in produzione è `False`, vedi
 [[Backend-Cloud-API]]).
+
+Posta Gmail (2026-11-27): oltre a `GOOGLE_OAUTH_CLIENT_ID` e `GOOGLE_OAUTH_CLIENT_SECRET`, il watch
+usa `GMAIL_PUBSUB_TOPIC` (segreto, `projects/…/topics/…`), `GMAIL_PUSH_AUDIENCE`
+(`https://api.perx.it/api/v1/emails/gmail/push`) e, se impostato, `GMAIL_PUSH_SERVICE_ACCOUNT`
+(l’account con cui la subscription firma la push). Sul topic, Gmail pubblica con
+`gmail-api-push@system.gserviceaccount.com`. Senza topic il server continua il polling.
+
+Per attivarlo sul progetto Google di Chiari:
+
+1. creare il topic Pub/Sub e concedere a `gmail-api-push@system.gserviceaccount.com` il permesso
+   di pubblicazione;
+2. creare una subscription push verso `https://api.perx.it/api/v1/emails/gmail/push`, abilitando
+   l’autenticazione OIDC con audience uguale allo stesso URL;
+3. impostare su Render `GMAIL_PUBSUB_TOPIC` (`projects/…/topics/…`) e
+   `GMAIL_PUSH_SERVICE_ACCOUNT` (email del service account che firma la push). L’audience è già
+   fissata allo stesso endpoint da `GMAIL_PUSH_AUDIENCE` in `render.yaml`.
 
 `PLATFORM_ADMIN_API_KEY` (nuova, 2026-09-06): chiave server-to-server per il bridge platform-admin
 usato dal portale PerX su `admin.pynkstudio.eu` (repo BePork). Va impostata su Render (dashboard,
@@ -123,9 +139,13 @@ integrate nello stesso runtime usano progetti origin tecnici dietro al gateway:
 - `installCommand: "npm install"` (vedi gotcha sotto).
 - Il progetto pubblico principale riceve i domini che richiedono routing applicativo:
   `admin.perx.it`, `admin.<tenant_domain>`, `assicurati.<tenant_domain>`,
-  `riunioni.<tenant_domain>`, `catdispatcher.it`, `www.catdispatcher.it`. Il gateway
+  `riunioni.<tenant_domain>`, `catdispatcher.perx.it`, `bignami.perx.it`,
+  `catdispatcher.it`, `www.catdispatcher.it`. Il gateway
   (`apps/portal-web`) legge l'host, interroga il resolver backend e seleziona il portale corretto
   (prefissi riservati: `admin.`, `assicurati.`, `riunioni.`).
+- Dal 2026-11-27 i domini infrastrutturali espliciti dei prodotti hanno precedenza sul resolver
+  dinamico dei tenant. In questo modo un record backend assente o obsoleto non può riclassificare
+  `catdispatcher.perx.it` o `bignami.perx.it` come portale assicurati.
 - Dal 2026-11-25 il gateway inoltra le app prodotto verso tre progetti origin dedicati, configurati
   tramite `INSIGHT_STUDIO_ORIGIN`, `CATDISPATCHER_ORIGIN` e `BIGNAMI_ORIGIN` server-side. Questi
   progetti sono unità tecniche di deploy, non nuovi ingressi pubblici o nuovi control plane.
@@ -169,7 +189,10 @@ Progetto Supabase condiviso da backend e app satellite:
   espone. Le migrazioni `041_enable_rls_public` e `042_enable_rls_remaining` l'applicano a tutte
   le tabelle esistenti che ne sono prive (vedi [[06-Decisioni-e-Intenzioni-Future]], voci
   2026-11-26 «RLS sulle tabelle `public`»).
-- **Storage**: bucket `perx-portal-uploads` per i file del portale assicurati.
+- **Storage**: bucket privato `perx-portal-uploads` (portale assicurati, videoperizia,
+  allegati Gmail sotto il prefisso `gmail/`). Nessun filtro sui MIME: i file arrivano come
+  PDF, immagini e altro. Lo crea la migrazione `044_portal_uploads_bucket`. Senza la riga in
+  `storage.buckets` l’API Storage risponde **400** a ogni upload.
 - **Edge functions** (`supabase/functions/`): `find-policy`, `ai-extract-policy`,
   `resend-inbound`, `process-excel-import`.
 - **Schemi dedicati per app satellite**: es. Bignami Online usa lo schema Postgres `bignami`
@@ -191,4 +214,4 @@ tabella `process_jobs`; un worker sul Mac mini fa polling/lease con header
 `GET /api/v1/process-jobs/jobs/claim`. Vedi [[Backend-Cloud-API]] e [[AI-Locale-e-Cloud]].
 
 ---
-Ultimo aggiornamento: 2026-11-25
+Ultimo aggiornamento: 2026-11-27 (bucket `perx-portal-uploads` creato: gli upload Gmail prendevano 400)

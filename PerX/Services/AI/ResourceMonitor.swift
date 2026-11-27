@@ -13,6 +13,7 @@ class ResourceMonitor: ObservableObject {
     @Published var isLowOnResources: Bool = false
     
     private var monitoringTimer: Timer?
+    private var monitoringClients = 0
     private let updateInterval: TimeInterval = 2.0
     
     enum MemoryPressure {
@@ -21,9 +22,21 @@ class ResourceMonitor: ObservableObject {
         case critical
     }
     
-    private init() {
+    private init() {}
+
+    /// Tiene acceso il campionamento finché almeno un cliente (coda AI o schermata impostazioni) lo chiede.
+    func retainMonitoring() {
+        monitoringClients += 1
+        guard monitoringClients == 1 else { return }
         updateResources()
         startMonitoring()
+    }
+
+    func releaseMonitoring() {
+        monitoringClients = max(0, monitoringClients - 1)
+        if monitoringClients == 0 {
+            stopMonitoring()
+        }
     }
     
     deinit {

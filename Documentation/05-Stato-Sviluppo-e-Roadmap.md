@@ -105,13 +105,20 @@ Vedi [[Login-Unificato-SSO]] per il piano completo (5 fasi). Ad oggi:
   `26-602322`, 658 revisioni, 259 atti, 6357 eventi. I file dei dossier restano nella cartella locale.
 - Migrazione `043` applicata sul database (2026-11-27). Tenant `chiari` e utente
   `massimo.pernozzoli@chiarisrl.it` creati: entra con Google, senza password.
-- Posta Gmail sul backend (2026-11-27): storico e mail nuove in `emails`, allegati su Storage,
-  invio dalla casella Workspace. La mail si abbina prima al riferimento `YY-NNNNNN`, poi al numero
-  compagnia, poi al nome assicurato. Serve il client OAuth sulle variabili del server per il rinnovo.
+- Posta Gmail sul backend (2026-11-27): storico e mail nuove in `emails`, allegati sul bucket
+  `perx-portal-uploads`. Il bucket non esisteva e Storage rispondeva 400: creato lo stesso giorno
+  (migrazione `044`). Le mail già salvate senza file si riprendono a gruppi di 20. Invio dalla casella Workspace con la firma `sendAs`. La mail si abbina prima al riferimento
+  `YY-NNNNNN`, poi al numero compagnia, poi al nome assicurato. Il watch Pub/Sub è nel codice
+  (`POST /api/v1/emails/gmail/push`); parte quando su Render c’è `GMAIL_PUBSUB_TOPIC`. Fino ad
+  allora il recupero resta il polling ogni 90 secondi. Il Mac legge dal backend ogni 60 secondi.
+  Un allegato che non si scarica viene ritentato tre volte; se resta su Gmail la mail compare
+  comunque, con l’avviso in elenco e dettaglio.
 
 ### Ancora da fare
-- Consenso e benchmark (F0), push Gmail Pub/Sub, copia dei dossier nel vault, worker sul Mac,
-  estensione, MCP. Il piano resta la sequenza F0–F9.
+- Consenso e benchmark (F0), topic Pub/Sub Gmail da creare sul progetto Google, copia dei dossier
+  nel vault, estensione, MCP. La Regia assegna i lavori e la scala L0–L4 è nel backend, per ogni
+  tenant; il worker sul Mac prende i lavori L0. Resta da collegare Apple Intelligence, Ollama e
+  Claude ai livelli L1–L3, e da misurare una settimana di chiusure contro la coda locale.
 
 ### Da fare / da verificare
 - Prova a mano nell'app delle sei pagine su perizie reali (non ancora fatta: l'avvio migra lo store locale).
@@ -184,4 +191,4 @@ Vedi [[06-Decisioni-e-Intenzioni-Future]] (2026-09-06) per contesto e motivazion
   `apps/portal-web`.
 
 ---
-Ultimo aggiornamento: 2026-11-27 (migrazione 043 e utente Chiari sul database)
+Ultimo aggiornamento: 2026-11-27 (bucket Storage degli allegati Gmail)

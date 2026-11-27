@@ -224,16 +224,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         restoreResourcesForForeground()
     }
     
-    func applicationWillResignActive(_ notification: Notification) {
-        print("[PerXApp] 🔄 App in background - pulizia risorse")
-        cleanupResourcesForBackground()
-    }
-    
-    func applicationDidBecomeActive(_ notification: Notification) {
-        print("[PerXApp] ✅ App in foreground - ripristino risorse")
-        restoreResourcesForForeground()
-    }
-    
     private func cleanupResourcesForBackground() {
         Task { @MainActor in
             // Pulisci cache media

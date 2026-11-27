@@ -4,6 +4,32 @@ import CoreData
 /// Row email unificata e configurabile
 /// Sostituisce: MailboxEmailRow, CompactEmailRow, EmailRow, EmailBoxView
 /// OTTIMIZZATO: Niente @ObservedObject globali per evitare re-render di massa
+struct AttachmentsOnGmailBanner: View {
+    let notice: String
+    let gmailWebUrl: String?
+    var compact: Bool = false
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: compact ? 10 : 12))
+            Text(notice)
+                .font(.system(size: compact ? 11 : 12))
+                .fixedSize(horizontal: false, vertical: true)
+            if !compact, let gmailWebUrl, let url = URL(string: gmailWebUrl) {
+                Link("Apri su Gmail", destination: url)
+                    .font(.system(size: 12, weight: .medium))
+            }
+        }
+        .foregroundStyle(.orange)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, compact ? 0 : 8)
+        .padding(.vertical, compact ? 0 : 6)
+        .background(compact ? Color.clear : Color.orange.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+    }
+}
+
 struct UnifiedEmailRow: View {
     
     // MARK: - Style Configuration
@@ -213,6 +239,14 @@ struct UnifiedEmailRow: View {
                 if style == .standard {
                     previewRow
                 }
+
+                if let notice = currentEmail.attachmentsNotice, !notice.isEmpty {
+                    AttachmentsOnGmailBanner(
+                        notice: notice,
+                        gmailWebUrl: currentEmail.gmailWebUrl,
+                        compact: style != .detailed
+                    )
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             
@@ -414,6 +448,13 @@ struct UnifiedEmailRow: View {
                     .font(.caption2)
             }
             
+            if let notice = currentEmail.attachmentsNotice, !notice.isEmpty {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.orange)
+                    .help(notice)
+            }
+
             // Allegati
             if let attachments = currentEmail.attachments, !attachments.isEmpty {
                 Image(systemName: "paperclip")
@@ -584,7 +625,7 @@ struct UnifiedEmailRow: View {
     
     private func loadCachedEmail() {
         if let cached = EmailRepository.shared.getEmail(byId: currentEmail.id) {
-            currentEmail = cached
+            currentEmail = cached.keepingAttachmentNotice(from: currentEmail)
         }
     }
     
@@ -616,7 +657,7 @@ struct UnifiedEmailRow: View {
                 let cachedFromRepo = await MainActor.run { EmailRepository.shared.getEmail(byId: currentEmail.id) }
                 if let cached = cachedFromRepo, let body = cached.body, !body.isEmpty {
                     await MainActor.run {
-                        currentEmail = cached
+                        currentEmail = cached.keepingAttachmentNotice(from: currentEmail)
                         previewText = EmailHelpers.generatePreview(from: body)
                         isGeneratingPreview = false
                     }
@@ -635,7 +676,7 @@ struct UnifiedEmailRow: View {
                     let updatedFromRepo = await MainActor.run { EmailRepository.shared.getEmail(byId: currentEmail.id) }
                     if let cached = updatedFromRepo, let body = cached.body, !body.isEmpty {
                         await MainActor.run {
-                            currentEmail = cached
+                            currentEmail = cached.keepingAttachmentNotice(from: currentEmail)
                             previewText = EmailHelpers.generatePreview(from: body)
                             isGeneratingPreview = false
                         }
@@ -657,7 +698,7 @@ struct UnifiedEmailRow: View {
         if let updated = EmailRepository.shared.getEmail(byId: currentEmail.id),
            updated.body != nil {
             await MainActor.run {
-                currentEmail = updated
+                currentEmail = updated.keepingAttachmentNotice(from: currentEmail)
             }
             return
         }
@@ -677,7 +718,7 @@ struct UnifiedEmailRow: View {
             if let updated = EmailRepository.shared.getEmail(byId: currentEmail.id),
                updated.body != nil {
                 await MainActor.run {
-                    currentEmail = updated
+                    currentEmail = updated.keepingAttachmentNotice(from: currentEmail)
                 }
                 return
             }

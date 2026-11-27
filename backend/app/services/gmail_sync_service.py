@@ -113,6 +113,10 @@ async def fetch_google_certs() -> list:
 GMAIL = "https://gmail.googleapis.com/gmail/v1/users/me"
 REF_RE = re.compile(r"\b\d{2}-\d{6}\b")
 MAX_ATTACHMENT_BYTES = 15_000_000
+ATTACHMENT_RECOVERY_BATCH = 20
+ATTACHMENT_DOWNLOAD_ATTEMPTS = 3
+ATTACHMENT_RETRY_DELAYS_SECONDS = (0.4, 0.8)
+ATTACHMENTS_ON_GMAIL_NOTICE = "Allegati non scaricati, apribili su Gmail."
 
 
 def _b64(data: str | None) -> str:
@@ -266,6 +270,10 @@ class GmailSyncService:
                 mailbox.gmail_history_id = None
                 settings_json["backfill_done"] = False
                 settings_json["backfill"] = {}
+            try:
+                await _recover_missing_attachments(db, client, mailbox, access)
+            except Exception:
+                logger.exception("Recupero allegati Gmail fallito per %s", mailbox.email_address)
         settings_json["last_sync_at"] = datetime.now(timezone.utc).isoformat()
         settings_json.pop("last_error", None)
         mailbox.settings_json = settings_json
@@ -713,6 +721,154 @@ def _add_claim_links(db: AsyncSession, tenant_id: str, email_id: str, found: Mai
         )
 
 
+def gmail_message_web_url(gmail_id: str) -> str:
+    return f"https://mail.google.com/mail/u/0/#all/{gmail_id}"
+
+
+def remember_failed_attachments(metadata: dict, gmail_id: str, filenames: list[str]) -> dict:
+    updated = dict(metadata) if isinstance(metadata, dict) else {}
+    names: list[str] = []
+    seen: set[str] = set()
+    for name in filenames:
+        label = str(name or "allegato").strip() or "allegato"
+        if label in seen:
+            continue
+        seen.add(label)
+        names.append(label)
+    updated["attachmentsOnGmail"] = True
+    updated["attachmentsNotice"] = ATTACHMENTS_ON_GMAIL_NOTICE
+    updated["failedAttachments"] = [{"filename": name} for name in names]
+    if gmail_id:
+        updated["gmailWebUrl"] = gmail_message_web_url(gmail_id)
+    return updated
+
+
+def attachment_notice_fields(metadata: dict | None) -> dict:
+    source = metadata if isinstance(metadata, dict) else {}
+    on_gmail = source.get("attachmentsOnGmail") is True
+    notice = source.get("attachmentsNotice") if on_gmail else None
+    if on_gmail and not isinstance(notice, str):
+        notice = ATTACHMENTS_ON_GMAIL_NOTICE
+    url = source.get("gmailWebUrl") if on_gmail else None
+    if on_gmail and not isinstance(url, str):
+        gmail_id = str(source.get("gmailId") or "")
+        url = gmail_message_web_url(gmail_id) if gmail_id else None
+    return {
+        "attachmentsOnGmail": on_gmail,
+        "attachmentsNotice": notice,
+        "gmailWebUrl": url,
+    }
+
+
+async def _pause_before_attachment_retry(delay: float) -> None:
+    await asyncio.sleep(delay)
+
+
+async def _store_one_attachment(
+    db: AsyncSession,
+    client: httpx.AsyncClient,
+    mailbox: Mailbox,
+    access: str,
+    email: Email,
+    gmail_id: str,
+    item: dict,
+    safe_name: str,
+) -> str:
+    last_error: Exception | None = None
+    for attempt in range(ATTACHMENT_DOWNLOAD_ATTEMPTS):
+        try:
+            payload = await _gmail(
+                client,
+                access,
+                "GET",
+                f"/messages/{gmail_id}/attachments/{item['attachment_id']}",
+            )
+            content = _b64_bytes(payload.get("data") if isinstance(payload, dict) else None)
+            if not content:
+                raise RuntimeError("contenuto allegato vuoto")
+            if len(content) > MAX_ATTACHMENT_BYTES:
+                logger.warning(
+                    "Allegato Gmail oltre il limite, resta su Gmail: mailbox=%s message=%s file=%s",
+                    mailbox.email_address,
+                    gmail_id,
+                    safe_name,
+                )
+                return "too_big"
+            path = f"gmail/{mailbox.tenant_id}/{gmail_id}/{uuid.uuid4().hex}-{safe_name}"
+            blob = await SupabaseStorageService.upload(
+                object_path=path,
+                content=content,
+                mime_type=item["mime"],
+            )
+            db.add(
+                Attachment(
+                    id=str(uuid.uuid4()),
+                    tenant_id=mailbox.tenant_id,
+                    email_id=email.id,
+                    file_name=item["filename"],
+                    mime_type=item["mime"],
+                    size_bytes=blob.size_bytes,
+                    storage_bucket=blob.bucket,
+                    storage_path=blob.storage_path,
+                    checksum=blob.checksum_sha256,
+                )
+            )
+            return "stored"
+        except Exception as exc:
+            last_error = exc
+            logger.warning(
+                "Download allegato Gmail fallito (tentativo %s/%s): mailbox=%s message=%s file=%s",
+                attempt + 1,
+                ATTACHMENT_DOWNLOAD_ATTEMPTS,
+                mailbox.email_address,
+                gmail_id,
+                safe_name,
+            )
+            if attempt + 1 < ATTACHMENT_DOWNLOAD_ATTEMPTS:
+                delay = ATTACHMENT_RETRY_DELAYS_SECONDS[min(attempt, len(ATTACHMENT_RETRY_DELAYS_SECONDS) - 1)]
+                await _pause_before_attachment_retry(delay)
+    logger.error(
+        "Allegato Gmail non importato dopo i retry: mailbox=%s message=%s file=%s errore=%s",
+        mailbox.email_address,
+        gmail_id,
+        safe_name,
+        last_error,
+    )
+    return "failed"
+
+
+def _header_map(email: Email) -> dict:
+    try:
+        data = json.loads(email.raw_headers or "{}")
+    except json.JSONDecodeError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _write_headers(email: Email, data: dict) -> None:
+    email.raw_headers = json.dumps(data)
+
+
+def _remember_attachment_pass(email: Email, gmail_id: str, pending: list[str], retry: bool) -> None:
+    data = _header_map(email)
+    if pending:
+        data = remember_failed_attachments(data, gmail_id, pending)
+    else:
+        data.pop("attachmentsOnGmail", None)
+        data.pop("attachmentsNotice", None)
+        data.pop("failedAttachments", None)
+        data.pop("gmailWebUrl", None)
+    if retry:
+        attempts = int(data.get("attachmentAttempts") or 0) + 1
+        data["attachmentAttempts"] = attempts
+        if attempts >= 3:
+            data["attachmentsChecked"] = True
+    else:
+        data.pop("attachmentAttempts", None)
+        data["attachmentsChecked"] = True
+    _write_headers(email, data)
+
+
 async def _store_attachments(
     db: AsyncSession,
     client: httpx.AsyncClient,
@@ -722,50 +878,90 @@ async def _store_attachments(
     gmail_id: str,
     files: list[dict],
 ) -> None:
-    if not files or not SupabaseStorageService.is_configured():
+    if not files:
+        _remember_attachment_pass(email, gmail_id, [], retry=False)
         return
+    pending: list[str] = []
+    retry = False
+    storage_ready = SupabaseStorageService.is_configured()
+    if not storage_ready:
+        logger.warning(
+            "Storage allegati non configurato: %s file restano su Gmail (mailbox=%s message=%s)",
+            len(files),
+            mailbox.email_address,
+            gmail_id,
+        )
     for item in files:
-        if item["size"] and item["size"] > MAX_ATTACHMENT_BYTES:
+        filename = item.get("filename") or "allegato"
+        size = int(item.get("size") or 0)
+        if size > MAX_ATTACHMENT_BYTES or not storage_ready:
+            pending.append(filename)
+            retry = retry or not storage_ready
             continue
-        safe_name = os.path.basename(item["filename"]) or "allegato"
+        safe_name = os.path.basename(filename) or "allegato"
         safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", safe_name).strip("._") or "allegato"
+        outcome = await _store_one_attachment(
+            db, client, mailbox, access, email, gmail_id, item, safe_name
+        )
+        if outcome != "stored":
+            pending.append(filename)
+            retry = retry or outcome == "failed"
+    _remember_attachment_pass(email, gmail_id, pending, retry)
+
+
+async def _recover_missing_attachments(
+    db: AsyncSession,
+    client: httpx.AsyncClient,
+    mailbox: Mailbox,
+    access: str,
+) -> int:
+    if not SupabaseStorageService.is_configured():
+        return 0
+    result = await db.execute(
+        select(Email)
+        .where(
+            Email.tenant_id == mailbox.tenant_id,
+            Email.message_id.like("gmail:%"),
+            Email.raw_headers.is_(None) | ~Email.raw_headers.contains('"attachmentsChecked"'),
+        )
+        .order_by(Email.received_at.desc())
+        .limit(ATTACHMENT_RECOVERY_BATCH)
+    )
+    rows = list(result.scalars().all())
+    recovered = 0
+    for email in rows:
+        gmail_id = (email.provider_id or "").strip() or str(email.message_id or "").removeprefix("gmail:")
+        if not gmail_id:
+            _remember_attachment_pass(email, "", [], retry=False)
+            continue
         try:
-            payload = await _gmail(
-                client,
-                access,
-                "GET",
-                f"/messages/{gmail_id}/attachments/{item['attachment_id']}",
-            )
-            content = _b64_bytes(payload.get("data"))
-            if not content or len(content) > MAX_ATTACHMENT_BYTES:
-                continue
-            path = f"gmail/{mailbox.tenant_id}/{gmail_id}/{uuid.uuid4().hex}-{safe_name}"
-            blob = await SupabaseStorageService.upload(
-                object_path=path,
-                content=content,
-                mime_type=item["mime"],
-            )
+            raw = await _gmail(client, access, "GET", f"/messages/{gmail_id}", params={"format": "full"})
         except Exception:
             logger.exception(
-                "Allegato Gmail non importato: mailbox=%s message=%s file=%s",
+                "Recupero allegati Gmail saltato: mailbox=%s message=%s",
                 mailbox.email_address,
                 gmail_id,
-                safe_name,
             )
+            previous = _header_map(email).get("failedAttachments") or []
+            names = [
+                str(item.get("filename"))
+                for item in previous
+                if isinstance(item, dict) and item.get("filename")
+            ]
+            _remember_attachment_pass(email, gmail_id, names, retry=True)
             continue
-        db.add(
-            Attachment(
-                id=str(uuid.uuid4()),
-                tenant_id=mailbox.tenant_id,
-                email_id=email.id,
-                file_name=item["filename"],
-                mime_type=item["mime"],
-                size_bytes=blob.size_bytes,
-                storage_bucket=blob.bucket,
-                storage_path=blob.storage_path,
-                checksum=blob.checksum_sha256,
-            )
-        )
+        parsed = parse_gmail_message(raw if isinstance(raw, dict) else {})
+        stored_names = await db.execute(select(Attachment.file_name).where(Attachment.email_id == email.id))
+        already = {row[0] for row in stored_names.all()}
+        missing = [
+            item
+            for item in parsed["attachments"]
+            if (item.get("filename") or "allegato") not in already
+        ]
+        await _store_attachments(db, client, mailbox, access, email, gmail_id, missing)
+        if _header_map(email).get("attachmentsChecked") is True:
+            recovered += 1
+    return recovered
 
 
 class GmailSyncRuntime:

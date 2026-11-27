@@ -44,6 +44,8 @@ class MailViewModel: ObservableObject {
     // Tracking per evitare download duplicati
     private var lastSyncDate: Date?
     private var isMonitoringActive = false
+    private var monitoredUser: String?
+    @Published private(set) var accountGeneration = UUID()
 
     private var labels: [GmailLabel] = []
     private var customizations: [String: MailboxCustomization] = [:]
@@ -80,16 +82,6 @@ class MailViewModel: ObservableObject {
                 }
         }
         
-        // Ritarda syncEmailsFromRepository e updateDisplayableMailboxes per evitare modifiche @Published durante init
-        // Delay maggiore per assicurarsi che EmailRepository abbia finito di caricare
-        Task.detached { [weak self] in
-            try? await Task.sleep(nanoseconds: 1_200_000_000) // 1.2 secondi delay (dopo EmailRepository)
-            await MainActor.run {
-                self?.syncEmailsFromRepository()
-                self?.updateDisplayableMailboxes()
-            }
-        }
-        
         // Il monitoring viene avviato esplicitamente tramite startMonitoring()
         // chiamato da PerXApp all'avvio dell'applicazione
         // Non stampiamo qui perché verrà stampato in startMonitoring()
@@ -100,11 +92,9 @@ class MailViewModel: ObservableObject {
         // IMPORTANTE: dropFirst() evita il trigger iniziale che causa loop di pubblicazione
         // debounce evita aggiornamenti troppo frequenti che causano freeze
         repositoryObserver = emailRepository.$emailsByMailbox
-            .dropFirst() // Ignora il valore iniziale per evitare loop
+            .dropFirst()
             .debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)
-            .sink { [weak self] newEmailsByMailbox in
-                self?.emailsByMailbox = newEmailsByMailbox
-            }
+            .sink { _ in }
     }
     
     /// Sincronizza emailsByMailbox da EmailRepository
@@ -138,21 +128,43 @@ class MailViewModel: ObservableObject {
         ensureCustomizationsExist()
     }
 
-    /// Un solo polling verso il server. Gmail e MailManager non scaricano più nulla.
+    /// Un solo polling verso il server, sempre per l'account connesso.
     func startMonitoring() {
-        guard !isMonitoringActive else { return }
         guard let userEmail = authService.userEmail else { return }
-        isMonitoringActive = true
-        print("[MailViewModel] Polling della posta dal server")
-        emailAdapter.startPolling(userEmail: userEmail, interval: 60)
+        bind(to: userEmail)
     }
-    
-    /// Ferma il monitoring (usato al logout)
+
+    func bind(to email: String) {
+        let userEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !userEmail.isEmpty else { return }
+        if isMonitoringActive, monitoredUser == userEmail { return }
+        clearVisibleMail()
+        monitoredUser = userEmail
+        isMonitoringActive = true
+        accountGeneration = UUID()
+        displayableMailboxes = [
+            DisplayableMailbox(id: "INBOX", name: "Posta in arrivo", iconName: "tray.fill", isVisible: true, unreadCount: 0, showUnreadCount: true),
+            DisplayableMailbox(id: "SENT", name: "Posta inviata", iconName: "paperplane.fill", isVisible: true, unreadCount: 0, showUnreadCount: true)
+        ]
+        emailAdapter.startPolling(userEmail: userEmail, interval: 60)
+        PrincipaleViewModel.shared.reloadThreads()
+        print("[MailViewModel] Polling della posta di \(userEmail)")
+    }
+
     func stopMonitoring() {
         guard isMonitoringActive else { return }
         isMonitoringActive = false
+        monitoredUser = nil
         emailAdapter.stopPolling()
+        clearVisibleMail()
         print("[ViewModel] 🛑 Monitoring email fermato")
+    }
+
+    private func clearVisibleMail() {
+        emailRepository.clear()
+        emailsByMailbox = [:]
+        HubEmailService.shared.discard()
+        PrincipaleViewModel.shared.clearThreads()
     }
     
     /// Controlla solo le nuove email degli ultimi 7 giorni senza scaricare tutto
@@ -602,7 +614,7 @@ class MailViewModel: ObservableObject {
             let email = Email(
                 id: item.id,
                 isRead: item.isRead,
-                isDownloaded: true,
+                isDownloaded: false,
                 sender: sender,
                 recipients: [],
                 cc: nil,
@@ -612,7 +624,9 @@ class MailViewModel: ObservableObject {
                 attachments: nil,
                 claimNumber: item.sinistroRef,
                 insuredName: nil,
-                associationStatus: nil
+                associationStatus: nil,
+                attachmentsNotice: item.attachmentsNotice,
+                gmailWebUrl: item.gmailWebUrl
             )
             let mailboxKey = item.mailbox ?? (item.direction == "OUT" ? "SENT" : "INBOX")
             grouped[mailboxKey, default: []].append(email)
@@ -660,7 +674,7 @@ class MailViewModel: ObservableObject {
                 let email = Email(
                     id: item.id,
                     isRead: item.isRead,
-                    isDownloaded: true,
+                    isDownloaded: false,
                     sender: sender,
                     recipients: [],
                     cc: nil,
@@ -670,7 +684,9 @@ class MailViewModel: ObservableObject {
                     attachments: nil,
                     claimNumber: item.sinistroRef,
                     insuredName: nil,
-                    associationStatus: nil
+                    associationStatus: nil,
+                    attachmentsNotice: item.attachmentsNotice,
+                    gmailWebUrl: item.gmailWebUrl
                 )
                 
                 // Raggruppa per mailbox (usa quella dall'Hub o default)
@@ -1200,12 +1216,64 @@ class MailViewModel: ObservableObject {
     // I percorsi Gmail legacy restano non usati nella V1 Resend-only.
 
     // --- Funzione per caricare il corpo di una specifica email ---
+    private var fullEmailInFlight: Set<String> = []
+
     func fetchFullEmail(for emailId: String) async {
-        if isEmailDownloaded(emailId) { 
-            print("[ViewModel] Email \(emailId) già scaricata")
-            return 
+        if fullEmailInFlight.contains(emailId) { return }
+        if let existing = emailInLists(emailId), let body = existing.body, !body.isEmpty { return }
+        if let cached = emailRepository.getEmail(byId: emailId), let body = cached.body, !body.isEmpty { return }
+        fullEmailInFlight.insert(emailId)
+        defer { fullEmailInFlight.remove(emailId) }
+        do {
+            let detail = try await emailAdapter.getEmailDetail(id: emailId)
+            let body = (detail.bodyHtml?.isEmpty == false ? detail.bodyHtml : detail.bodyText)
+            let current = emailInLists(emailId)
+            let email = Email(
+                id: detail.id,
+                isRead: current?.isRead ?? true,
+                isDownloaded: true,
+                sender: current?.sender ?? Contact(name: detail.senderName, email: detail.senderEmail),
+                recipients: current?.recipients ?? detail.recipients.map { Contact(name: nil, email: $0) },
+                cc: current?.cc,
+                subject: detail.subject,
+                date: detail.date,
+                body: body,
+                attachments: current?.attachments,
+                claimNumber: detail.sinistroRef ?? current?.claimNumber,
+                insuredName: current?.insuredName,
+                associationStatus: current?.associationStatus,
+                attachmentsNotice: detail.attachmentsNotice ?? current?.attachmentsNotice,
+                gmailWebUrl: detail.gmailWebUrl ?? current?.gmailWebUrl
+            )
+            updateEmailInLists(with: email)
+            replaceInMailboxes(email)
+        } catch {
+            print("[MailViewModel] Dettaglio non disponibile per \(emailId): \(error.localizedDescription)")
         }
-        print("[MailViewModel] Download Gmail diretto disabilitato per email \(emailId); usare sync Hub/Resend")
+    }
+
+    private func emailInLists(_ emailId: String) -> Email? {
+        for emails in emailsByMailbox.values {
+            if let email = emails.first(where: { $0.id == emailId }) {
+                return email
+            }
+        }
+        return emailRepository.getEmail(byId: emailId)
+    }
+
+    private func replaceInMailboxes(_ email: Email) {
+        var updated = emailsByMailbox
+        var found = false
+        for key in updated.keys {
+            guard var list = updated[key], let index = list.firstIndex(where: { $0.id == email.id }) else { continue }
+            list[index] = email
+            updated[key] = list
+            found = true
+        }
+        if !found {
+            updated["INBOX", default: []].append(email)
+        }
+        emailsByMailbox = updated
     }
     
     private func updateEmailInLists(with email: Email) {

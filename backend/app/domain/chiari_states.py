@@ -119,9 +119,9 @@ CHIARI_STATES: tuple[dict, ...] = (
 # Stato Chiari → slug già usato da PerX (automazioni, filtri, contatori).
 CHIARI_TO_PERX = {
     "ATTESA_SOPRALLUOGO": "sopralluogo",
-    "DA_LAVORARE": "istruzione",
+    "DA_LAVORARE": "da_gestire_tradizionale",
     "IN_LAVORAZIONE": "in_gestione",
-    "DA_CONTATTARE": "primo_contatto",
+    "DA_CONTATTARE": "in_attesa_terzi",
     "IN_ATTESA_DOC": "in_attesa_documentale",
     "DAL_PERITO": "da_revisionare",
     "ATTO_PRONTO": "atto_da_inviare",
@@ -135,5 +135,45 @@ CHIARI_TO_PERX = {
 }
 
 
+_AGENT_LABELS = {
+    "cursor": "Cursor",
+    "claude": "Claude Code",
+    "codex": "Codex",
+    "opencode": "OpenCode",
+    "grokbot": "Grok Bot",
+    "perito": "Perito",
+    "estensione": "Estensione Chrome",
+    "coda": "Coda",
+    "ollama": "Ollama",
+}
+
+
+def _agent_label(agent: str) -> str:
+    key = agent.removesuffix(".py").strip().lower()
+    for known, label in _AGENT_LABELS.items():
+        if known in key:
+            return label
+    return agent.removesuffix(".py").replace("_", " ").strip() or "regia"
+
+
 def perx_slug(chiari_code: str) -> str:
-    return CHIARI_TO_PERX.get(chiari_code, "istruzione")
+    return perx_state(chiari_code)[0]
+
+
+def perx_state(chiari_code: str, agent: str | None = None) -> tuple[str, list[dict]]:
+    """Slug PerX e substati. Il substato è libero: PerX lo tiene in stato_substati."""
+
+    def sub(tag: str) -> dict:
+        return {"tag": tag, "source": "system", "added_at": None}
+
+    if chiari_code == "ATTESA_SOPRALLUOGO":
+        return "sopralluogo", [sub("da_eseguire")]
+    if chiari_code == "DA_LAVORARE":
+        return "da_gestire_tradizionale", [sub("da_eseguire")]
+    if chiari_code == "IN_LAVORAZIONE":
+        who = _agent_label(agent) if agent and agent.strip() else "regia"
+        return "in_gestione", [sub(f"da {who}")]
+    if chiari_code == "DA_CONTATTARE":
+        return "in_attesa_terzi", [sub("ricontatto")]
+    slug = CHIARI_TO_PERX.get(chiari_code, "istruzione")
+    return slug, []

@@ -14,12 +14,14 @@ struct Email: Identifiable, Hashable, Codable {
     let claimNumber: String?
     let insuredName: String?
     var associationStatus: EmailAssociationStatus?
+    var attachmentsNotice: String?
+    var gmailWebUrl: String?
     
     enum CodingKeys: String, CodingKey {
-        case id, isRead, isDownloaded, sender, recipients, cc, subject, date, body, attachments, claimNumber, insuredName, associationStatus
+        case id, isRead, isDownloaded, sender, recipients, cc, subject, date, body, attachments, claimNumber, insuredName, associationStatus, attachmentsNotice, gmailWebUrl
     }
     
-    init(id: String, isRead: Bool, isDownloaded: Bool? = nil, sender: Contact, recipients: [Contact], cc: [Contact]? = nil, subject: String, date: Date, body: String? = nil, attachments: [EmailAttachment]? = nil, claimNumber: String? = nil, insuredName: String? = nil, associationStatus: EmailAssociationStatus? = nil) {
+    init(id: String, isRead: Bool, isDownloaded: Bool? = nil, sender: Contact, recipients: [Contact], cc: [Contact]? = nil, subject: String, date: Date, body: String? = nil, attachments: [EmailAttachment]? = nil, claimNumber: String? = nil, insuredName: String? = nil, associationStatus: EmailAssociationStatus? = nil, attachmentsNotice: String? = nil, gmailWebUrl: String? = nil) {
         self.id = id
         self.isRead = isRead
         self.isDownloaded = isDownloaded
@@ -33,6 +35,8 @@ struct Email: Identifiable, Hashable, Codable {
         self.claimNumber = claimNumber
         self.insuredName = insuredName
         self.associationStatus = associationStatus
+        self.attachmentsNotice = attachmentsNotice
+        self.gmailWebUrl = gmailWebUrl
     }
     
     // Decodifica custom per default false
@@ -50,6 +54,9 @@ struct Email: Identifiable, Hashable, Codable {
         attachments = try container.decodeIfPresent([EmailAttachment].self, forKey: .attachments)
         claimNumber = try container.decodeIfPresent(String.self, forKey: .claimNumber)
         insuredName = try container.decodeIfPresent(String.self, forKey: .insuredName)
+        associationStatus = try container.decodeIfPresent(EmailAssociationStatus.self, forKey: .associationStatus)
+        attachmentsNotice = try container.decodeIfPresent(String.self, forKey: .attachmentsNotice)
+        gmailWebUrl = try container.decodeIfPresent(String.self, forKey: .gmailWebUrl)
     }
     
     func encode(to encoder: Encoder) throws {
@@ -66,6 +73,18 @@ struct Email: Identifiable, Hashable, Codable {
         try container.encodeIfPresent(attachments, forKey: .attachments)
         try container.encodeIfPresent(claimNumber, forKey: .claimNumber)
         try container.encodeIfPresent(insuredName, forKey: .insuredName)
+        try container.encodeIfPresent(associationStatus, forKey: .associationStatus)
+        try container.encodeIfPresent(attachmentsNotice, forKey: .attachmentsNotice)
+        try container.encodeIfPresent(gmailWebUrl, forKey: .gmailWebUrl)
+    }
+
+    func keepingAttachmentNotice(from other: Email) -> Email {
+        var copy = self
+        if copy.attachmentsNotice == nil {
+            copy.attachmentsNotice = other.attachmentsNotice
+            copy.gmailWebUrl = other.gmailWebUrl
+        }
+        return copy
     }
 }
 

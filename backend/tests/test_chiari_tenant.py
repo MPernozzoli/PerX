@@ -131,6 +131,26 @@ def test_dated_rules_and_claim_mapping_keep_counts_without_names():
     assert "Mario Rossi" not in json_summary(summary)
 
 
+def test_chiari_open_states_use_perx_substati():
+    from app.domain.chiari_states import perx_state
+
+    slug, subs = perx_state("ATTESA_SOPRALLUOGO")
+    assert slug == "sopralluogo"
+    assert subs[0]["tag"] == "da_eseguire"
+    slug, subs = perx_state("DA_LAVORARE")
+    assert slug == "da_gestire_tradizionale"
+    assert subs[0]["tag"] == "da_eseguire"
+    slug, subs = perx_state("IN_LAVORAZIONE", "claude")
+    assert slug == "in_gestione"
+    assert subs[0]["tag"] == "da Claude Code"
+    slug, subs = perx_state("DA_CONTATTARE")
+    assert slug == "in_attesa_terzi"
+    assert subs[0]["tag"] == "ricontatto"
+    mapped = map_claim("tenant", {"rif_chiari": "26-9", "stato": "IN_LAVORAZIONE", "eventi": [{"agente": "coda"}]})
+    assert mapped["stato_corrente"] == "in_gestione"
+    assert mapped["substati"][0]["tag"] == "da Coda"
+
+
 def test_claim_response_keeps_chiari_state():
     from datetime import datetime, timezone
     from app.schemas.claim import ClaimResponse
